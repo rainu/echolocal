@@ -29,11 +29,12 @@ import (
 const Protocol = 4
 
 type credentials struct {
-	URL       string `json:"url"`
-	Bootstrap string `json:"bootstrap,omitempty"`
-	Private   []byte `json:"private,omitempty"`
-	Token     string `json:"deviceToken,omitempty"`
-	Enabled   bool   `json:"enabled"`
+	BootstrapOnly bool   `json:"bootstrapOnly,omitempty"`
+	URL           string `json:"url"`
+	Bootstrap     string `json:"bootstrap,omitempty"`
+	Private       []byte `json:"private,omitempty"`
+	Token         string `json:"deviceToken,omitempty"`
+	Enabled       bool   `json:"enabled"`
 }
 
 type Event struct {
@@ -167,6 +168,15 @@ func (c *Client) startLocked() {
 // Configure never returns endpoints or credentials in errors. An empty token
 // preserves the existing bootstrap credential only for the same endpoint.
 func (c *Client) Configure(endpoint, bootstrap string) error {
+	return c.configure(endpoint, bootstrap, false)
+}
+
+// ConfigureBootstrap provisions a short-lived, explicitly issued pairing
+// credential. It never substitutes a bootstrap bearer for a shared auth token.
+func (c *Client) ConfigureBootstrap(endpoint, bootstrap string) error {
+	return c.configure(endpoint, bootstrap, true)
+}
+func (c *Client) configure(endpoint, bootstrap string, bootstrapOnly bool) error {
 	if err := ValidateEndpoint(endpoint); err != nil {
 		return err
 	}
@@ -179,6 +189,7 @@ func (c *Client) Configure(endpoint, bootstrap string) error {
 	}
 	if bootstrap != "" {
 		s.Bootstrap = bootstrap
+		s.BootstrapOnly = bootstrapOnly
 	}
 	if len(s.Private) == 0 {
 		_, p, e := ed25519.GenerateKey(rand.Reader)
@@ -274,8 +285,12 @@ func connectParams(s credentials, nonce string, at int64, version string) map[st
 	if token == "" {
 		token = s.Bootstrap
 	}
+	auth := map[string]any{"token": token}
+	if s.Token == "" && s.BootstrapOnly {
+		auth = map[string]any{"bootstrapToken": token}
+	}
 	payload := strings.Join([]string{"v3", id, "openclaw-linux", "ui", "operator", "", fmt.Sprint(at), token, nonce, "android", "tablet"}, "|")
-	return map[string]any{"minProtocol": Protocol, "maxProtocol": Protocol, "client": map[string]any{"id": "openclaw-linux", "displayName": "EchoLocal", "version": version, "platform": "android", "deviceFamily": "tablet", "mode": "ui"}, "role": "operator", "scopes": []string{}, "auth": map[string]any{"token": token}, "device": map[string]any{"id": id, "publicKey": base64.RawURLEncoding.EncodeToString(public), "signature": base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(payload))), "signedAt": at, "nonce": nonce}}
+	return map[string]any{"minProtocol": Protocol, "maxProtocol": Protocol, "client": map[string]any{"id": "openclaw-linux", "displayName": "EchoLocal", "version": version, "platform": "android", "deviceFamily": "tablet", "mode": "ui"}, "role": "operator", "scopes": []string{}, "auth": auth, "device": map[string]any{"id": id, "publicKey": base64.RawURLEncoding.EncodeToString(public), "signature": base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(payload))), "signedAt": at, "nonce": nonce}}
 }
 func classify(err error) string {
 	var dns *net.DNSError
@@ -413,6 +428,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 	if hello.Auth.DeviceToken != "" {
 		s.Token = hello.Auth.DeviceToken
 		s.Bootstrap = ""
+		s.BootstrapOnly = false
 		if c.persist(s) != nil {
 			c.mark("error", "storage", "local", "credentials")
 			return false

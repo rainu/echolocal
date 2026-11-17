@@ -20,6 +20,9 @@ are not implemented here. No Gateway modification is required.
 - Empty requested scopes. No administrator, session-read, Talk or node authority.
 - Manual WSS endpoint and masked bootstrap-token entry, then explicit device
   approval in the Gateway, then explicit Retry. No invented setup-code decoder.
+- Explicit private provisioning may use a short-lived operator-only, empty-scope
+  bootstrap credential via auth.bootstrapToken (ConfigureBootstrap). Shared-token
+  manual entry remains separate; credential kinds are never guessed from prefixes.
 - Successful admission stores the returned role-scoped device token and removes
   the bootstrap token. Reconnect uses the device token and unchanged identity.
 

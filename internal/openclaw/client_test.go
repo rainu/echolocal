@@ -241,3 +241,23 @@ func TestRestartUsesSavedIdentityAndConcurrentStart(t *testing.T) {
 		t.Fatal("disabled preference resumed")
 	}
 }
+
+func TestBootstrapIsExplicitAndNeverSharedAuth(t *testing.T) {
+	c := New(filepath.Join(t.TempDir(), "openclaw.json"), "test")
+	if e := c.ConfigureBootstrap("wss://gateway.example.test", "synthetic-short-lived"); e != nil {
+		t.Fatal(e)
+	}
+	c.mu.Lock()
+	saved := c.saved
+	c.mu.Unlock()
+	params := connectParams(saved, "synthetic-nonce", time.Now().UnixMilli(), "test")
+	auth := params["auth"].(map[string]any)
+	if auth["bootstrapToken"] != "synthetic-short-lived" || auth["token"] != nil {
+		t.Fatal("bootstrap credential used as shared auth")
+	}
+	saved.Token = "synthetic-device-token"
+	auth = connectParams(saved, "synthetic-nonce", time.Now().UnixMilli(), "test")["auth"].(map[string]any)
+	if auth["token"] != "synthetic-device-token" || auth["bootstrapToken"] != nil {
+		t.Fatal("paired reconnect did not prefer device token")
+	}
+}
