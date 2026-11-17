@@ -1,71 +1,68 @@
-# OpenClaw connection protocol preflight (issue #7)
+# OpenClaw connection milestone (issue #7)
 
-Status: blocked before implementation. This document is not an implemented client.
+## Owner clarification
 
-## Verified contract
+The first milestone is the same device-pairing and connection model as
+[rainu/openclaw-pet](https://github.com/rainu/openclaw-pet), not node capability
+registration. The owner explicitly clarified this after the node-protocol
+preflight. Node presence, chat, session subscriptions, voice and device commands
+are not implemented here. No Gateway modification is required.
 
-Reviewed the installed Gateway implementation and its bundled documentation on
-2026-11-17. References below name source symbols rather than deployment paths.
-No live enrollment or credential access was performed.
+## Wire contract
 
-- Gateway protocol: challenge-based signed device identity; use the server
-  challenge timestamp and nonce. Device tokens are scoped by device and role.
-- A node is a capability host, not a chat/operator client. This milestone should
-  declare role `node`, empty scopes, capabilities, commands and permissions.
-  No shell, camera, microphone, chat or administrator authority is needed.
-- Setup links use `oc-pair://<setup-code>` and a short-lived bootstrap credential.
-  Generic node-host bootstrap and mobile setup handoff are different: the latter
-  can also issue operator credentials. Do not silently select mobile handoff.
-- Device pairing and node capability approval are distinct. Device requests have
-  a five-minute expiry; capability approvals do not expire merely with time.
-- Reconnect must preserve identity, serialize sockets and use bounded backoff.
-  Explicit disconnect must persist the disabled reconnect preference.
-- Normal certificate verification must remain enabled. A setup link certificate
-  pin must not silently replace normal certificate verification for this issue.
-- A node cannot perform remote revocation with its node token. Forget must be
-  local-only, with Gateway-side removal instructions.
+- WSS only, normal certificate and hostname verification, TLS 1.2 minimum.
+- Protocol 4: `connect.challenge`, signed `connect`, correlated `hello-ok`.
+- Stable Ed25519 identity, SHA-256 public-key device ID, v3 signature binding
+  nonce, timestamp, client ID/mode, role, scopes, credential and platform metadata.
+- Supported Pet client identifier `openclaw-linux`, mode `ui`, role `operator`.
+  Metadata reports EchoLocal version, Android platform and tablet device family;
+  the identifier is a protocol identifier, not a claim to be the Pet binary.
+- Empty requested scopes. No administrator, session-read, Talk or node authority.
+- Manual WSS endpoint and masked bootstrap-token entry, then explicit device
+  approval in the Gateway, then explicit Retry. No invented setup-code decoder.
+- Successful admission stores the returned role-scoped device token and removes
+  the bootstrap token. Reconnect uses the device token and unchanged identity.
 
-References: OpenClaw docs `gateway/protocol/auth.md`,
-`gateway/protocol/handshake.md`, `gateway/pairing.md`.
+Reference: Pet `backend/gateway.go`, especially `buildConnectParams`,
+`loadOrCreatePetIdentity`, `pairingStatus` and the startup retry loop.
 
-## Blocking mismatch: rejection and expiry observation
+## Truthful states
 
-The installed handshake implementation computes:
+`pairing` means approval is required, not that the Gateway promises the request
+is still pending. Like Pet, a non-Control-UI client cannot observe a reliable
+request-bound denial/expiry decision. It stops and requires explicit Retry after
+approval; it never invents `rejected` or `expired` from local timeouts, and never
+automatically repeats pairing or authentication rejection.
 
-```ts
-const waitForResolution = state.isControlUi && role === "operator";
-```
+Transport failures retry with bounded 1–30 second exponential backoff. There is
+one lifecycle owner; a new action cancels and joins the previous owner before
+starting another socket. Disconnect persists the disabled reconnect preference.
+An enabled saved connection resumes at application startup.
 
-Only that branch registers `waitForDevicePairingResolution`, responds with
-`waitForResolution: true`, and sends a request/device-bound
-`device.pair.resolved` event before closing the pre-auth socket.
+## Storage and diagnostics
 
-For role `node`, the failed handshake instead calls
-`failPairingHandshake`. Pending node requests carry retry guidance
-(`wait_then_retry`); there is no equivalent resolution subscription for the
-unadmitted node. The auth documentation explicitly says no denial history is
-persisted. Reconnecting cannot reliably distinguish rejection, expiration,
-supersession, or a fresh request.
+The separate device-local `openclaw.json` file is atomically replaced with mode
+0600. It is deliberately outside general settings export/config synchronization.
+No stored endpoint, token or private key is returned to the settings view. New
+entries use masked fields. Changing endpoint drops the old identity and tokens;
+blank bootstrap input preserves a bootstrap credential only on the same endpoint.
 
-Therefore a node-only Echo client cannot truthfully meet the required distinct
-rejected/expired states and avoid creating new requests after rejection using
-the currently verified contract. A local timeout is not proof of Gateway expiry.
-Impersonating Control UI or adding operator permissions solely for this is not
-an acceptable workaround.
+Forget has a confirmation screen and removes local credentials, not remote
+Gateway authorization. Pair again retains identity, drops the cached device token
+and disables reconnect. A new bootstrap credential may then be required.
 
-## Decision needed
+The diagnostic ring holds at most 64 fixed-class lifecycle/application events in
+memory, with direction, timestamp and result. Raw messages, arbitrary Gateway
+error text, event names, URLs and credentials never enter it. Payload debugging
+and diagnostic export are not implemented in this connection-only milestone.
 
-Preferred prerequisite: extend the Gateway's signed, unadmitted node handshake
-to expose only its own exact pairing request's resolution, without admitting
-RPC access or exposing other devices' events. Specify handling of disconnect,
-supersession and reconnect, and test rejection/expiry before implementing the
-Echo wizard.
+## Verification boundary
 
-Alternative scope change: explicitly accept an indeterminate approval outcome
-for nodes and require manual Retry; do not label it rejected or expired.
-That does not satisfy the current acceptance criteria without owner agreement.
+Synthetic tests cover signature/least privilege, pairing-required manual retry,
+TLS trust failure, auth rejection, credential-file permissions/persistence,
+forget, reconnect, explicit disconnect, malformed identity and diagnostic
+redaction. These are not a real device enrollment or owner acceptance.
 
-Gateway changes are outside rainu/echolocal issue implementation scope and have
-not been attempted. No Echo software, Home Assistant settings, Gateway settings,
-or credentials were changed. Hardware ADB connectivity was checked successfully;
-no UI, TLS handshake, pairing, reboot or reconnect acceptance tests were run.
+Device installation, screenshots, real pairing, restart and interaction results
+must be reported separately against the actual tested commit. Keep the issue and
+PR open until the owner accepts that implementation.

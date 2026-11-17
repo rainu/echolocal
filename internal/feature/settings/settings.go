@@ -40,6 +40,7 @@ func Get() *Settings {
 		shared = &Settings{}
 
 		say.Use(config.Get().Screen.Language)
+		claw()
 
 		drawer.Get().Add(shareddrawer.Entry{
 			Name:  func() string { return say.T("settings.title") },
@@ -55,7 +56,7 @@ func (s *Settings) Name() string { return "settings" }
 
 func Open() { shell.Get().Push(root()) }
 
-var pages = map[string]func() *sharedshell.Page{"settings": root, "camera": cameraPage}
+var pages = map[string]func() *sharedshell.Page{"settings": root, "camera": cameraPage, "openclaw": openclawPage}
 
 func OpenPage(name string) bool {
 	page, ok := pages[name]
