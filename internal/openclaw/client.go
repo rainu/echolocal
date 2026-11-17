@@ -77,7 +77,7 @@ func New(path, version string) *Client {
 func (c *Client) Start() {
 	c.op.Lock()
 	defer c.op.Unlock()
-	if c.saved.Enabled {
+	if c.Status().Enabled {
 		c.startLocked()
 	}
 }

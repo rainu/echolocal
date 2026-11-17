@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -190,4 +191,53 @@ func TestMalformedStoredIdentity(t *testing.T) {
 	c.Start()
 	waitState(t, c, "error")
 	c.Disconnect()
+}
+
+func TestRestartUsesSavedIdentityAndConcurrentStart(t *testing.T) {
+	var firstID atomic.Value
+	var reused atomic.Bool
+	srv, endpoint := server(t, func(conn *websocket.Conn) {
+		req := challenge(conn)
+		if req == nil {
+			return
+		}
+		p := req["params"].(map[string]any)
+		id := p["device"].(map[string]any)["id"].(string)
+		if firstID.Load() == nil {
+			firstID.Store(id)
+		}
+		if p["auth"].(map[string]any)["token"] == "synthetic-device-token" && id == firstID.Load() {
+			reused.Store(true)
+		}
+		hello(conn, req)
+		var f any
+		conn.ReadJSON(&f)
+	})
+	c := client(t, srv, endpoint)
+	c.Connect()
+	waitState(t, c, "connected")
+	// Simulate process loss without intentionally disabling the saved preference.
+	c.op.Lock()
+	c.stopLocked()
+	c.op.Unlock()
+	restored := New(c.path, "test")
+	restored.dialer.TLSClientConfig = c.dialer.TLSClientConfig.Clone()
+	t.Cleanup(func() { restored.Disconnect() })
+	restored.Start()
+	waitState(t, restored, "connected")
+	if !reused.Load() {
+		t.Fatal("restart did not preserve identity and device token")
+	}
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() { restored.Start() })
+	}
+	wg.Wait()
+	waitState(t, restored, "connected")
+	restored.Disconnect()
+	disabled := New(c.path, "test")
+	disabled.Start()
+	if disabled.Status().State != "disconnected" {
+		t.Fatal("disabled preference resumed")
+	}
 }
