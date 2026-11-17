@@ -252,10 +252,8 @@ github.com/pion/turn/v5 v5.1.2/go.mod h1:57Oadc8fHnac15VFyCd6nEaBTVZBxQe2POUMD4l
 github.com/pion/webrtc/v4 v4.2.22 h1:eoRTHzLKW5tI9o5iahw3s4KL4IHPESsfIF06zWi3JAo=
 github.com/pion/webrtc/v4 v4.2.22/go.mod h1:JBu1ba8lUEX4jbYFKofglMQJG7f0rJk7UepKjI3GaLE=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/rainu/libcountertop v0.0.0-20261117125937-fea50415103f h1:mbWxmQR8U2JdbHKTEy9uT4TBSzJWcp4Hn8d3b4FuoC8=
-github.com/rainu/libcountertop v0.0.0-20261117125937-fea50415103f/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
-github.com/rainu/libcountertop v0.0.0-20261117163837-21d0dcdb409e h1:049YApRCsXUUy90l+pe11mqbiowZ1jnJ85y2vKS6yFA=
-github.com/rainu/libcountertop v0.0.0-20261117163837-21d0dcdb409e/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
+github.com/rainu/libcountertop v0.0.0-20261117182511-21ea0ad987ca h1:FXCsRH73C44dcnqFRZq6jA7doM/X2rGSSrM1a9zmmGA=
+github.com/rainu/libcountertop v0.0.0-20261117182511-21ea0ad987ca/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
