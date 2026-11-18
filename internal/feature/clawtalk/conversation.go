@@ -112,7 +112,7 @@ func (m *Manager) deleteHistoryAction(generation uint64) shell.Action {
 			return []menu.Row{{Label: say.T("clawtalk.history_local"), Hint: say.T("clawtalk.delete_hint"), Kind: menu.Plain}}, []func(int){nil}
 		}, Actions: []shell.Action{
 			{Label: say.T("openclaw.action.cancel"), MinHeight: 64, Do: func() { shellfeature.Get().Pop() }},
-			{Label: say.T("openclaw.action.delete"), MinHeight: 64, Role: shell.Danger, Do: func() {
+			{Label: say.T(key), MinHeight: 64, Role: shell.Danger, Do: func() {
 				m.mu.Lock()
 				if generation == 0 {
 					m.captions.Clear()

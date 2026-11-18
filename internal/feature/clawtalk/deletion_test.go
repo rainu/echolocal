@@ -20,6 +20,9 @@ func TestDeleteConfirmationAndOpenDetailDoNotRetainDeletedText(t *testing.T) {
 	detail := rows[0].Open().(*shell.Page)
 	m.deleteHistoryAction(1).Do()
 	confirm := sh.Top().(*shell.Page)
+	if confirm.Actions[1].Label != m.deleteHistoryAction(1).Label {
+		t.Fatal("delete confirmation used a different destructive action label")
+	}
 	confirm.Actions[0].Do()
 	if len(m.captions.Snapshot()) != 1 {
 		t.Fatal("cancel deleted history")
