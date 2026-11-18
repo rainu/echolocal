@@ -70,3 +70,26 @@ func TestTalkEventOverflowClosesInsteadOfDroppingLifecycle(t *testing.T) {
 		t.Fatal("overflowed event subscriber retained")
 	}
 }
+
+func TestClientMediaContractRequiresExplicitOptInOnExactConnection(t *testing.T) {
+	r := newRPCLink(nil)
+	r.origin = "wss://synthetic.example"
+	var launch TalkLaunch
+	captureLaunch(r, map[string]any{"capabilities": []string{"voice-transcript", "voice-selection"}}, &launch)
+	if !launch.ClientOwned() || launch.owner != r || launch.origin != r.origin {
+		t.Fatal("client media was not fenced to requested connection")
+	}
+	captureLaunch(r, map[string]any{"capabilities": []string{"voice-transcript", "gateway-control-v1"}}, &launch)
+	if launch.ClientOwned() {
+		t.Fatal("gateway-owned contract accepted as client media")
+	}
+	captureLaunch(r, map[string]any{}, &launch)
+	if launch.ClientOwned() {
+		t.Fatal("client media enabled without explicit opt-in")
+	}
+	captureLaunch(r, map[string]any{"capabilities": []string{"voice-transcript"}}, &launch)
+	launch.ClientControl.Owner = "gateway"
+	if launch.ClientOwned() {
+		t.Fatal("Gateway ownership silently replaced")
+	}
+}

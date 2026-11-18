@@ -31,10 +31,16 @@ type Control interface {
 	ExchangeOffer(context.Context, connection.TalkLaunch, string) (string, error)
 }
 type Session struct {
+	native        *nativeState
+	nativeEnabled atomic.Bool
+	requirePolicy bool
+	audioGate     chan struct{}
+
 	Client            Control
 	Target            string
 	Audio             Device
 	Activity          func(State)
+	UserSpeech        func()
 	End, Failure      func()
 	mu                sync.Mutex
 	id                string
@@ -59,7 +65,7 @@ type Session struct {
 func NewSession(c Control, target string, a Device) *Session {
 	raw := make([]byte, 16)
 	_, _ = rand.Read(raw)
-	return &Session{Client: c, Target: target, Audio: a, id: "echo-" + hex.EncodeToString(raw), ready: make(chan struct{}), failed: make(chan struct{})}
+	return &Session{native: newNative(), requirePolicy: true, audioGate: make(chan struct{}), Client: c, Target: target, Audio: a, id: "echo-" + hex.EncodeToString(raw), ready: make(chan struct{}), failed: make(chan struct{})}
 }
 func (s *Session) fail() {
 	s.rejected.Do(func() {
@@ -92,12 +98,33 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 	go s.control(ctx, events)
 	// Creation is the authoritative capability/authentication check; no fallback.
 	s.stage.Store(3)
+	caps := []string{"voice-transcript", "voice-selection"}
+	if !s.requirePolicy {
+		caps = []string{"gateway-control-v1"}
+	}
 	var launch connection.TalkLaunch
-	err = s.Client.CallTalk(startup, "talk.client.create", map[string]any{"sessionKey": s.Target, "voiceSessionId": s.id, "mode": "realtime", "transport": "webrtc", "brain": "agent-consult", "capabilities": []string{"gateway-control-v1"}}, &launch)
+	err = s.Client.CallTalk(startup, "talk.client.create", map[string]any{"sessionKey": s.Target, "voiceSessionId": s.id, "mode": "realtime", "transport": "webrtc", "brain": "agent-consult", "capabilities": caps}, &launch)
 	if err != nil {
 		return err
 	}
-	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" || launch.ClientControl.Owner != "gateway" {
+	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" {
+		return errors.New("talk_contract_invalid")
+	}
+	if s.requirePolicy {
+		if !launch.ClientOwned() || launch.Provider != "openai" {
+			return errors.New("talk_contract_invalid")
+		}
+		legacy, modelErr := nativeModel(launch.Model)
+		if modelErr != nil {
+			return modelErr
+		}
+		s.native.legacy = legacy
+		s.native.workCtx, s.native.workCancel = context.WithCancel(context.Background())
+		s.nativeEnabled.Store(true)
+		s.outputGate(true)
+		go s.nativeLoop(ctx)
+		go s.transcriptLoop()
+	} else if launch.ClientControl.Owner != "gateway" {
 		return errors.New("talk_contract_invalid")
 	}
 	s.stage.Store(2)
@@ -143,7 +170,16 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 	}
 	connected := make(chan struct{})
 	var once sync.Once
-	link, err := rtc.NewAudioOnly(rtc.Media{Audio: s.Audio}, func(state webrtc.PeerConnectionState) {
+	constructor := rtc.NewAudioOnly
+	var audio rtc.Audio = s.Audio
+	media := rtc.Media{}
+	if s.requirePolicy {
+		constructor = rtc.NewControlledAudio
+		audio = preReadyAudio{device: s.Audio, ctx: ctx, gate: s.audioGate, count: &s.native.silence}
+		media.Control = s.controlLink(ctx)
+	}
+	media.Audio = audio
+	link, err := constructor(media, func(state webrtc.PeerConnectionState) {
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(connected) })
@@ -169,7 +205,11 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		return errors.New("talk_answer_failed")
 	}
 	s.stage.Store(5)
-	for _, signal := range []<-chan struct{}{connected, s.ready} {
+	signals := []<-chan struct{}{connected, s.ready}
+	if s.requirePolicy {
+		signals = append(signals, s.native.policyReady)
+	}
+	for _, signal := range signals {
 		select {
 		case <-signal:
 		case <-s.failed:
@@ -186,6 +226,9 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		return ctx.Err()
 	}
 	s.stage.Store(7)
+	if s.requirePolicy {
+		close(s.audioGate)
+	}
 	s.Audio.ReadyTone()
 	return nil
 }
@@ -203,6 +246,19 @@ func (s *Session) Close() error {
 		}
 		if s.link != nil {
 			s.link.Close()
+		}
+		if s.nativeEnabled.Load() {
+			select {
+			case <-s.native.done:
+			case <-time.After(time.Second):
+			}
+			s.native.stopOnce.Do(func() { close(s.native.transcriptStop) })
+			select {
+			case <-s.native.transcriptDone:
+			case <-time.After(6 * time.Second):
+				s.native.workCancel()
+			}
+			s.native.workCancel()
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -224,6 +280,9 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				return
 			}
 			if e.VoiceSessionID != s.id {
+				continue
+			}
+			if s.nativeEnabled.Load() && s.native.legacy && e.Event.Type != "session.ready" && e.Event.Type != "session.closed" && e.Event.Type != "session.error" && e.Event.Type != "session.replaced" {
 				continue
 			}
 			switch e.Event.Type {
@@ -248,6 +307,9 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 						go s.End()
 					}
 					return
+				}
+				if s.nativeEnabled.Load() {
+					s.native.awaiting.Store(time.Now().UnixNano())
 				}
 				s.activity(Thinking)
 			case "tool.call", "tool.result", "tool.error":
@@ -328,6 +390,8 @@ func (s *Session) activity(state State) {
 }
 
 type Diagnostics struct {
+	ControlMessages, NativeDelegations, NativeResults, UnbackedReplies, HistoryFailures, StartupSilence uint64
+
 	Stage                                   string
 	Reason                                  string
 	SetupMS                                 int64
@@ -341,6 +405,12 @@ func (s *Session) Diagnostics() Diagnostics {
 		n = 0
 	}
 	d := Diagnostics{Stage: names[n], SetupMS: s.setupMS.Load(), Tools: s.tools.Load(), Utterances: s.utterances.Load()}
+	d.ControlMessages = s.native.messages.Load()
+	d.NativeDelegations = s.native.delegations.Load()
+	d.NativeResults = s.native.results.Load()
+	d.UnbackedReplies = s.native.unbacked.Load()
+	d.HistoryFailures = s.native.historyFailures.Load()
+	d.StartupSilence = s.native.silence.Load()
 	if value := s.reason.Load(); value != nil {
 		d.Reason = value.(string)
 	}
@@ -370,7 +440,7 @@ func safeReason(err error) string {
 		return "timeout"
 	}
 	switch err.Error() {
-	case "rpc_rejected", "rpc_cancelled", "rpc_timeout", "rpc_busy", "rpc_disconnected", "rpc_delivery_uncertain", "rpc_invalid_response", "talk_control_unavailable", "talk_contract_invalid", "talk_capability_unavailable", "talk_peer_failed", "talk_offer_failed", "talk_offer_rejected", "talk_offer_origin", "talk_answer_failed", "talk_answer_invalid", "talk_provider_failed", "talk_start_timeout", "talk_audio_unavailable", "talk_connection_changed", "talk_launch_invalid":
+	case "talk_native_control_unsupported", "talk_control_failed", "talk_control_rejected", "talk_control_overflow", "talk_agent_not_delegated", "rpc_rejected", "rpc_cancelled", "rpc_timeout", "rpc_busy", "rpc_disconnected", "rpc_delivery_uncertain", "rpc_invalid_response", "talk_control_unavailable", "talk_contract_invalid", "talk_capability_unavailable", "talk_peer_failed", "talk_offer_failed", "talk_offer_rejected", "talk_offer_origin", "talk_answer_failed", "talk_answer_invalid", "talk_provider_failed", "talk_start_timeout", "talk_audio_unavailable", "talk_connection_changed", "talk_launch_invalid":
 		return err.Error()
 	}
 	return "talk_failed"

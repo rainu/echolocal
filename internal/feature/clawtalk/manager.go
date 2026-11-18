@@ -140,6 +140,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	m.lastAudio = a
 	m.mu.Unlock()
 	b.Activity = m.Controller.Activity
+	b.UserSpeech = m.Controller.UserSpeech
 	b.End = func() { m.Stop() }
 	b.Failure = m.Controller.Fail
 	if e = m.Controller.Start(ctx, b, time.Duration(v.Timeout)*time.Second); e != nil {
@@ -195,6 +196,10 @@ func (m *Manager) Mute() {
 }
 
 type Status struct {
+	Decoded, SilenceSkipped, PlayoutUnderruns, PlayoutDropped, SpeakerUnderruns uint64
+	MaxReceiveGapMS, MaxPlayoutGapMS                                            int64
+	PeakBufferedFrames                                                          int
+
 	State                                           talk.State
 	Active                                          bool
 	Transport                                       talk.Diagnostics
@@ -210,6 +215,18 @@ func (m *Manager) Status() Status {
 		out.Transport = b.Diagnostics()
 	}
 	if a != nil {
+		out.Decoded = a.decoded.Load()
+		out.SilenceSkipped = a.silenceSkipped.Load()
+		out.MaxReceiveGapMS = a.maxReceiveGapMS.Load()
+		out.MaxPlayoutGapMS = a.maxPlayoutGapMS.Load()
+		a.playMu.Lock()
+		out.PlayoutUnderruns = a.playout.Underruns
+		out.PlayoutDropped = a.playout.Dropped
+		out.PeakBufferedFrames = a.playout.PeakFrames
+		a.playMu.Unlock()
+		if now := speaker.Get().Underruns(); now >= a.underrunBase.Load() {
+			out.SpeakerUnderruns = now - a.underrunBase.Load()
+		}
 		out.Captured = a.captured.Load()
 		out.InputDropped = a.drops.Load()
 		out.Played = a.played.Load()

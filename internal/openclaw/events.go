@@ -87,6 +87,9 @@ func (r *rpcLink) event(f frame) {
 }
 
 type TalkLaunch struct {
+	Provider       string `json:"provider"`
+	Model          string `json:"model"`
+	clientOwned    bool
 	origin         string
 	owner          *rpcLink
 	Transport      string            `json:"transport"`
@@ -110,7 +113,7 @@ func (c *Client) ExchangeOffer(ctx context.Context, launch TalkLaunch, offer str
 	}
 	endpoint := launch.origin
 	base, err := url.Parse(endpoint)
-	if err != nil || base.Scheme != "wss" || launch.Transport != "webrtc" || launch.ClientControl.Owner != "gateway" || launch.ClientSecret == "" || len(offer) > 1024*1024 {
+	if err != nil || base.Scheme != "wss" || launch.Transport != "webrtc" || !(launch.ClientOwned() || (launch.ClientControl.Owner == "gateway" && !launch.clientOwned)) || launch.ClientSecret == "" || len(offer) > 1024*1024 {
 		return "", errors.New("talk_launch_invalid")
 	}
 	rel, err := url.Parse(launch.OfferURL)
@@ -146,4 +149,34 @@ func (c *Client) ExchangeOffer(ctx context.Context, launch TalkLaunch, offer str
 		return "", errors.New("talk_answer_invalid")
 	}
 	return string(b), nil
+}
+
+// ClientOwned is true only when this exact request explicitly selected the
+// transcript-capable client control contract and the Gateway agreed.
+func (l TalkLaunch) ClientOwned() bool { return l.clientOwned && l.ClientControl.Owner == "" }
+func captureLaunch(r *rpcLink, params, result any) {
+	launch, ok := result.(*TalkLaunch)
+	if !ok {
+		return
+	}
+	launch.owner = r
+	launch.origin = r.origin
+	raw, err := json.Marshal(params)
+	if err != nil {
+		return
+	}
+	var p struct{ Capabilities []string }
+	if json.Unmarshal(raw, &p) != nil {
+		return
+	}
+	gateway, transcripts := false, false
+	for _, cap := range p.Capabilities {
+		if cap == "gateway-control-v1" {
+			gateway = true
+		}
+		if cap == "voice-transcript" {
+			transcripts = true
+		}
+	}
+	launch.clientOwned = transcripts && !gateway
 }

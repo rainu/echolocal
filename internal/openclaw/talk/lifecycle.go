@@ -155,3 +155,19 @@ func (c *Controller) finish(a *activation, s State) {
 }
 
 func (c *Controller) Busy() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.current != nil }
+
+// UserSpeech keeps the truthful Listening state while suspending inactivity for
+// a provider-confirmed in-progress utterance. Final speech moves to Thinking.
+func (c *Controller) UserSpeech() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	a := c.current
+	if a == nil || a.ending {
+		return
+	}
+	if a.timer != nil {
+		a.timer.Stop()
+		a.timer = nil
+	}
+	c.state = Listening
+}

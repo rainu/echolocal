@@ -89,6 +89,7 @@ func TestSessionWaitsForPeerProviderAndAudioThenClosesOnce(t *testing.T) {
 	defer peer.Close()
 	control := &fakeControl{event: make(chan connection.TalkEvent, 8), peer: peer, capable: true}
 	session := NewSession(control, "agent:synthetic:context", d)
+	session.requirePolicy = false
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err = session.Open(ctx); err != nil {
@@ -107,6 +108,7 @@ func TestSessionRejectsMissingCapabilitiesBeforeOpeningMicrophone(t *testing.T) 
 	d := &fakeDevice{frames: make(chan []int16)}
 	control := &fakeControl{event: make(chan connection.TalkEvent, 8)}
 	session := NewSession(control, "agent:synthetic:context", d)
+	session.requirePolicy = false
 	if err := session.Open(context.Background()); err == nil {
 		t.Fatal("unready provider accepted")
 	}
@@ -157,6 +159,7 @@ func TestCatalogWarmingRetriesOnlyTheReadNotSessionCreation(t *testing.T) {
 	d := &fakeDevice{frames: make(chan []int16)}
 	control := &fakeControl{event: make(chan connection.TalkEvent, 8), warming: 1}
 	session := NewSession(control, "agent:synthetic:context", d)
+	session.requirePolicy = false
 	if err := session.Open(context.Background()); err == nil {
 		t.Fatal("unready provider accepted")
 	}

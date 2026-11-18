@@ -76,10 +76,7 @@ func (c *Client) CallTalk(ctx context.Context, method string, params any, result
 	}
 	err := r.call(ctx, method, params, result)
 	if err == nil && method == "talk.client.create" {
-		if launch, ok := result.(*TalkLaunch); ok {
-			launch.owner = r
-			launch.origin = r.origin
-		}
+		captureLaunch(r, params, result)
 	}
 	return err
 }

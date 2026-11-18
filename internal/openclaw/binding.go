@@ -34,10 +34,7 @@ func (b *TalkBinding) CallTalk(ctx context.Context, method string, params, resul
 	}
 	err := b.link.call(ctx, method, params, result)
 	if err == nil && method == "talk.client.create" {
-		if launch, ok := result.(*TalkLaunch); ok {
-			launch.owner = b.link
-			launch.origin = b.link.origin
-		}
+		captureLaunch(b.link, params, result)
 	}
 	return err
 }
