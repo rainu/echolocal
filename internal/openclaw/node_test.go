@@ -152,6 +152,8 @@ func TestNodePairingRequiresExplicitRetry(t *testing.T) {
 }
 
 func nodeHello(conn *websocket.Conn, req map[string]any) {
+	conn.WriteJSON(map[string]any{"type": "event", "event": "node.pair.resolved", "payload": map[string]any{"decision": "approved"}})
+
 	conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": true, "payload": map[string]any{"type": "hello-ok", "protocol": Protocol, "auth": map[string]any{"deviceToken": "synthetic-device-token", "role": "node", "scopes": []string{}}}})
 }
 func TestNodeRejectsUnexpectedHelloAuthority(t *testing.T) {
@@ -164,5 +166,23 @@ func TestNodeRejectsUnexpectedHelloAuthority(t *testing.T) {
 	waitState(t, c, "error")
 	if c.Status().Paired {
 		t.Fatal("accepted operator token")
+	}
+}
+
+func TestNodeBoundsPreHelloEvents(t *testing.T) {
+	srv, endpoint := server(t, func(conn *websocket.Conn) {
+		challenge(conn)
+		for range 20 {
+			conn.WriteJSON(map[string]any{"type": "event", "event": "tick"})
+		}
+	})
+	c := NewNode(filepath.Join(t.TempDir(), "node.json"), "test", NodeMetadata{})
+	c.dialer.TLSClientConfig = srv.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	c.ConfigureBootstrap(endpoint, "synthetic-bootstrap")
+	c.Connect()
+	defer c.Close()
+	waitState(t, c, "error")
+	if c.Status().Reason != "protocol" {
+		t.Fatal("unbounded event stream")
 	}
 }

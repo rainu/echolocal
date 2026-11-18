@@ -433,9 +433,20 @@ func (c *Client) attempt(ctx context.Context) bool {
 	}
 	c.mark("connecting", "", "out", "connect")
 	var res frame
-	if conn.ReadJSON(&res) != nil || res.Type != "res" || res.ID != rid {
-		c.mark("error", "protocol", "in", "connect")
-		return false
+	// Gateway registration can broadcast events before the correlated hello.
+	// Keep the original handshake deadline and bound pre-hello event traffic.
+	for skipped := 0; ; skipped++ {
+		if conn.ReadJSON(&res) != nil {
+			c.mark("error", "protocol", "in", "connect")
+			return false
+		}
+		if res.Type == "res" && res.ID == rid {
+			break
+		}
+		if res.Type != "event" || skipped >= 15 {
+			c.mark("error", "protocol", "in", "connect")
+			return false
+		}
 	}
 	if !res.OK {
 		state, reason := "error", "authentication"
