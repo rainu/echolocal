@@ -14,15 +14,17 @@ import (
 // never transferred to a replacement connection.
 type rpcLink struct {
 	conn    *websocket.Conn
+	origin  string
 	write   sync.Mutex
 	mu      sync.Mutex
 	next    uint64
 	pending map[string]chan frame
 	closed  bool
+	subs    map[*eventSubscription]bool
 }
 
 func newRPCLink(conn *websocket.Conn) *rpcLink {
-	return &rpcLink{conn: conn, pending: make(map[string]chan frame)}
+	return &rpcLink{conn: conn, pending: make(map[string]chan frame), subs: make(map[*eventSubscription]bool)}
 }
 func (r *rpcLink) close() {
 	r.mu.Lock()
@@ -31,6 +33,10 @@ func (r *rpcLink) close() {
 		return
 	}
 	r.closed = true
+	for sub := range r.subs {
+		close(sub.ch)
+		delete(r.subs, sub)
+	}
 	for id, ch := range r.pending {
 		close(ch)
 		delete(r.pending, id)
@@ -68,7 +74,14 @@ func (c *Client) CallTalk(ctx context.Context, method string, params any, result
 	if r == nil {
 		return errors.New("rpc_disconnected")
 	}
-	return r.call(ctx, method, params, result)
+	err := r.call(ctx, method, params, result)
+	if err == nil && method == "talk.client.create" {
+		if launch, ok := result.(*TalkLaunch); ok {
+			launch.owner = r
+			launch.origin = r.origin
+		}
+	}
+	return err
 }
 func (r *rpcLink) call(ctx context.Context, method string, params any, result any) error {
 	if ctx.Err() != nil {
@@ -131,6 +144,9 @@ func (r *rpcLink) call(ctx context.Context, method string, params any, result an
 func (c *Client) EnableTalk() error {
 	c.op.Lock()
 	defer c.op.Unlock()
+	if c.saved.Talk {
+		return nil
+	}
 	c.stopLocked()
 	s := c.saved
 	s.Talk = true

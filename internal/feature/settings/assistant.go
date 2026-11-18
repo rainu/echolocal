@@ -27,7 +27,8 @@ func assistantPages() *sharedsettings.AssistantPages {
 	}
 	return sharedsettings.NewAssistantPages(
 		sharedsettings.AssistantDependencies{
-			Slots:       wakeword.Slots,
+			Slots:            wakeword.Slots,
+			ConversationRows: talkRows, LocalWordRow: talkWordRow,
 			Pryon:       detect.Get().Pryon(),
 			PryonStop:   detect.Get().Pryon().Stop(),
 			Gemini:      detect.Get().Gemini(),

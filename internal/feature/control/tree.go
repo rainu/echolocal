@@ -47,6 +47,7 @@ func (c *Control) tree() *cobra.Command {
 	t.Top(firmwarecmd.Command(firmware.Get))
 	t.Top(blecmd.Command(ble.Get()))
 	t.Top(netcmd.Command(layout.WifiIface))
+	talkCommands(t)
 	showing(t)
 	return t.Root()
 }

@@ -472,6 +472,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 		}
 	}
 	link := newRPCLink(conn)
+	link.origin = s.URL
 	c.mu.Lock()
 	c.rpc = link
 	c.mu.Unlock()
@@ -494,6 +495,9 @@ func (c *Client) attempt(ctx context.Context) bool {
 			return true
 		}
 		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+		if msg.Type == "event" {
+			link.event(msg)
+		}
 		if msg.Type == "res" {
 			link.deliver(msg)
 			continue

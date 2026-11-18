@@ -1,0 +1,336 @@
+package talk
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unicode"
+
+	"github.com/pion/webrtc/v4"
+	connection "github.com/ygelfand/echolocal/internal/openclaw"
+	"github.com/ygelfand/libcountertop/pkg/media/rtc"
+)
+
+type Device interface {
+	rtc.Audio
+	Start(context.Context) error
+	Close() error
+	Queued() int
+	StopOutput()
+	ReadyTone()
+}
+type Control interface {
+	SubscribeTalk() (<-chan connection.TalkEvent, func(), error)
+	CallTalk(context.Context, string, any, any) error
+	ExchangeOffer(context.Context, connection.TalkLaunch, string) (string, error)
+}
+type Session struct {
+	Client            Control
+	Target            string
+	Audio             Device
+	Activity          func(State)
+	End, Failure      func()
+	mu                sync.Mutex
+	id                string
+	cancel            context.CancelFunc
+	unsubscribe       func()
+	link              *rtc.Link
+	once              sync.Once
+	closeErr          error
+	ready             chan struct{}
+	failed            chan struct{}
+	statsLink         atomic.Pointer[rtc.Link]
+	stage             atomic.Int32
+	setupMS           atomic.Int64
+	pendingTools      atomic.Int32
+	tools, utterances atomic.Uint64
+	responseEpoch     atomic.Uint64
+	providerReady     sync.Once
+	rejected          sync.Once
+}
+
+func NewSession(c Control, target string, a Device) *Session {
+	raw := make([]byte, 16)
+	_, _ = rand.Read(raw)
+	return &Session{Client: c, Target: target, Audio: a, id: "echo-" + hex.EncodeToString(raw), ready: make(chan struct{}), failed: make(chan struct{})}
+}
+func (s *Session) fail() {
+	s.rejected.Do(func() {
+		close(s.failed)
+		if s.Failure != nil {
+			go s.Failure()
+		}
+	})
+}
+func (s *Session) Open(parent context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	began := time.Now()
+	defer func() { s.setupMS.Store(time.Since(began).Milliseconds()) }()
+	s.stage.Store(1)
+	ctx, cancel := context.WithCancel(parent)
+	s.cancel = cancel
+	startup, done := context.WithTimeout(ctx, 45*time.Second)
+	defer done()
+	events, unsubscribe, err := s.Client.SubscribeTalk()
+	if err != nil {
+		return errors.New("talk_control_unavailable")
+	}
+	s.unsubscribe = unsubscribe
+	go s.control(ctx, events)
+	s.stage.Store(2)
+	var catalogue struct {
+		Realtime struct {
+			Ready          bool
+			ActiveProvider string
+			Providers      []struct {
+				ID                 string
+				Configured         bool
+				Transports, Brains []string
+			}
+		}
+	}
+	if err = s.Client.CallTalk(startup, "talk.catalog", map[string]any{"sessionKey": s.Target}, &catalogue); err != nil {
+		return err
+	}
+	capable := false
+	for _, provider := range catalogue.Realtime.Providers {
+		if provider.ID == catalogue.Realtime.ActiveProvider && provider.Configured && has(provider.Transports, "webrtc") && has(provider.Brains, "agent-consult") {
+			capable = true
+		}
+	}
+	if !catalogue.Realtime.Ready || !capable {
+		return errors.New("talk_capability_unavailable")
+	}
+	// Creation is the authoritative capability/authentication check; no fallback.
+	s.stage.Store(3)
+	var launch connection.TalkLaunch
+	err = s.Client.CallTalk(startup, "talk.client.create", map[string]any{"sessionKey": s.Target, "voiceSessionId": s.id, "mode": "realtime", "transport": "webrtc", "brain": "agent-consult", "capabilities": []string{"gateway-control-v1"}}, &launch)
+	if err != nil {
+		return err
+	}
+	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" || launch.ClientControl.Owner != "gateway" {
+		return errors.New("talk_contract_invalid")
+	}
+	connected := make(chan struct{})
+	var once sync.Once
+	link, err := rtc.NewAudioOnly(rtc.Media{Audio: s.Audio}, func(state webrtc.PeerConnectionState) {
+		switch state {
+		case webrtc.PeerConnectionStateConnected:
+			once.Do(func() { close(connected) })
+		case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed:
+			s.fail()
+		}
+	})
+	if err != nil {
+		return errors.New("talk_peer_failed")
+	}
+	s.link = link
+	s.statsLink.Store(link)
+	s.stage.Store(4)
+	offer, err := link.Offer(startup)
+	if err != nil {
+		return errors.New("talk_offer_failed")
+	}
+	answer, err := s.Client.ExchangeOffer(startup, launch, offer)
+	if err != nil {
+		return err
+	}
+	if err = link.Answered(answer); err != nil {
+		return errors.New("talk_answer_failed")
+	}
+	s.stage.Store(5)
+	for _, signal := range []<-chan struct{}{connected, s.ready} {
+		select {
+		case <-signal:
+		case <-s.failed:
+			return errors.New("talk_provider_failed")
+		case <-startup.Done():
+			return errors.New("talk_start_timeout")
+		}
+	}
+	s.stage.Store(6)
+	if err = s.Audio.Start(ctx); err != nil {
+		return errors.New("talk_audio_unavailable")
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	s.stage.Store(7)
+	s.Audio.ReadyTone()
+	return nil
+}
+func (s *Session) Close() error {
+	s.once.Do(func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.cancel != nil {
+			s.cancel()
+		}
+		// Shut the microphone gate before any potentially slow network cleanup.
+		s.Audio.Close()
+		if s.unsubscribe != nil {
+			s.unsubscribe()
+		}
+		if s.link != nil {
+			s.link.Close()
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.Client.CallTalk(ctx, "talk.client.close", map[string]any{"sessionKey": s.Target, "voiceSessionId": s.id}, nil)
+	})
+	return s.closeErr
+}
+func (s *Session) control(ctx context.Context, events <-chan connection.TalkEvent) {
+	pending := map[string]bool{}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e, ok := <-events:
+			if !ok {
+				if ctx.Err() == nil {
+					s.fail()
+				}
+				return
+			}
+			if e.VoiceSessionID != s.id {
+				continue
+			}
+			switch e.Event.Type {
+			case "session.ready":
+				s.providerReady.Do(func() { close(s.ready) })
+			case "session.error", "session.replaced":
+				s.fail()
+			case "session.closed":
+				if ctx.Err() == nil && s.End != nil {
+					go s.End()
+				}
+				return
+			case "transcript.done":
+				s.utterances.Add(1)
+				var p struct{ Role, Text string }
+				if json.Unmarshal(e.Event.Payload, &p) != nil || p.Role != "user" {
+					continue
+				}
+				s.Audio.StopOutput()
+				if EndPhrase(p.Text) {
+					if s.End != nil {
+						go s.End()
+					}
+					return
+				}
+				s.activity(Thinking)
+			case "tool.call", "tool.result", "tool.error":
+				key := e.Event.CallID
+				if key == "" {
+					key = "uncorrelated"
+				}
+				if e.Event.Type == "tool.call" {
+					if !pending[key] {
+						s.tools.Add(1)
+						pending[key] = true
+					}
+				} else {
+					delete(pending, key)
+				}
+				s.pendingTools.Store(int32(len(pending)))
+				s.activity(Thinking)
+			case "turn.started":
+				s.activity(Thinking)
+			case "output.audio.started":
+				s.activity(Speaking)
+			case "turn.cancelled":
+				s.Audio.StopOutput()
+				if s.Activity != nil {
+					s.Activity(Listening)
+				}
+			case "turn.ended", "output.audio.done":
+				// A protocol end is not yet audible completion. Keep response ownership
+				// until the existing speaker lane drains.
+				go s.afterPlayback(ctx, s.responseEpoch.Load())
+			}
+		}
+	}
+}
+func (s *Session) afterPlayback(ctx context.Context, epoch uint64) {
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	quiet := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if s.Audio.Queued() > 0 {
+				quiet = time.Now()
+				continue
+			}
+			if time.Since(quiet) > 400*time.Millisecond {
+				if s.pendingTools.Load() > 0 {
+					if s.Activity != nil {
+						s.Activity(Thinking)
+					}
+					return
+				}
+				if s.responseEpoch.Load() == epoch && s.Activity != nil {
+					s.Activity(Listening)
+				}
+				return
+			}
+		}
+	}
+}
+func EndPhrase(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	text = strings.TrimFunc(text, func(r rune) bool { return unicode.IsPunct(r) || unicode.IsSpace(r) })
+	switch text {
+	case "end conversation", "stop conversation", "goodbye", "gespräch beenden", "unterhaltung beenden", "auf wiedersehen", "termina conversazione", "fine conversazione", "arrivederci", "kết thúc cuộc trò chuyện", "tạm biệt":
+		return true
+	}
+	return false
+}
+
+func (s *Session) activity(state State) {
+	s.responseEpoch.Add(1)
+	if s.Activity != nil {
+		s.Activity(state)
+	}
+}
+
+type Diagnostics struct {
+	Stage                                   string
+	SetupMS                                 int64
+	Sent, Received, Lost, Tools, Utterances uint64
+}
+
+func (s *Session) Diagnostics() Diagnostics {
+	names := []string{"idle", "control", "catalog", "create", "offer", "connect", "audio", "ready"}
+	n := int(s.stage.Load())
+	if n < 0 || n >= len(names) {
+		n = 0
+	}
+	d := Diagnostics{Stage: names[n], SetupMS: s.setupMS.Load(), Tools: s.tools.Load(), Utterances: s.utterances.Load()}
+	if l := s.statsLink.Load(); l != nil {
+		stats := l.Stats()
+		d.Sent = stats.AudioSent
+		d.Received = stats.AudioRecv
+		d.Lost = stats.AudioLost
+	}
+	return d
+}
+
+func has(items []string, want string) bool {
+	for _, v := range items {
+		if v == want {
+			return true
+		}
+	}
+	return false
+}

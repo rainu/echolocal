@@ -153,3 +153,5 @@ func (c *Controller) finish(a *activation, s State) {
 		}
 	})
 }
+
+func (c *Controller) Busy() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.current != nil }
