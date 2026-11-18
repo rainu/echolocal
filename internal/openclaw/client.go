@@ -50,6 +50,7 @@ type Client struct {
 	op            sync.Mutex
 	mu            sync.Mutex
 	path, version string
+	born          time.Time
 	saved         credentials
 	state, reason string
 	events        []Event
@@ -59,7 +60,7 @@ type Client struct {
 }
 
 func New(path, version string) *Client {
-	c := &Client{path: path, version: version, state: "disconnected", dialer: &websocket.Dialer{HandshakeTimeout: 10 * time.Second, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}}
+	c := &Client{path: path, version: version, born: time.Now(), state: "disconnected", dialer: &websocket.Dialer{HandshakeTimeout: 10 * time.Second, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}}
 	data, err := os.ReadFile(path)
 	if err == nil {
 		if json.Unmarshal(data, &c.saved) != nil {

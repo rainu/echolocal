@@ -217,9 +217,7 @@ func TestRestartUsesSavedIdentityAndConcurrentStart(t *testing.T) {
 	c.Connect()
 	waitState(t, c, "connected")
 	// Simulate process loss without intentionally disabling the saved preference.
-	c.op.Lock()
-	c.stopLocked()
-	c.op.Unlock()
+	c.Close()
 	restored := New(c.path, "test")
 	restored.dialer.TLSClientConfig = c.dialer.TLSClientConfig.Clone()
 	t.Cleanup(func() { restored.Disconnect() })

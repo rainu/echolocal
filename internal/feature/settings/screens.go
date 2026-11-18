@@ -43,7 +43,7 @@ func root() *sharedshell.Page {
 		AboutPage:    func() sharedshell.View { return aboutPage() },
 		Sections: func() []sharedsettings.Section {
 			return []sharedsettings.Section{
-				{Label: "OpenClaw", Glyph: gogui.IconGlobe, Page: func() sharedshell.View { return openclawPage() }},
+				{Label: "OpenClaw", Picture: openclawLogo(), Page: func() sharedshell.View { return openclawPage() }},
 				{
 					Label: "settings.camera",
 					Glyph: gogui.IconCamera,

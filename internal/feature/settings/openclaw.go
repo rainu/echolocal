@@ -4,20 +4,16 @@ package settings
 
 import (
 	"fmt"
+	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	"sync"
 
 	"github.com/ygelfand/echolocal/internal/feature/shell"
-	"github.com/ygelfand/echolocal/internal/layout"
 	"github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 )
 
-var claw = sync.OnceValue(func() *openclaw.Client {
-	c := openclaw.New(layout.StateDir+"/openclaw.json", layout.Version)
-	c.Start()
-	return c
-})
+func claw() *openclaw.Client { return featureclaw.Get().Client }
 
 func openclawPage() *sharedshell.Page {
 	c := claw()

@@ -40,7 +40,6 @@ func Get() *Settings {
 		shared = &Settings{}
 
 		say.Use(config.Get().Screen.Language)
-		claw()
 
 		drawer.Get().Add(shareddrawer.Entry{
 			Name:  func() string { return say.T("settings.title") },

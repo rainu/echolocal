@@ -83,3 +83,17 @@ action MinHeight field (rainu/libcountertop PR #4). Other screens retain default
 button sizing. Redundant action-description rows are omitted; nonempty save/error
 feedback is shown without a permanent status label. The module pin uses a concrete
 published library integration-preview commit to retain accepted integration features.
+
+## Menu branding and startup lifecycle
+
+The menu embeds a static variant of the official OpenClaw Control UI favicon,
+with its MIT attribution alongside the asset. Optional Section.Picture forwards
+existing GUI artwork support without changing normal glyph-based menu entries.
+
+OpenClaw is a registered screen-device service rather than a settings-constructor
+side effect. It contributes a sanitized startup status and owns connection shutdown.
+Unconfigured/disabled clients settle immediately; approval/auth/TLS failures are
+truthful nonblocking warnings. Pending network connection settles as an offline
+warning after 8 seconds without cancelling background retries. Service shutdown
+stops sockets without disabling the saved reconnect preference. The boot summary
+never contains endpoints, tokens, device IDs or raw Gateway errors.
