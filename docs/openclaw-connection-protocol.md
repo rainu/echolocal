@@ -77,3 +77,9 @@ PR open until the owner accepts that implementation.
 The editor uses native action-bar buttons for Save, Connect, Disconnect, Pair again,
 Forget and diagnostic clearing. A changed credential invalidates cached device auth
 so edits cannot silently be ignored; saving unchanged fields preserves approved auth.
+
+OpenClaw action buttons request a 64-pixel minimum height using the optional shared
+action MinHeight field (rainu/libcountertop PR #4). Other screens retain default
+button sizing. Redundant action-description rows are omitted; nonempty save/error
+feedback is shown without a permanent status label. The module pin uses a concrete
+published library integration-preview commit to retain accepted integration features.

@@ -43,25 +43,26 @@ func openclawPage() *sharedshell.Page {
 		}
 		u, t, note := endpoint, token, notice
 		draftMu.Unlock()
-		return []menu.Row{
+		rows := []menu.Row{
 			{Label: "Verbindung", Value: clawState(s.State), Hint: clawReason(s.Reason), Kind: menu.Plain},
 			{Label: "Geräte-Pairing", Hint: "Adresse und Token speichern, verbinden und das Gerät im Gateway freigeben. Danach erneut verbinden.", Kind: menu.Plain},
 			{Label: "Gateway-Adresse", Hint: "Gespeicherte WSS-Adresse; hier direkt editierbar.", Value: u, Kind: menu.Field, Save: func(v string) { draftMu.Lock(); endpoint = v; dirty = true; draftMu.Unlock() }},
 			{Label: "Gateway-Token", Hint: "Gespeicherter Zugangstoken bzw. Gerätetoken; verdeckt und editierbar.", Value: t, Kind: menu.Password, Save: func(v string) { draftMu.Lock(); token = v; dirty = true; draftMu.Unlock() }},
-			{Label: "Änderungen", Hint: note, Kind: menu.Plain},
-			{Label: "Erneut pairen", Hint: "Behält die Identität. Ein widerrufener Token benötigt gegebenenfalls einen neuen Gateway-Token.", Kind: menu.Plain},
-			{Label: "Vergessen", Hint: "Löscht nur lokale Zugangsdaten, nicht die Freigabe am Gateway.", Kind: menu.Plain},
 			{Label: "Diagnose", Hint: "Begrenzte technische Ereignisse ohne Inhalte oder Zugangsdaten.", Kind: menu.Chevron, Open: func() menu.View { return clawDiagnostics(c) }},
-		}, []func(int){nil, nil, nil, nil, nil, nil, nil, nil}
+		}
+		if note != "" {
+			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
+		}
+		return rows, make([]func(int), len(rows))
 	}
 	page.Actions = []sharedshell.Action{
-		{Label: "Verbinden / prüfen", Role: sharedshell.Plain, Do: func() { setNotice(c.Connect()) }},
-		{Label: "Trennen", Role: sharedshell.Plain, Do: func() { setNotice(c.Disconnect()) }},
-		{Label: "Neu pairen", Role: sharedshell.Plain, Do: func() { setNotice(c.PairAgain()) }},
-		{Label: "Vergessen", Role: sharedshell.Danger, Do: func() {
+		{Label: "Verbinden / prüfen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.Connect()) }},
+		{Label: "Trennen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.Disconnect()) }},
+		{Label: "Neu pairen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.PairAgain()) }},
+		{Label: "Vergessen", MinHeight: 64, Role: sharedshell.Danger, Do: func() {
 			shell.Get().Push(clawForgetPage(c, func() { draftMu.Lock(); endpoint, token, notice = "", "", ""; dirty = false; draftMu.Unlock() }))
 		}},
-		{Label: "Speichern", Role: sharedshell.Primary, Do: func() {
+		{Label: "Speichern", MinHeight: 64, Role: sharedshell.Primary, Do: func() {
 			draftMu.Lock()
 			u, t := endpoint, token
 			draftMu.Unlock()
@@ -84,8 +85,8 @@ func clawForgetPage(c *openclaw.Client, forgotten func()) *sharedshell.Page {
 			return []menu.Row{{Label: "Nur lokal löschen", Hint: "Die Gateway-Freigabe bleibt bestehen und muss dort separat widerrufen werden.", Kind: menu.Plain}}, []func(int){nil}
 		},
 		Actions: []sharedshell.Action{
-			{Label: "Abbrechen", Role: sharedshell.Plain, Do: func() { shell.Get().Pop() }},
-			{Label: "Zugangsdaten löschen", Role: sharedshell.Danger, Do: func() {
+			{Label: "Abbrechen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { shell.Get().Pop() }},
+			{Label: "Zugangsdaten löschen", MinHeight: 64, Role: sharedshell.Danger, Do: func() {
 				if c.Forget() == nil {
 					forgotten()
 					shell.Get().Pop()
@@ -108,7 +109,7 @@ func clawDiagnostics(c *openclaw.Client) *sharedshell.Page {
 			}
 			return rows, acts
 		},
-		Actions: []sharedshell.Action{{Label: "Diagnose löschen", Role: sharedshell.Danger, Do: c.ClearEvents}},
+		Actions: []sharedshell.Action{{Label: "Diagnose löschen", MinHeight: 64, Role: sharedshell.Danger, Do: c.ClearEvents}},
 	}
 }
 
