@@ -4,19 +4,22 @@ package settings
 
 import (
 	"fmt"
-	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
+	"strings"
 	"sync"
 
+	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	"github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
+	"github.com/ygelfand/libcountertop/pkg/say"
 )
 
 func claw() *openclaw.Client { return featureclaw.Get().Client }
 
-func openclawPage() *sharedshell.Page {
-	c := claw()
+func openclawPage() *sharedshell.Page { return openclawClientPage(claw()) }
+
+func openclawClientPage(c *openclaw.Client) *sharedshell.Page {
 	var draftMu sync.Mutex
 	endpoint, token := c.EditableConnection()
 	var notice string
@@ -26,10 +29,10 @@ func openclawPage() *sharedshell.Page {
 		defer draftMu.Unlock()
 		notice = ""
 		if e != nil {
-			notice = clawReason(e.Error())
+			notice = e.Error()
 		}
 	}
-	page := &sharedshell.Page{Title: "OpenClaw"}
+	page := &sharedshell.Page{Title: say.T("openclaw.title")}
 	page.Build = func() ([]menu.Row, []func(int)) {
 		s := c.Status()
 		storedURL, storedToken := c.EditableConnection()
@@ -39,12 +42,17 @@ func openclawPage() *sharedshell.Page {
 		}
 		u, t, note := endpoint, token, notice
 		draftMu.Unlock()
+		if note == "saved" {
+			note = say.T("openclaw.notice.saved")
+		} else {
+			note = clawReason(note)
+		}
 		rows := []menu.Row{
-			{Label: "Verbindung", Value: clawState(s.State), Hint: clawReason(s.Reason), Kind: menu.Plain},
-			{Label: "Geräte-Pairing", Hint: "Adresse und Token speichern, verbinden und das Gerät im Gateway freigeben. Danach erneut verbinden.", Kind: menu.Plain},
-			{Label: "Gateway-Adresse", Hint: "Gespeicherte WSS-Adresse; hier direkt editierbar.", Value: u, Kind: menu.Field, Save: func(v string) { draftMu.Lock(); endpoint = v; dirty = true; draftMu.Unlock() }},
-			{Label: "Gateway-Token", Hint: "Gespeicherter Zugangstoken bzw. Gerätetoken; verdeckt und editierbar.", Value: t, Kind: menu.Password, Save: func(v string) { draftMu.Lock(); token = v; dirty = true; draftMu.Unlock() }},
-			{Label: "Diagnose", Hint: "Begrenzte technische Ereignisse ohne Inhalte oder Zugangsdaten.", Kind: menu.Chevron, Open: func() menu.View { return clawDiagnostics(c) }},
+			{Label: say.T("openclaw.connection"), Value: clawState(s.State), Hint: clawReason(s.Reason), Kind: menu.Plain},
+			{Label: say.T("openclaw.pairing.title"), Hint: say.T("openclaw.pairing.hint"), Kind: menu.Plain},
+			{Label: say.T("openclaw.endpoint.label"), Hint: say.T("openclaw.endpoint.hint"), Value: u, Kind: menu.Field, Save: func(v string) { draftMu.Lock(); endpoint = v; dirty = true; draftMu.Unlock() }},
+			{Label: say.T("openclaw.token.label"), Hint: say.T("openclaw.token.hint"), Value: t, Kind: menu.Password, Save: func(v string) { draftMu.Lock(); token = v; dirty = true; draftMu.Unlock() }},
+			{Label: say.T("openclaw.diagnostics.label"), Hint: say.T("openclaw.diagnostics.hint"), Kind: menu.Chevron, Open: func() menu.View { return clawDiagnostics(c) }},
 		}
 		if note != "" {
 			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
@@ -52,13 +60,13 @@ func openclawPage() *sharedshell.Page {
 		return rows, make([]func(int), len(rows))
 	}
 	page.Actions = []sharedshell.Action{
-		{Label: "Verbinden / prüfen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.Connect()) }},
-		{Label: "Trennen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.Disconnect()) }},
-		{Label: "Neu pairen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.PairAgain()) }},
-		{Label: "Vergessen", MinHeight: 64, Role: sharedshell.Danger, Do: func() {
+		{Label: say.T("openclaw.action.connect"), MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.Connect()) }},
+		{Label: say.T("openclaw.action.disconnect"), MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.Disconnect()) }},
+		{Label: say.T("openclaw.action.pair_again"), MinHeight: 64, Role: sharedshell.Plain, Do: func() { setNotice(c.PairAgain()) }},
+		{Label: say.T("openclaw.action.forget"), MinHeight: 64, Role: sharedshell.Danger, Do: func() {
 			shell.Get().Push(clawForgetPage(c, func() { draftMu.Lock(); endpoint, token, notice = "", "", ""; dirty = false; draftMu.Unlock() }))
 		}},
-		{Label: "Speichern", MinHeight: 64, Role: sharedshell.Primary, Do: func() {
+		{Label: say.T("openclaw.action.save"), MinHeight: 64, Role: sharedshell.Primary, Do: func() {
 			draftMu.Lock()
 			u, t := endpoint, token
 			draftMu.Unlock()
@@ -67,7 +75,7 @@ func openclawPage() *sharedshell.Page {
 			if err == nil {
 				draftMu.Lock()
 				dirty = false
-				notice = "Gespeichert."
+				notice = "saved"
 				draftMu.Unlock()
 			}
 		}},
@@ -76,13 +84,13 @@ func openclawPage() *sharedshell.Page {
 }
 func clawForgetPage(c *openclaw.Client, forgotten func()) *sharedshell.Page {
 	return &sharedshell.Page{
-		Title: "OpenClaw lokal vergessen?",
+		Title: say.T("openclaw.forget.title"),
 		Build: func() ([]menu.Row, []func(int)) {
-			return []menu.Row{{Label: "Nur lokal löschen", Hint: "Die Gateway-Freigabe bleibt bestehen und muss dort separat widerrufen werden.", Kind: menu.Plain}}, []func(int){nil}
+			return []menu.Row{{Label: say.T("openclaw.forget.label"), Hint: say.T("openclaw.forget.hint"), Kind: menu.Plain}}, []func(int){nil}
 		},
 		Actions: []sharedshell.Action{
-			{Label: "Abbrechen", MinHeight: 64, Role: sharedshell.Plain, Do: func() { shell.Get().Pop() }},
-			{Label: "Zugangsdaten löschen", MinHeight: 64, Role: sharedshell.Danger, Do: func() {
+			{Label: say.T("openclaw.action.cancel"), MinHeight: 64, Role: sharedshell.Plain, Do: func() { shell.Get().Pop() }},
+			{Label: say.T("openclaw.action.delete"), MinHeight: 64, Role: sharedshell.Danger, Do: func() {
 				if c.Forget() == nil {
 					forgotten()
 					shell.Get().Pop()
@@ -93,67 +101,97 @@ func clawForgetPage(c *openclaw.Client, forgotten func()) *sharedshell.Page {
 }
 func clawDiagnostics(c *openclaw.Client) *sharedshell.Page {
 	return &sharedshell.Page{
-		Title: "OpenClaw Diagnose",
+		Title: say.T("openclaw.diagnostics.title"),
 		Build: func() ([]menu.Row, []func(int)) {
 			var rows []menu.Row
 			var acts []func(int)
 			events := c.Events()
 			for i := len(events) - 1; i >= 0; i-- {
 				e := events[i]
-				rows = append(rows, menu.Row{Label: fmt.Sprintf("%s %s %s", e.At.Format("15:04:05"), e.Direction, e.Type), Hint: e.Result, Kind: menu.Plain})
+				rows = append(rows, menu.Row{Label: fmt.Sprintf("%s %s %s", e.At.Format("15:04:05"), clawDirection(e.Direction), clawEvent(e.Type)), Hint: clawResult(e.Result), Kind: menu.Plain})
 				acts = append(acts, nil)
 			}
 			return rows, acts
 		},
-		Actions: []sharedshell.Action{{Label: "Diagnose löschen", MinHeight: 64, Role: sharedshell.Danger, Do: c.ClearEvents}},
+		Actions: []sharedshell.Action{{Label: say.T("openclaw.diagnostics.clear"), MinHeight: 64, Role: sharedshell.Danger, Do: c.ClearEvents}},
 	}
 }
 
 func clawState(state string) string {
 	switch state {
 	case "connected":
-		return "Verbunden"
+		return say.T("openclaw.state.connected")
 	case "connecting":
-		return "Verbindung wird aufgebaut"
+		return say.T("openclaw.state.connecting")
 	case "reconnecting":
-		return "Wiederverbinden"
+		return say.T("openclaw.state.reconnecting")
 	case "pairing":
-		return "Gateway-Freigabe erforderlich"
+		return say.T("openclaw.state.pairing")
 	case "error":
-		return "Verbindung fehlgeschlagen"
+		return say.T("openclaw.state.error")
 	default:
-		return "Getrennt"
+		return say.T("openclaw.state.disconnected")
 	}
 }
 func clawReason(reason string) string {
 	switch reason {
 	case "invalid_endpoint":
-		return "Bitte eine gültige wss://-Adresse ohne Zugangsdaten, Query oder Fragment eingeben."
+		return say.T("openclaw.error.invalid_endpoint")
 	case "credentials_missing":
-		return "Bitte zuerst den Gateway-Token verdeckt eingeben und speichern."
+		return say.T("openclaw.error.credentials_missing")
 	case "approval_required":
-		return "Das Gerät im Gateway freigeben, danach hier erneut prüfen."
+		return say.T("openclaw.error.approval_required")
 	case "authentication":
-		return "Zugangsdaten wurden abgewiesen. Token und Gerätefreigabe prüfen."
+		return say.T("openclaw.error.authentication")
 	case "tls":
-		return "TLS-Zertifikat oder Servername konnte nicht bestätigt werden."
+		return say.T("openclaw.error.tls")
 	case "dns":
-		return "Der Gateway-Name konnte nicht aufgelöst werden."
+		return say.T("openclaw.error.dns")
 	case "timeout":
-		return "Die Verbindung hat das Zeitlimit überschritten."
+		return say.T("openclaw.error.timeout")
 	case "network":
-		return "Netzwerkverbindung unterbrochen oder Gateway nicht erreichbar."
+		return say.T("openclaw.error.network")
 	case "unavailable":
-		return "Gateway vorübergehend nicht verfügbar."
+		return say.T("openclaw.error.unavailable")
 	case "protocol":
-		return "Das Gateway-Protokoll ist nicht kompatibel."
+		return say.T("openclaw.error.protocol")
 	case "identity":
-		return "Die lokale Geräteidentität ist ungültig."
+		return say.T("openclaw.error.identity")
 	case "storage":
-		return "Lokale Zugangsdaten konnten nicht gelesen oder gespeichert werden."
+		return say.T("openclaw.error.storage")
 	case "settings":
-		return "Bitte Verbindungseinstellungen und Zugangsdaten prüfen."
+		return say.T("openclaw.error.settings")
 	default:
 		return ""
 	}
+}
+
+func clawDirection(direction string) string {
+	switch direction {
+	case "in", "out", "local":
+		return say.T("openclaw.diagnostics.direction." + direction)
+	}
+	return say.T("openclaw.diagnostics.direction.unknown")
+}
+func clawEvent(kind string) string {
+	switch kind {
+	case "connect", "settings_saved", "disconnect", "pair_again", "forget", "stop", "backoff", "upgrade", "transport", "challenge", "hello", "credentials", "close", "shutdown", "application_event":
+		return say.T("openclaw.event." + kind)
+	}
+	return say.T("openclaw.event.application_event")
+}
+func clawResult(result string) string {
+	if result == "received" {
+		return say.T("openclaw.diagnostics.received")
+	}
+	state, reason, _ := strings.Cut(result, ":")
+	switch state {
+	case "connected", "connecting", "reconnecting", "pairing", "error", "disconnected":
+		text := clawState(state)
+		if detail := clawReason(reason); detail != "" {
+			return text + " · " + detail
+		}
+		return text
+	}
+	return say.T("openclaw.diagnostics.unknown")
 }

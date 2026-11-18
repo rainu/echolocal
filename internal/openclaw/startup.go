@@ -1,44 +1,48 @@
 package openclaw
 
 import (
-	"github.com/ygelfand/libcountertop/pkg/runtime/startup"
 	"time"
+
+	"github.com/ygelfand/libcountertop/pkg/runtime/startup"
+	"github.com/ygelfand/libcountertop/pkg/say"
 )
 
 // BootWait bounds startup readiness only. Background reconnection continues.
 const BootWait = 8 * time.Second
 
 func (c *Client) Startup() startup.Progress {
-	return startupProgress(c.Status(), time.Since(c.born))
+	p := startupProgress(c.Status(), time.Since(c.born))
+	p.Doing = say.T(p.Doing)
+	return p
 }
 func startupProgress(s Status, elapsed time.Duration) startup.Progress {
 	// Error text is a fixed whitelist: startup summaries are also logged.
 	if s.State == "error" {
 		messages := map[string]string{
-			"storage": "Zugangsdaten nicht lesbar", "identity": "Geräteidentität ungültig",
-			"authentication": "Zugangsdaten abgewiesen", "tls": "TLS-Prüfung fehlgeschlagen",
-			"protocol": "Protokoll nicht kompatibel", "settings": "Einstellungen prüfen",
+			"storage": "openclaw.boot.storage", "identity": "openclaw.boot.identity",
+			"authentication": "openclaw.boot.authentication", "tls": "openclaw.boot.tls",
+			"protocol": "openclaw.boot.protocol", "settings": "openclaw.boot.settings",
 		}
 		if text, ok := messages[s.Reason]; ok {
 			return startup.Progress{Failed: true, Doing: text}
 		}
 	}
 	if !s.Configured {
-		return startup.Progress{Done: true, Doing: "Nicht eingerichtet"}
+		return startup.Progress{Done: true, Doing: "openclaw.boot.not_configured"}
 	}
 	if !s.Enabled {
-		return startup.Progress{Done: true, Doing: "Deaktiviert"}
+		return startup.Progress{Done: true, Doing: "openclaw.boot.disabled"}
 	}
 	if s.State == "connected" {
-		return startup.Progress{Done: true, Doing: "Verbunden"}
+		return startup.Progress{Done: true, Doing: "openclaw.boot.connected"}
 	}
 	if s.State == "pairing" {
-		return startup.Progress{Failed: true, Doing: "Freigabe im Gateway erforderlich"}
+		return startup.Progress{Failed: true, Doing: "openclaw.boot.pairing"}
 	}
 	if elapsed >= BootWait {
-		return startup.Progress{Failed: true, Doing: "Offline; Verbindung läuft im Hintergrund"}
+		return startup.Progress{Failed: true, Doing: "openclaw.boot.offline"}
 	}
-	return startup.Progress{Doing: "Verbindung wird aufgebaut"}
+	return startup.Progress{Doing: "openclaw.boot.connecting"}
 }
 
 // Close ends the lifecycle without changing the saved reconnect preference.

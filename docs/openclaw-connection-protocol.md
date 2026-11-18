@@ -97,3 +97,15 @@ truthful nonblocking warnings. Pending network connection settles as an offline
 warning after 8 seconds without cancelling background retries. Service shutdown
 stops sockets without disabling the saved reconnect preference. The boot summary
 never contains endpoints, tokens, device IDs or raw Gateway errors.
+
+## Internationalization
+
+All OpenClaw-facing text uses the shared say catalogue. The 75 openclaw.* keys
+are explicitly present in English, German, Italian and Vietnamese, including
+buttons, validation, confirmation, connection state, boot status and diagnostics.
+Product names and protocol identifiers remain stable; technical event metadata
+is stored as codes and translated only for display. Startup classification keeps
+semantic keys and resolves them using the selected language at render time.
+Catalogue tests require every embedded language to carry the complete OpenClaw
+namespace, without silent English fallback. Editor tests verify localized output
+and that locale changes neither alter nor unmask credential fields.
