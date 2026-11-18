@@ -351,6 +351,31 @@ func talkToneLabel(choice string) string {
 	}
 	return schema.Chime(choice).Label()
 }
+
+// Use the largest normal built-in catalogue shared by calls/alerts, plus
+// installed custom clips. No per-feature hard-coded subset.
+func talkBuiltinToneChoices() []talkChoice {
+	choices := []talkChoice{{"", say.T("clawtalk.default_tone")}}
+	for _, v := range schema.CallChimes() {
+		choices = append(choices, talkChoice{string(v), v.Label()})
+	}
+	return choices
+}
+func talkToneChoices() []talkChoice {
+	choices := talkBuiltinToneChoices()
+	for _, v := range tones.Get().Choices() {
+		choices = append(choices, talkChoice{v.Value, v.Label})
+	}
+	return choices
+}
+func talkToneDetail(title string, choice talkChoice, preview, use func()) *sharedshell.Page {
+	return &sharedshell.Page{Title: title, Build: func() ([]menu.Row, []func(int)) {
+		return []menu.Row{{Label: choice.label, Hint: say.T("clawtalk.tone_preview_hint"), Kind: menu.Plain}}, []func(int){nil}
+	}, Actions: []sharedshell.Action{
+		{Label: say.T("clawtalk.tone_preview"), MinHeight: 72, Do: preview},
+		{Label: say.T("clawtalk.tone_use"), MinHeight: 72, Role: sharedshell.Primary, Do: use},
+	}}
+}
 func talkTonePage(slot int, end bool) *sharedshell.Page {
 	key := "clawtalk.start_tone"
 	if end {
@@ -362,32 +387,24 @@ func talkTonePage(slot int, end bool) *sharedshell.Page {
 		if end {
 			selected = saved.EndTone
 		}
-		choices := []talkChoice{{"", say.T("clawtalk.default_tone")}}
-		for _, value := range schema.Chimes() {
-			choices = append(choices, talkChoice{string(value), value.Label()})
-		}
-		for _, value := range tones.Get().Choices() {
-			choices = append(choices, talkChoice{value.Value, value.Label})
-		}
-		var rows []menu.Row
-		var acts []func(int)
-		for _, choice := range choices {
-			choice := choice
-			rows = append(rows, menu.Row{Label: choice.label, Chosen: choice.id == selected})
-			acts = append(acts, func(int) {
-				clawtalk.Get().Stop()
-				if saveTalk(slot, func(s *clawtalk.Slot) {
-					if end {
-						s.EndTone = choice.id
-					} else {
-						s.StartTone = choice.id
+		rows := []menu.Row{}
+		for _, choice := range talkToneChoices() {
+			rows = append(rows, menu.Row{Label: choice.label, Chosen: choice.id == selected, Kind: menu.Chevron, Open: func() menu.View {
+				return talkToneDetail(say.T(key), choice, func() { clawtalk.Get().PreviewTone(choice.id, end) }, func() {
+					if saveTalk(slot, func(s *clawtalk.Slot) {
+						if end {
+							s.EndTone = choice.id
+						} else {
+							s.StartTone = choice.id
+						}
+					}) == nil {
+						shell.Get().Pop()
+						shell.Get().Pop()
 					}
-				}) == nil {
-					shell.Get().Pop()
-				}
-			})
+				})
+			}})
 		}
-		return rows, acts
+		return rows, make([]func(int), len(rows))
 	}}
 }
 

@@ -1,6 +1,9 @@
 package clawtalk
 
-import "testing"
+import (
+	"github.com/ygelfand/libcountertop/pkg/settings/schema"
+	"testing"
+)
 
 func TestTalkTonesPreserveReadyAndProvideDistinctEndAndOff(t *testing.T) {
 	start, end := ToneNotes("", false), ToneNotes("", true)
@@ -13,4 +16,13 @@ func TestTalkTonesPreserveReadyAndProvideDistinctEndAndOff(t *testing.T) {
 	if len(ToneNotes("ding", true)) == 0 {
 		t.Fatal("selected tone missing")
 	}
+}
+
+func TestEverySelectableBuiltInHasPlayback(t *testing.T) {
+	for _, c := range schema.CallChimes() {
+		if c != schema.ChimeNone && len(ToneNotes(string(c), false)) == 0 {
+			t.Fatalf("no playback for %s", c)
+		}
+	}
+
 }

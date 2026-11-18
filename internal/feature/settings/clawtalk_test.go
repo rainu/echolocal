@@ -5,6 +5,7 @@ package settings
 import (
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 	"strings"
 	"testing"
 )
@@ -58,5 +59,56 @@ func TestOpenClawRootHasCentralSlotAndHistoryNavigation(t *testing.T) {
 	}
 	if rows[3].Label != say.T("clawtalk.history") {
 		t.Fatal("global history missing")
+	}
+}
+
+func TestTonePreviewDoesNotCommitAndCatalogueMatchesOtherMenus(t *testing.T) {
+	played, saved := 0, 0
+	p := talkToneDetail("synthetic tone", talkChoice{"ding", "synthetic"}, func() { played++ }, func() { saved++ })
+	p.Build()
+	if played != 0 || saved != 0 {
+		t.Fatal("opening detail caused side effect")
+	}
+	p.Actions[0].Do()
+	p.Actions[0].Do()
+	if played != 2 || saved != 0 {
+		t.Fatal("preview changed selection")
+	}
+	p.Actions[1].Do()
+	if saved != 1 || played != 2 {
+		t.Fatal("selection did not stay explicit")
+	}
+}
+
+func TestTalkToneCatalogueIncludesCallAndAlertSounds(t *testing.T) {
+	choices := talkBuiltinToneChoices()
+	seen := map[string]bool{}
+	for _, c := range choices {
+		if seen[c.id] {
+			t.Fatal("duplicate tone")
+		}
+		seen[c.id] = true
+	}
+	if !seen[""] {
+		t.Fatal("default missing")
+	}
+	for _, c := range schema.CallChimes() {
+		if !seen[string(c)] {
+			t.Fatalf("shared tone omitted: %s", c)
+		}
+	}
+}
+
+func TestToneDetailActionsTranslateExplicitly(t *testing.T) {
+	before := say.Chosen()
+	defer say.Use(before)
+	for _, lang := range say.Languages() {
+		say.Use(lang)
+		p := talkToneDetail("synthetic", talkChoice{"none", "synthetic"}, func() {}, func() {})
+		for i, k := range []string{"clawtalk.tone_preview", "clawtalk.tone_use"} {
+			if p.Actions[i].Label != say.T(k) || p.Actions[i].Label == k {
+				t.Fatalf("bad tone action in %s", lang)
+			}
+		}
 	}
 }

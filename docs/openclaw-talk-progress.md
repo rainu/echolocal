@@ -86,3 +86,12 @@ The live display refreshes only on changed captions, lifecycle or capture freshn
 The assistant submenu now contains only the speech-target selector for the OpenClaw integration; shared wake-word and device options remain unchanged. The OpenClaw root contains Connection (the existing connection editor), Assistant 1/2 conversation settings, and a shared local-history browser. Agent, catalogue model, resume/context, start/end tones and inactivity timeout remain per slot, but are edited centrally. Inactive slots explain where to choose their speech target.
 
 The local caption browser supports deleting a single activation or clearing all local display histories, each with a confirmation that explicitly excludes Gateway conversation deletion. It neither deletes a remote context nor changes resume/context selection. Deleting an active cache hides subsequent captions for that generation until a fresh activation. Detail pages look up the generation on redraw instead of retaining a stale caption snapshot; the live page cannot fall back to an older conversation after deletion. Core tests cover erase, non-resurrection and future activations.
+
+
+## Shared tone catalogue and explicit audition
+
+Start/end choices now use the shared CallChimes catalogue (the union of ordinary wake, alert and call sounds) instead of the four-entry wake subset. Default and installed custom clips remain available. The list follows the shared catalogue rather than freezing its IDs in the client.
+
+Opening a tone shows separate Preview and Use this tone actions. Opening/previewing does not save, start microphone capture or create a conversation. Preview reuses the exact readiness/end playback path, including distinct default start/end notes, Off and custom clips. The normal feedback stream/volume is respected; no device volume is changed. Audition is inert during an active Talk activation. Use explicitly saves the slot's start or end choice and returns to its settings; an already-active conversation retains its initially loaded feedback choices and is not stopped by a tone-setting edit.
+
+Regression coverage checks shared catalogue inclusion, playback notes for every ordinary built-in, independent preview/save callbacks and the active-conversation audition guard. Translation catalogue checks cover the new actions/hint in all supported languages. Acoustic playback still requires hearing the real device, distinct from dispatching a preview action.

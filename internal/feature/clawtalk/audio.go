@@ -217,3 +217,15 @@ func (a *deviceAudio) Close() error {
 	})
 	return nil
 }
+
+// Preview shares exactly the ready/end playback path, never capture or routing.
+// Keep activation serialized until the short sound is enqueued. Never preempt
+// an active conversation merely to audition a setting.
+func (m *Manager) PreviewTone(choice string, end bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active {
+		return
+	}
+	playTalkTone(choice, end)
+}

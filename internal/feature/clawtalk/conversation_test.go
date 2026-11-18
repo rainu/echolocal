@@ -60,3 +60,11 @@ func TestTalkActionsUseCurrentlySelectedLanguage(t *testing.T) {
 		}
 	}
 }
+
+func TestBusyTonePreviewIsInert(t *testing.T) {
+	m := &Manager{active: true}
+	m.PreviewTone("ding", false)
+	if !m.active {
+		t.Fatal("preview interrupted a conversation")
+	}
+}
