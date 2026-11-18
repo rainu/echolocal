@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
+	"github.com/ygelfand/echolocal/internal/feature/idle"
 	"github.com/ygelfand/echolocal/internal/feature/mute"
 	claw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	shellfeature "github.com/ygelfand/echolocal/internal/feature/shell"
@@ -102,9 +103,9 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	defer cancel()
 	defer func() { m.mu.Lock(); m.active = false; m.cancel = nil; m.mu.Unlock(); shellfeature.Get().Redraw() }()
 	sh := shellfeature.Get()
-	if sh.Top() != m.page {
-		sh.Push(m.page)
-	}
+	idle.Get().Wake()
+	held := sh.Hold(m.page)
+	defer held.Keep(false)
 	v, e := m.Store.Target(slot)
 	if e != nil {
 		m.setError()
