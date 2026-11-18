@@ -7,16 +7,20 @@ import (
 	"errors"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/mute"
+	"github.com/ygelfand/echolocal/internal/feature/tones"
 	"github.com/ygelfand/echolocal/internal/hardware/mic"
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
 	"github.com/ygelfand/libcountertop/pkg/audio/tone"
+	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 type deviceAudio struct {
+	startTone, endTone               string
+	ready                            atomic.Bool
 	playMu                           sync.Mutex
 	playout                          talk.PlayoutBuffer
 	playDone                         chan struct{}
@@ -180,9 +184,14 @@ func recordMax(v *atomic.Int64, n int64) {
 		}
 	}
 }
-func (a *deviceAudio) ReadyTone() {
-	speaker.Sound().Chime(config.StreamFeedback, []tone.Note{{Freq: 880, Ms: 70}, {Freq: 1320, Ms: 55}})
+func playTalkTone(choice string, end bool) {
+	if choice == "" {
+		speaker.Sound().Chime(config.StreamFeedback, DefaultNotes(end))
+		return
+	}
+	speaker.Sound().Sound(config.StreamFeedback, tone.Level, tones.Get().Sound(schema.Chime(choice), schema.ChimeChirp))
 }
+func (a *deviceAudio) ReadyTone() { a.ready.Store(true); playTalkTone(a.startTone, false) }
 func (a *deviceAudio) Close() error {
 	a.once.Do(func() {
 		a.cancel()
@@ -195,6 +204,9 @@ func (a *deviceAudio) Close() error {
 		case <-time.After(time.Second):
 		}
 		a.StopOutput()
+		if a.ready.Load() {
+			playTalkTone(a.endTone, true)
+		}
 	})
 	return nil
 }

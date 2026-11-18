@@ -12,6 +12,8 @@ import (
 )
 
 type Slot struct {
+	StartTone    string `json:"startTone,omitempty"`
+	EndTone      string `json:"endTone,omitempty"`
 	Provider     string `json:"provider,omitempty"`
 	Model        string `json:"model,omitempty"`
 	OpenClaw     bool   `json:"openclaw"`

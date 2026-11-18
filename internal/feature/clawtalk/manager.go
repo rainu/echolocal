@@ -22,6 +22,8 @@ import (
 )
 
 type Manager struct {
+	generation  uint64
+	history     talk.History
 	Store       *Store
 	Controller  *talk.Controller
 	mu          sync.Mutex
@@ -91,17 +93,28 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 		return true
 	}
 	m.active = true
+	m.generation++
+	generation := m.generation
+	m.lastBackend, m.lastAudio = nil, nil
 	m.error = false
 	m.forcedMuted = false
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.mu.Unlock()
-	go m.activate(ctx, cancel, slot)
+	go m.activate(ctx, cancel, slot, generation)
 	return true
 }
-func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot int) {
+func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot int, generation uint64) {
 	defer cancel()
-	defer func() { m.mu.Lock(); m.active = false; m.cancel = nil; m.mu.Unlock(); shellfeature.Get().Redraw() }()
+	defer func() {
+		status := m.Status()
+		m.history.Add(talk.ActivationReport{EndedAtMS: time.Now().UnixMilli(), State: status.State, Transport: status.Transport, Captured: status.Captured, InputDropped: status.InputDropped, Decoded: status.Decoded, PlayoutDropped: status.PlayoutDropped, SpeakerUnderruns: status.SpeakerUnderruns, MaxReceiveGapMS: status.MaxReceiveGapMS, MaxPlayoutGapMS: status.MaxPlayoutGapMS})
+		m.mu.Lock()
+		m.active = false
+		m.cancel = nil
+		m.mu.Unlock()
+		shellfeature.Get().Redraw()
+	}()
 	sh := shellfeature.Get()
 	idle.Get().Wake()
 	held := sh.Hold(m.page)
@@ -120,13 +133,15 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	claim := speaker.Sound().Claim("openclaw-talk", func(claimCtx context.Context, _ *speaker.Player) error {
 		select {
 		case <-claimCtx.Done():
-			m.Stop()
+			// A retiring claim must never cancel the next activation.
+			cancel()
 		case <-ctx.Done():
 		}
 		return nil
 	})
 	_ = claim
-	a := newAudio(ctx, m.Mute)
+	a := newAudio(ctx, func() { m.markOwned(generation, talk.Muted); cancel() })
+	a.startTone, a.endTone = v.StartTone, v.EndTone
 	bound, bindErr := claw.Get().BindTalk()
 	if bindErr != nil {
 		a.Close()
@@ -139,11 +154,11 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	m.lastBackend = b
 	m.lastAudio = a
 	m.mu.Unlock()
-	b.Activity = m.Controller.Activity
+	b.Activity = func(state talk.State) { m.activityOwned(generation, state) }
 	a.onPlay = b.Playback
-	b.UserSpeech = m.Controller.UserSpeech
-	b.End = func() { m.Stop() }
-	b.Failure = m.Controller.Fail
+	b.UserSpeech = func() { m.userSpeechOwned(generation) }
+	b.End = cancel
+	b.Failure = func() { m.markOwned(generation, talk.Failed); cancel() }
 	if e = m.Controller.Start(ctx, b, time.Duration(v.Timeout)*time.Second); e != nil {
 		if ctx.Err() == nil {
 			m.setError()
@@ -197,6 +212,7 @@ func (m *Manager) Mute() {
 }
 
 type Status struct {
+	Recent                                                                      []talk.ActivationReport
 	Decoded, SilenceSkipped, PlayoutUnderruns, PlayoutDropped, SpeakerUnderruns uint64
 	MaxReceiveGapMS, MaxPlayoutGapMS                                            int64
 	PeakBufferedFrames                                                          int
@@ -211,7 +227,7 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	active, b, a := m.active, m.lastBackend, m.lastAudio
 	m.mu.Unlock()
-	out := Status{State: m.state(), Active: active}
+	out := Status{State: m.state(), Active: active, Recent: m.history.Snapshot()}
 	if b != nil {
 		out.Transport = b.Diagnostics()
 	}
@@ -234,4 +250,33 @@ func (m *Manager) Status() Status {
 		out.OutputDisplaced = a.overflows.Load()
 	}
 	return out
+}
+
+func (m *Manager) markOwned(generation uint64, state talk.State) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.active || m.generation != generation {
+		return
+	}
+	if state == talk.Failed {
+		m.error = true
+	}
+	if state == talk.Muted {
+		m.forcedMuted = true
+	}
+}
+
+func (m *Manager) activityOwned(generation uint64, state talk.State) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active && m.generation == generation {
+		m.Controller.Activity(state)
+	}
+}
+func (m *Manager) userSpeechOwned(generation uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active && m.generation == generation {
+		m.Controller.UserSpeech()
+	}
 }

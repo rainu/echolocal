@@ -158,3 +158,21 @@ func TestOwnershipRetainedUntilResourcesReleased(t *testing.T) {
 	}
 	c.Stop()
 }
+
+func TestCancelledConnectingCallDoesNotReportProviderFailure(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		c := New()
+		ctx, cancel := context.WithCancel(context.Background())
+		ready := make(chan struct{})
+		b := &backend{open: func(ctx context.Context) error { close(ready); <-ctx.Done(); return ctx.Err() }}
+		done := make(chan error, 1)
+		go func() { done <- c.Start(ctx, b, time.Hour) }()
+		<-ready
+		cancel()
+		<-done
+		await(t, func() bool { return !c.Busy() })
+		if c.State() != Ended {
+			t.Fatal("user cancellation presented as provider failure")
+		}
+	}
+}

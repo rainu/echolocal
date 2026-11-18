@@ -70,3 +70,15 @@ func TestVoiceModelChoicePersistsIndependentlyPerSlot(t *testing.T) {
 		t.Fatal("model selection lost or shared between slots")
 	}
 }
+
+func TestTalkFeedbackPersistsWithoutChangingOtherSlot(t *testing.T) {
+	path := t.TempDir() + "/routing.json"
+	s := load(path)
+	if e := s.Update(0, func(v *Slot) { v.StartTone = "none"; v.EndTone = "ding" }); e != nil {
+		t.Fatal(e)
+	}
+	again := load(path)
+	if again.Get(0).StartTone != "none" || again.Get(0).EndTone != "ding" || again.Get(1).StartTone != "" || again.Get(1).EndTone != "" {
+		t.Fatal("feedback lost or changed another slot")
+	}
+}

@@ -27,6 +27,7 @@ type nativeState struct {
 	responseAt                                                                          atomic.Int64
 	firstPCMMS, maxFirstPCMMS                                                           atomic.Int64
 	messages, delegations, results, responses, historyFailures, silence, timedResponses atomic.Uint64
+	outputClears                                                                        atomic.Uint64
 }
 
 func newNative() *nativeState {
@@ -62,6 +63,9 @@ func (s *Session) nativeUserSpeech() {
 	s.responseEpoch.Add(1)
 	// Clear only stale queued media at a provider-confirmed interruption. Future
 	// live media remains enabled, including acknowledgements during consultation.
+	if s.Audio.Queued() > 0 {
+		s.native.outputClears.Add(1)
+	}
 	s.Audio.StopOutput()
 	if s.UserSpeech != nil {
 		s.UserSpeech()
@@ -167,6 +171,9 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					s.nativeUserSpeech()
 				}
 			case "output_audio_buffer.cleared":
+				if s.Audio.Queued() > 0 {
+					s.native.outputClears.Add(1)
+				}
 				s.Audio.StopOutput()
 			case "turn.done":
 				s.native.legacy.Store(true)

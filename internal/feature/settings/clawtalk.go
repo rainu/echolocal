@@ -9,11 +9,13 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
 	"github.com/ygelfand/echolocal/internal/feature/detect"
 	"github.com/ygelfand/echolocal/internal/feature/shell"
+	"github.com/ygelfand/echolocal/internal/feature/tones"
 	"github.com/ygelfand/echolocal/internal/feature/voice"
 	"github.com/ygelfand/echolocal/internal/lib/wake"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 	"sort"
 	"strings"
 	"sync"
@@ -69,6 +71,10 @@ func talkRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), bool) {
 		rows = append(rows, menu.Row{Label: say.T("clawtalk.new_each"), Kind: menu.Plain})
 		acts = append(acts, nil)
 	}
+	rows = append(rows,
+		menu.Row{Label: say.T("clawtalk.start_tone"), Value: talkToneLabel(s.StartTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, false) }},
+		menu.Row{Label: say.T("clawtalk.end_tone"), Value: talkToneLabel(s.EndTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, true) }})
+	acts = append(acts, nil, nil)
 	rows = append(rows, menu.Row{Label: say.T("clawtalk.timeout"), Value: say.F("clawtalk.seconds", map[string]any{"N": s.Timeout}), Kind: menu.Chevron, Open: func() menu.View { return talkTimeoutPage(slot) }})
 	acts = append(acts, nil)
 	return rows, acts, true
@@ -327,4 +333,55 @@ func talkModelPage(slot int) *sharedshell.Page {
 			shell.Get().Pop()
 		}
 	})
+}
+
+func talkToneLabel(choice string) string {
+	if choice == "" {
+		return say.T("clawtalk.default_tone")
+	}
+	for _, option := range tones.Get().Choices() {
+		if option.Value == choice {
+			return option.Label
+		}
+	}
+	return schema.Chime(choice).Label()
+}
+func talkTonePage(slot int, end bool) *sharedshell.Page {
+	key := "clawtalk.start_tone"
+	if end {
+		key = "clawtalk.end_tone"
+	}
+	return &sharedshell.Page{Title: say.T(key), Build: func() ([]menu.Row, []func(int)) {
+		saved := clawtalk.Get().Store.Get(slot)
+		selected := saved.StartTone
+		if end {
+			selected = saved.EndTone
+		}
+		choices := []talkChoice{{"", say.T("clawtalk.default_tone")}}
+		for _, value := range schema.Chimes() {
+			choices = append(choices, talkChoice{string(value), value.Label()})
+		}
+		for _, value := range tones.Get().Choices() {
+			choices = append(choices, talkChoice{value.Value, value.Label})
+		}
+		var rows []menu.Row
+		var acts []func(int)
+		for _, choice := range choices {
+			choice := choice
+			rows = append(rows, menu.Row{Label: choice.label, Chosen: choice.id == selected})
+			acts = append(acts, func(int) {
+				clawtalk.Get().Stop()
+				if saveTalk(slot, func(s *clawtalk.Slot) {
+					if end {
+						s.EndTone = choice.id
+					} else {
+						s.StartTone = choice.id
+					}
+				}) == nil {
+					shell.Get().Pop()
+				}
+			})
+		}
+		return rows, acts
+	}}
 }

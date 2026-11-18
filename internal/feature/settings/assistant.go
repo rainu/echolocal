@@ -9,6 +9,7 @@ import (
 
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/arbitration"
+	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
 	"github.com/ygelfand/echolocal/internal/feature/detect"
 	"github.com/ygelfand/echolocal/internal/feature/homeassistant"
 	"github.com/ygelfand/echolocal/internal/feature/shell"
@@ -29,16 +30,17 @@ func assistantPages() *sharedsettings.AssistantPages {
 		sharedsettings.AssistantDependencies{
 			Slots:            wakeword.Slots,
 			ConversationRows: talkRows, LocalWordRow: talkWordRow,
-			Pryon:       detect.Get().Pryon(),
-			PryonStop:   detect.Get().Pryon().Stop(),
-			Gemini:      detect.Get().Gemini(),
-			Arbitration: &arbitration.Setting,
-			Preferences: preferences(),
-			Models:      wake.Lib().Ours,
-			Phrases:     wake.Lib().Phrases,
-			Chooser:     sharedha.WakeWords{Controller: homeassistant.Get(), MAC: mac},
-			Pipelines:   sharedha.Pipelines{Controller: homeassistant.Get(), MAC: mac},
-			Requested:   &wakeword.Requested,
+			OwnsFeedback: func(slot int) bool { return clawtalk.Get().Store.Get(slot).OpenClaw },
+			Pryon:        detect.Get().Pryon(),
+			PryonStop:    detect.Get().Pryon().Stop(),
+			Gemini:       detect.Get().Gemini(),
+			Arbitration:  &arbitration.Setting,
+			Preferences:  preferences(),
+			Models:       wake.Lib().Ours,
+			Phrases:      wake.Lib().Phrases,
+			Chooser:      sharedha.WakeWords{Controller: homeassistant.Get(), MAC: mac},
+			Pipelines:    sharedha.Pipelines{Controller: homeassistant.Get(), MAC: mac},
+			Requested:    &wakeword.Requested,
 			Words: turn.Words{
 				Settings: config.WakeSection,
 				Speaker:  speaker.Sound(),

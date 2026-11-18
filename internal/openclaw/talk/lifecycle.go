@@ -65,7 +65,11 @@ func (c *Controller) Start(ctx context.Context, b Backend, timeout time.Duration
 	c.mu.Unlock()
 	go func() { <-ctx.Done(); c.finish(a, Ended) }()
 	if err := b.Open(ctx); err != nil {
-		c.finish(a, Failed)
+		outcome := Failed
+		if ctx.Err() != nil {
+			outcome = Ended
+		}
+		c.finish(a, outcome)
 		return errors.New("conversation_open_failed")
 	}
 	c.mu.Lock()

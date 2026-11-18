@@ -196,7 +196,10 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(connected) })
 		case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed:
-			s.fail()
+			if ctx.Err() == nil {
+				s.reason.Store("talk_peer_failed")
+				s.fail()
+			}
 		}
 	})
 	if err != nil {
@@ -395,12 +398,41 @@ func (s *Session) afterPlayback(ctx context.Context, epoch uint64) {
 		}
 	}
 }
+
+// EndPhrase accepts an explicit final command clause, including courteous
+// prefixes. It does not substring-match negations, explanations or quotations.
 func EndPhrase(text string) bool {
-	text = strings.ToLower(strings.TrimSpace(text))
-	text = strings.TrimFunc(text, func(r rune) bool { return unicode.IsPunct(r) || unicode.IsSpace(r) })
-	switch text {
-	case "end conversation", "stop conversation", "goodbye", "gespräch beenden", "unterhaltung beenden", "auf wiedersehen", "termina conversazione", "fine conversazione", "arrivederci", "kết thúc cuộc trò chuyện", "tạm biệt":
-		return true
+	clauses := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return strings.ContainsRune(".,!?;:\n", r) })
+	if len(clauses) == 0 {
+		return false
+	}
+	text = strings.TrimSpace(clauses[len(clauses)-1])
+	text = strings.Join(strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }), " ")
+	commands := []string{"end conversation", "stop conversation", "goodbye", "gespräch beenden", "gesprach beenden", "unterhaltung beenden", "auf wiedersehen", "termina conversazione", "fine conversazione", "arrivederci", "kết thúc cuộc trò chuyện", "tạm biệt"}
+	// Remove a finite courtesy grammar, not arbitrary text before a keyword.
+	prefixes := []string{"okay ", "ok ", "alles klar ", "gut ", "danke ", "hallo ", "bitte ", "jetzt ", "dann ", "also ", "ja ", "und ", "das ", "die ", "ich möchte ", "ich will ", "ich würde gern ", "kannst du ", "könntest du ", "please ", "now ", "thanks ", "per favore ", "ora ", "xin ", "làm ơn "}
+	suffixes := []string{" bitte", " jetzt", " danke", " please", " now", " thanks", " ora", " per favore"}
+	for changed := true; changed; {
+		changed = false
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(text, prefix) {
+				text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
+				changed = true
+				break
+			}
+		}
+		for _, suffix := range suffixes {
+			if strings.HasSuffix(text, suffix) {
+				text = strings.TrimSpace(strings.TrimSuffix(text, suffix))
+				changed = true
+				break
+			}
+		}
+	}
+	for _, command := range commands {
+		if text == command {
+			return true
+		}
 	}
 	return false
 }
@@ -414,6 +446,7 @@ func (s *Session) activity(state State) {
 
 type Diagnostics struct {
 	ControlMessages, NativeDelegations, NativeResults, NativeResponses, HistoryFailures, StartupSilence, ResponsesTimed uint64
+	OutputQueueClears                                                                                                   uint64
 	FinalToFirstPCMMS, MaxFinalToFirstPCMMS                                                                             int64
 
 	Stage                                   string
@@ -434,6 +467,7 @@ func (s *Session) Diagnostics() Diagnostics {
 	d.NativeResults = s.native.results.Load()
 	d.NativeResponses = s.native.responses.Load()
 	d.ResponsesTimed = s.native.timedResponses.Load()
+	d.OutputQueueClears = s.native.outputClears.Load()
 	d.FinalToFirstPCMMS = s.native.firstPCMMS.Load()
 	d.MaxFinalToFirstPCMMS = s.native.maxFirstPCMMS.Load()
 	d.HistoryFailures = s.native.historyFailures.Load()
