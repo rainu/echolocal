@@ -22,7 +22,9 @@ var claw = sync.OnceValue(func() *openclaw.Client {
 func openclawPage() *sharedshell.Page {
 	c := claw()
 	var draftMu sync.Mutex
-	var endpoint, token, notice string
+	endpoint, token := c.EditableConnection()
+	var notice string
+	dirty := false
 	setNotice := func(e error) {
 		draftMu.Lock()
 		defer draftMu.Unlock()
@@ -31,56 +33,83 @@ func openclawPage() *sharedshell.Page {
 			notice = clawReason(e.Error())
 		}
 	}
-	return &sharedshell.Page{Title: "OpenClaw", Build: func() ([]menu.Row, []func(int)) {
+	page := &sharedshell.Page{Title: "OpenClaw"}
+	page.Build = func() ([]menu.Row, []func(int)) {
 		s := c.Status()
+		storedURL, storedToken := c.EditableConnection()
 		draftMu.Lock()
-		note := notice
-		draftMu.Unlock()
-		rows := []menu.Row{
-			{Label: "Verbindung", Value: clawState(s.State), Hint: clawReason(s.Reason), Kind: menu.Plain},
-			{Label: "Geräte-Pairing", Hint: "1. WSS-Adresse und Token eingeben. 2. Verbinden. 3. Gerät im Gateway freigeben, dann erneut verbinden.", Kind: menu.Plain},
-			{Label: "Gateway-Adresse", Hint: "Nur wss://; wird privat gespeichert. Gespeicherte Adresse wird nicht angezeigt.", Kind: menu.Password, Save: func(v string) { draftMu.Lock(); endpoint = v; draftMu.Unlock() }},
-			{Label: "Gateway-Token", Hint: "Verdeckte Eingabe; nach dem Pairing wird der Gerätetoken verwendet.", Kind: menu.Password, Save: func(v string) { draftMu.Lock(); token = v; draftMu.Unlock() }},
-			{Label: "Eingaben speichern", Hint: note, Kind: menu.Chevron},
-			{Label: "Verbinden / erneut prüfen", Hint: "Bei ausstehender Freigabe: erst im Gateway genehmigen, danach hier erneut prüfen.", Kind: menu.Chevron},
-			{Label: "Trennen", Hint: "Deaktiviert auch das automatische Wiederverbinden nach Neustart.", Kind: menu.Chevron},
-			{Label: "Erneut pairen", Hint: "Identität bleibt erhalten; ein widerrufener Gerätetoken benötigt einen neuen Gateway-Token.", Kind: menu.Chevron},
-			{Label: "Verbindung vergessen", Hint: "Löscht nur lokale Zugangsdaten. Eine Gateway-Freigabe muss dort separat widerrufen werden.", Kind: menu.Chevron, Open: func() menu.View {
-				return clawForgetPage(c, func() { draftMu.Lock(); endpoint, token, notice = "", "", ""; draftMu.Unlock() })
-			}},
-			{Label: "Diagnose", Hint: "64 technische Ereignisse im Arbeitsspeicher, ohne Inhalte oder Zugangsdaten.", Kind: menu.Chevron, Open: func() menu.View { return clawDiagnostics(c) }},
+		if !dirty {
+			endpoint, token = storedURL, storedToken
 		}
-		return rows, []func(int){nil, nil, nil, nil, func(int) {
+		u, t, note := endpoint, token, notice
+		draftMu.Unlock()
+		return []menu.Row{
+			{Label: "Verbindung", Value: clawState(s.State), Hint: clawReason(s.Reason), Kind: menu.Plain},
+			{Label: "Geräte-Pairing", Hint: "Adresse und Token speichern, verbinden und das Gerät im Gateway freigeben. Danach erneut verbinden.", Kind: menu.Plain},
+			{Label: "Gateway-Adresse", Hint: "Gespeicherte WSS-Adresse; hier direkt editierbar.", Value: u, Kind: menu.Field, Save: func(v string) { draftMu.Lock(); endpoint = v; dirty = true; draftMu.Unlock() }},
+			{Label: "Gateway-Token", Hint: "Gespeicherter Zugangstoken bzw. Gerätetoken; verdeckt und editierbar.", Value: t, Kind: menu.Password, Save: func(v string) { draftMu.Lock(); token = v; dirty = true; draftMu.Unlock() }},
+			{Label: "Änderungen", Hint: note, Kind: menu.Plain},
+			{Label: "Erneut pairen", Hint: "Behält die Identität. Ein widerrufener Token benötigt gegebenenfalls einen neuen Gateway-Token.", Kind: menu.Plain},
+			{Label: "Vergessen", Hint: "Löscht nur lokale Zugangsdaten, nicht die Freigabe am Gateway.", Kind: menu.Plain},
+			{Label: "Diagnose", Hint: "Begrenzte technische Ereignisse ohne Inhalte oder Zugangsdaten.", Kind: menu.Chevron, Open: func() menu.View { return clawDiagnostics(c) }},
+		}, []func(int){nil, nil, nil, nil, nil, nil, nil, nil}
+	}
+	page.Actions = []sharedshell.Action{
+		{Label: "Verbinden / prüfen", Role: sharedshell.Plain, Do: func() { setNotice(c.Connect()) }},
+		{Label: "Trennen", Role: sharedshell.Plain, Do: func() { setNotice(c.Disconnect()) }},
+		{Label: "Neu pairen", Role: sharedshell.Plain, Do: func() { setNotice(c.PairAgain()) }},
+		{Label: "Vergessen", Role: sharedshell.Danger, Do: func() {
+			shell.Get().Push(clawForgetPage(c, func() { draftMu.Lock(); endpoint, token, notice = "", "", ""; dirty = false; draftMu.Unlock() }))
+		}},
+		{Label: "Speichern", Role: sharedshell.Primary, Do: func() {
 			draftMu.Lock()
 			u, t := endpoint, token
-			token = ""
 			draftMu.Unlock()
-			setNotice(c.Configure(u, t))
-		}, func(int) { setNotice(c.Connect()) }, func(int) { setNotice(c.Disconnect()) }, func(int) { setNotice(c.PairAgain()) }, nil, nil}
-	}}
+			err := c.UpdateConnection(u, t)
+			setNotice(err)
+			if err == nil {
+				draftMu.Lock()
+				dirty = false
+				notice = "Gespeichert."
+				draftMu.Unlock()
+			}
+		}},
+	}
+	return page
 }
 func clawForgetPage(c *openclaw.Client, forgotten func()) *sharedshell.Page {
-	return &sharedshell.Page{Title: "OpenClaw lokal vergessen?", Build: func() ([]menu.Row, []func(int)) {
-		return []menu.Row{{Label: "Abbrechen", Kind: menu.Chevron}, {Label: "Lokale Zugangsdaten endgültig löschen", Hint: "Die Gateway-Freigabe bleibt bestehen.", Kind: menu.Chevron}}, []func(int){func(int) { shell.Get().Pop() }, func(int) {
-			if c.Forget() == nil {
-				forgotten()
-				shell.Get().Pop()
-			}
-		}}
-	}}
+	return &sharedshell.Page{
+		Title: "OpenClaw lokal vergessen?",
+		Build: func() ([]menu.Row, []func(int)) {
+			return []menu.Row{{Label: "Nur lokal löschen", Hint: "Die Gateway-Freigabe bleibt bestehen und muss dort separat widerrufen werden.", Kind: menu.Plain}}, []func(int){nil}
+		},
+		Actions: []sharedshell.Action{
+			{Label: "Abbrechen", Role: sharedshell.Plain, Do: func() { shell.Get().Pop() }},
+			{Label: "Zugangsdaten löschen", Role: sharedshell.Danger, Do: func() {
+				if c.Forget() == nil {
+					forgotten()
+					shell.Get().Pop()
+				}
+			}},
+		},
+	}
 }
 func clawDiagnostics(c *openclaw.Client) *sharedshell.Page {
-	return &sharedshell.Page{Title: "OpenClaw Diagnose", Build: func() ([]menu.Row, []func(int)) {
-		rows := []menu.Row{{Label: "Diagnose löschen", Kind: menu.Chevron}}
-		acts := []func(int){func(int) { c.ClearEvents() }}
-		events := c.Events()
-		for i := len(events) - 1; i >= 0; i-- {
-			e := events[i]
-			rows = append(rows, menu.Row{Label: fmt.Sprintf("%s %s %s", e.At.Format("15:04:05"), e.Direction, e.Type), Hint: e.Result, Kind: menu.Plain})
-			acts = append(acts, nil)
-		}
-		return rows, acts
-	}}
+	return &sharedshell.Page{
+		Title: "OpenClaw Diagnose",
+		Build: func() ([]menu.Row, []func(int)) {
+			var rows []menu.Row
+			var acts []func(int)
+			events := c.Events()
+			for i := len(events) - 1; i >= 0; i-- {
+				e := events[i]
+				rows = append(rows, menu.Row{Label: fmt.Sprintf("%s %s %s", e.At.Format("15:04:05"), e.Direction, e.Type), Hint: e.Result, Kind: menu.Plain})
+				acts = append(acts, nil)
+			}
+			return rows, acts
+		},
+		Actions: []sharedshell.Action{{Label: "Diagnose löschen", Role: sharedshell.Danger, Do: c.ClearEvents}},
+	}
 }
 
 func clawState(state string) string {

@@ -168,15 +168,33 @@ func (c *Client) startLocked() {
 // Configure never returns endpoints or credentials in errors. An empty token
 // preserves the existing bootstrap credential only for the same endpoint.
 func (c *Client) Configure(endpoint, bootstrap string) error {
-	return c.configure(endpoint, bootstrap, false)
+	return c.configure(endpoint, bootstrap, false, false)
 }
 
 // ConfigureBootstrap provisions a short-lived, explicitly issued pairing
 // credential. It never substitutes a bootstrap bearer for a shared auth token.
 func (c *Client) ConfigureBootstrap(endpoint, bootstrap string) error {
-	return c.configure(endpoint, bootstrap, true)
+	return c.configure(endpoint, bootstrap, true, false)
 }
-func (c *Client) configure(endpoint, bootstrap string, bootstrapOnly bool) error {
+
+// EditableConnection is exclusively for the private on-device editor.
+// Never serialize its result into diagnostics, exports or public artifacts.
+func (c *Client) EditableConnection() (string, string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	token := c.saved.Bootstrap
+	if token == "" {
+		token = c.saved.Token
+	}
+	return c.saved.URL, token
+}
+
+// UpdateConnection saves the visible editor values. An edited credential must
+// replace cached auth, otherwise the old device token would silently win.
+func (c *Client) UpdateConnection(endpoint, token string) error {
+	return c.configure(endpoint, token, false, true)
+}
+func (c *Client) configure(endpoint, bootstrap string, bootstrapOnly, editing bool) error {
 	if err := ValidateEndpoint(endpoint); err != nil {
 		return err
 	}
@@ -187,7 +205,17 @@ func (c *Client) configure(endpoint, bootstrap string, bootstrapOnly bool) error
 	if endpoint != s.URL {
 		s = credentials{URL: endpoint}
 	}
-	if bootstrap != "" {
+	if editing {
+		current := s.Bootstrap
+		if current == "" {
+			current = s.Token
+		}
+		if bootstrap == "" {
+			s.Bootstrap, s.Token, s.BootstrapOnly = "", "", false
+		} else if bootstrap != current {
+			s.Bootstrap, s.Token, s.BootstrapOnly = bootstrap, "", false
+		}
+	} else if bootstrap != "" {
 		s.Bootstrap = bootstrap
 		s.BootstrapOnly = bootstrapOnly
 	}
@@ -427,8 +455,10 @@ func (c *Client) attempt(ctx context.Context) bool {
 	}
 	if hello.Auth.DeviceToken != "" {
 		s.Token = hello.Auth.DeviceToken
-		s.Bootstrap = ""
-		s.BootstrapOnly = false
+		if s.BootstrapOnly {
+			s.Bootstrap = ""
+			s.BootstrapOnly = false
+		}
 		if c.persist(s) != nil {
 			c.mark("error", "storage", "local", "credentials")
 			return false

@@ -261,3 +261,84 @@ func TestBootstrapIsExplicitAndNeverSharedAuth(t *testing.T) {
 		t.Fatal("paired reconnect did not prefer device token")
 	}
 }
+
+func TestEditableCredentialsSurvivePairingAndChangesTakeEffect(t *testing.T) {
+	seen := make(chan string, 8)
+	srv, endpoint := server(t, func(conn *websocket.Conn) {
+		req := challenge(conn)
+		if req == nil {
+			return
+		}
+		p := req["params"].(map[string]any)
+		seen <- p["auth"].(map[string]any)["token"].(string)
+		hello(conn, req)
+		var v any
+		conn.ReadJSON(&v)
+	})
+	c := client(t, srv, endpoint)
+	c.Connect()
+	waitState(t, c, "connected")
+	if <-seen != "synthetic-bootstrap" {
+		t.Fatal("initial credential mismatch")
+	}
+	u, token := c.EditableConnection()
+	if u != endpoint || token != "synthetic-bootstrap" {
+		t.Fatal("paired editor lost original values")
+	}
+	if e := c.UpdateConnection(u, token); e != nil {
+		t.Fatal(e)
+	}
+	c.Connect()
+	waitState(t, c, "connected")
+	if <-seen != "synthetic-device-token" {
+		t.Fatal("unchanged save lost device token")
+	}
+	if e := c.UpdateConnection(endpoint, "synthetic-edited"); e != nil {
+		t.Fatal(e)
+	}
+	c.Connect()
+	waitState(t, c, "connected")
+	if <-seen != "synthetic-edited" {
+		t.Fatal("edited credential ignored in favor of old device token")
+	}
+	c.Disconnect()
+	restored := New(c.path, "test")
+	u, token = restored.EditableConnection()
+	if u != endpoint || token != "synthetic-edited" {
+		t.Fatal("edited fields did not survive reload")
+	}
+	if e := c.UpdateConnection(endpoint, "synthetic-device-token"); e != nil {
+		t.Fatal(e)
+	}
+	_, editedToken := c.EditableConnection()
+	if editedToken != "synthetic-device-token" {
+		t.Fatal("replacement with device credential reverted")
+	}
+	if e := c.UpdateConnection(endpoint, ""); e != nil {
+		t.Fatal(e)
+	}
+	if c.Connect() == nil {
+		t.Fatal("cleared credential remained active")
+	}
+}
+func TestEditableShortBootstrapBecomesDeviceToken(t *testing.T) {
+	srv, endpoint := server(t, func(conn *websocket.Conn) {
+		req := challenge(conn)
+		if req == nil {
+			return
+		}
+		hello(conn, req)
+		var v any
+		conn.ReadJSON(&v)
+	})
+	c := client(t, srv, endpoint)
+	if e := c.ConfigureBootstrap(endpoint, "synthetic-short"); e != nil {
+		t.Fatal(e)
+	}
+	c.Connect()
+	waitState(t, c, "connected")
+	_, token := c.EditableConnection()
+	if token != "synthetic-device-token" {
+		t.Fatal("editor retained consumed bootstrap")
+	}
+}

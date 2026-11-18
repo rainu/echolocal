@@ -24,7 +24,8 @@ are not implemented here. No Gateway modification is required.
   bootstrap credential via auth.bootstrapToken (ConfigureBootstrap). Shared-token
   manual entry remains separate; credential kinds are never guessed from prefixes.
 - Successful admission stores the returned role-scoped device token and removes
-  the bootstrap token. Reconnect uses the device token and unchanged identity.
+  consumed short-lived bootstrap credentials. A manually entered shared Gateway
+  token remains privately stored and editable, while reconnect prefers the device token. Reconnect uses the device token and unchanged identity.
 
 Reference: Pet `backend/gateway.go`, especially `buildConnectParams`,
 `loadOrCreatePetIdentity`, `pairingStatus` and the startup retry loop.
@@ -46,8 +47,11 @@ An enabled saved connection resumes at application startup.
 
 The separate device-local `openclaw.json` file is atomically replaced with mode
 0600. It is deliberately outside general settings export/config synchronization.
-No stored endpoint, token or private key is returned to the settings view. New
-entries use masked fields. Changing endpoint drops the old identity and tokens;
+At the owner’s request, the private on-device editor receives the saved endpoint
+and effective credential so both fields remain editable. The endpoint is visible,
+the token is masked. Never publish screenshots of a configured editor or serialize
+these values into diagnostics, exports or public artifacts. Private keys are never
+returned to the editor. Changing endpoint drops the old identity and tokens;
 blank bootstrap input preserves a bootstrap credential only on the same endpoint.
 
 Forget has a confirmation screen and removes local credentials, not remote
@@ -69,3 +73,7 @@ redaction. These are not a real device enrollment or owner acceptance.
 Device installation, screenshots, real pairing, restart and interaction results
 must be reported separately against the actual tested commit. Keep the issue and
 PR open until the owner accepts that implementation.
+
+The editor uses native action-bar buttons for Save, Connect, Disconnect, Pair again,
+Forget and diagnostic clearing. A changed credential invalidates cached device auth
+so edits cannot silently be ignored; saving unchanged fields preserves approved auth.
