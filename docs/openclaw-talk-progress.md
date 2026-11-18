@@ -41,17 +41,18 @@ The probe is deliberately outside the repository: it accesses the device's
 private credential store. No credentials, signaling data, deployment endpoints,
 or private probe source are published.
 
-## Integration prerequisites still unresolved
+## Probe build limitations
 
-The standard device build is Linux/ARM with CGO disabled. Its Go resolver needs
-the project's Android DNS setup. During this check, the platform's DNS property
+The standard device build is Linux/ARM with CGO disabled. Its Go resolver is initialized by the application's DHCP component. A
+standalone probe does not run that component. During this check, the platform's DNS property
 slots used by that setup were empty; the standalone Linux probe could not resolve
 the Gateway. An Android/CGO probe could resolve it, but the current transitive
 Android networking dependency references a private Go runtime symbol rejected
 by the default linker. An experimental probe-only linker compatibility override
 allowed the transport feasibility test; it is NOT an adopted production build
-change. The production network path must be resolved and verified before
-claiming a deployable Talk transport.
+change. This standalone-probe failure is not evidence of a production DNS failure: the
+DHCP library installs its own lease-backed resolver. The final transport must
+still be verified inside the actual application lifecycle.
 
 Remaining work includes assistant routing and conditional settings, agent/context
 selection, all-catalogue localization, WebRTC media integration with the Echo's
