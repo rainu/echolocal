@@ -2,7 +2,6 @@ package talk
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,104 +10,106 @@ import (
 
 type nativeDevice struct {
 	fakeDevice
-	blocked atomic.Bool
+	stops atomic.Int32
 }
 
-func (d *nativeDevice) BlockOutput(block bool) { d.blocked.Store(block) }
+func (d *nativeDevice) StopOutput() { d.stops.Add(1) }
+
+// Regression sentinel: no semantic playback gate may be used by Live Talk.
+func (d *nativeDevice) BlockOutput(bool) { panic("live output must not be gated") }
 func eventually(t *testing.T, f func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	until := time.Now().Add(time.Second)
+	for time.Now().Before(until) {
 		if f() {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("expected native state not reached")
+	t.Fatal("native state not reached")
 }
 func emit(s *Session, event string) { s.native.inbox <- []byte(event) }
 func nativeHarness(t *testing.T) (*Session, *nativeDevice, context.Context) {
-	t.Helper()
 	d := &nativeDevice{fakeDevice: fakeDevice{frames: make(chan []int16, 8)}}
 	s := NewSession(nil, "agent:synthetic:test", d)
-	s.native.legacy = true
+	s.native.legacy.Store(true)
 	ctx, cancel := context.WithCancel(context.Background())
 	go s.nativeLoop(ctx)
 	t.Cleanup(func() { cancel(); <-s.native.done })
 	return s, d, ctx
 }
-func TestNativePolicyMatchesImmutableLiveModelProtocol(t *testing.T) {
-	for _, model := range []string{"gpt-live-1-codex", "gpt-live-1"} {
-		legacy, err := nativeModel(model)
-		if err != nil {
-			t.Fatal(err)
-		}
-		n := newNative()
-		n.legacy = legacy
-		raw, _ := json.Marshal(n.policyEvent())
-		var e map[string]any
-		json.Unmarshal(raw, &e)
-		want := "session.instructions.append"
-		if legacy {
-			want = "session.context.append"
-		}
-		if e["type"] != want {
-			t.Fatal("used generic Realtime event on native Live model")
-		}
-	}
-	if _, err := nativeModel("unknown"); err == nil {
-		t.Fatal("unsupported protocol accepted")
+func TestLiveControlReadyDoesNotNeedPolicyInjection(t *testing.T) {
+	s, _, ctx := nativeHarness(t)
+	// There is intentionally no peer or control sender. Open must neither send
+	// replacement instructions nor wait for an append acknowledgement.
+	hooks := s.controlLink(ctx)
+	hooks.Opened()
+	hooks.Opened()
+	select {
+	case <-s.native.channelReady:
+	default:
+		t.Fatal("extra policy roundtrip required")
 	}
 }
-func TestNativePolicyAckAndMatchedAgentResultGate(t *testing.T) {
-	s, d, _ := nativeHarness(t)
-	d.BlockOutput(true)
-	emit(s, `{"type":"session.context.appended"}`)
-	select {
-	case <-s.native.policyReady:
-	case <-time.After(time.Second):
-		t.Fatal("routing policy not acknowledged")
+func TestLiveDirectFollowupsAreNeverSuppressedOrOmitted(t *testing.T) {
+	s, _, _ := nativeHarness(t)
+	for _, e := range []string{
+		`{"type":"turn.done","turn":{"id":"q1","role":"user","transcript":"synthetic question"}}`,
+		`{"type":"turn.done","turn":{"id":"a1","role":"assistant","transcript":"synthetic direct answer"}}`,
+		`{"type":"turn.done","turn":{"id":"q2","role":"user","transcript":"synthetic followup"}}`,
+		`{"type":"turn.done","turn":{"id":"a2","role":"assistant","transcript":"synthetic remembered answer"}}`,
+		`{"type":"turn.done","turn":{"id":"q3","role":"user","transcript":"synthetic followup two"}}`,
+		`{"type":"turn.done","turn":{"id":"a3","role":"assistant","transcript":"synthetic live response"}}`,
+	} {
+		emit(s, e)
 	}
-	emit(s, `{"type":"delegation.created","item":{"id":"request-a","target":"client"}}`)
-	eventually(t, func() bool { return s.native.delegations.Load() == 1 })
-	if !d.blocked.Load() {
-		t.Fatal("output opened before agent reply")
+	eventually(t, func() bool { return len(s.native.transcripts) == 6 })
+	if s.native.responses.Load() != 3 || s.native.delegations.Load() != 0 {
+		t.Fatal("direct live conversation changed")
+	}
+	for i := 0; i < 6; i++ {
+		item := <-s.native.transcripts
+		want := "user"
+		if i%2 == 1 {
+			want = "assistant"
+		}
+		if item.role != want {
+			t.Fatal("caption order changed")
+		}
+	}
+}
+func TestLiveConsultationKeepsAcknowledgementsAndChatter(t *testing.T) {
+	s, d, _ := nativeHarness(t)
+	emit(s, `{"type":"delegation.created","item":{"id":"work","target":"client"}}`)
+	emit(s, `{"type":"turn.done","turn":{"id":"ack","role":"assistant","transcript":"synthetic acknowledgement"}}`)
+	eventually(t, func() bool { return len(s.native.transcripts) == 1 })
+	if s.pendingTools.Load() != 1 || d.stops.Load() != 0 {
+		t.Fatal("consultation gated audio")
 	}
 	emit(s, `{"type":"delegation.context.appended","delegation_item_id":"unrelated"}`)
-	emit(s, `{"type":"delegation.created","item":{"id":"request-b","target":"client"}}`)
-	emit(s, `{"type":"delegation.context.appended","delegation_item_id":"request-a"}`)
+	emit(s, `{"type":"delegation.context.appended","delegation_item_id":"work"}`)
 	eventually(t, func() bool { return s.native.results.Load() == 1 })
-	if !d.blocked.Load() {
-		t.Fatal("old result opened newer response")
+	if s.pendingTools.Load() != 0 {
+		t.Fatal("native work tracking failed")
 	}
-	emit(s, `{"type":"delegation.context.appended","delegation_item_id":"request-b"}`)
-	eventually(t, func() bool { return !d.blocked.Load() })
-	if s.pendingTools.Load() != 0 || s.native.results.Load() != 2 {
-		t.Fatal("native result tracking failed")
-	}
-	// Barge-in blocks output immediately, before final transcription.
-	emit(s, `{"type":"turn.created","turn":{"role":"user"}}`)
-	eventually(t, func() bool { return d.blocked.Load() })
 }
-func TestNativeRejectsUnbackedAssistantAndKeepsUserCaption(t *testing.T) {
+func TestLiveInterruptionClearsOnlyOldQueueAndKeepsFutureReplies(t *testing.T) {
 	s, d, _ := nativeHarness(t)
-	d.BlockOutput(true)
-	emit(s, `{"type":"turn.done","turn":{"id":"user-a","role":"user","transcript":"synthetic question"}}`)
-	emit(s, `{"type":"turn.done","turn":{"id":"reply-a","role":"assistant","transcript":"synthetic unbacked answer"}}`)
-	eventually(t, func() bool { return s.native.unbacked.Load() == 1 })
-	if !d.blocked.Load() || s.native.unbacked.Load() != 1 {
-		t.Fatal("generic answer was not suppressed")
+	emit(s, `{"type":"turn.created","turn":{"role":"user"}}`)
+	emit(s, `{"type":"turn.done","turn":{"id":"q","role":"user","transcript":"synthetic interruption"}}`)
+	emit(s, `{"type":"turn.done","turn":{"id":"a","role":"assistant","transcript":"synthetic response after interruption"}}`)
+	eventually(t, func() bool { return len(s.native.transcripts) == 2 })
+	if d.stops.Load() != 1 || s.native.responses.Load() != 1 {
+		t.Fatal("interruption blocked future live response")
 	}
-	select {
-	case item := <-s.native.transcripts:
-		if item.role != "user" {
-			t.Fatal("unbacked reply stored")
-		}
-	default:
-		t.Fatal("user history missing")
-	}
-	if len(s.native.transcripts) != 0 {
-		t.Fatal("unbacked reply queued")
+}
+func TestFirstPCMMetricIsOncePerFinalUtterance(t *testing.T) {
+	s, _, _ := nativeHarness(t)
+	s.native.responseAt.Store(time.Now().Add(-25 * time.Millisecond).UnixNano())
+	s.Playback()
+	s.Playback()
+	if s.native.timedResponses.Load() != 1 || s.native.firstPCMMS.Load() < 25 {
+		t.Fatal("first PCM timing incorrect")
 	}
 }
 
@@ -150,7 +151,7 @@ func TestNativeCaptionQueueDrainsAndDeduplicates(t *testing.T) {
 		t.Fatal("history escaped activation")
 	}
 }
-func TestStartupSendsOnlySilenceUntilPolicyAndAudioReady(t *testing.T) {
+func TestStartupSendsOnlySilenceUntilTransportAndAudioReady(t *testing.T) {
 	d := &fakeDevice{frames: make(chan []int16, 1)}
 	d.frames <- []int16{321, 321}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -184,16 +185,5 @@ func TestStartupSendsOnlySilenceUntilPolicyAndAudioReady(t *testing.T) {
 		case <-deadline:
 			t.Fatal("ready audio not forwarded")
 		}
-	}
-}
-
-func TestBargeInCannotReleasePreviousDelegationAudio(t *testing.T) {
-	s, d, _ := nativeHarness(t)
-	emit(s, `{"type":"delegation.created","item":{"id":"old","target":"client"}}`)
-	emit(s, `{"type":"turn.created","turn":{"role":"user"}}`)
-	emit(s, `{"type":"delegation.context.appended","delegation_item_id":"old"}`)
-	eventually(t, func() bool { return s.native.results.Load() == 1 })
-	if !d.blocked.Load() {
-		t.Fatal("interrupted response reopened audio")
 	}
 }

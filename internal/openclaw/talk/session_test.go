@@ -26,16 +26,17 @@ func (d *fakeDevice) StopOutput()                      {}
 func (d *fakeDevice) ReadyTone()                       {}
 
 type fakeControl struct {
-	mu           sync.Mutex
-	event        chan connection.TalkEvent
-	peer         *rtc.Link
-	id           string
-	capable      bool
-	created      bool
-	warming      int
-	catalogCalls int
-	createCalls  int
-	closed       atomic.Int32
+	mu                          sync.Mutex
+	event                       chan connection.TalkEvent
+	peer                        *rtc.Link
+	id                          string
+	capable                     bool
+	created                     bool
+	warming                     int
+	catalogCalls                int
+	createCalls                 int
+	createParams, catalogParams map[string]any
+	closed                      atomic.Int32
 }
 
 func (f *fakeControl) SubscribeTalk() (<-chan connection.TalkEvent, func(), error) {
@@ -44,6 +45,7 @@ func (f *fakeControl) SubscribeTalk() (<-chan connection.TalkEvent, func(), erro
 func (f *fakeControl) CallTalk(ctx context.Context, method string, params, result any) error {
 	switch method {
 	case "talk.catalog":
+		f.catalogParams = params.(map[string]any)
 		f.catalogCalls++
 		if f.warming > 0 {
 			f.warming--
@@ -55,6 +57,7 @@ func (f *fakeControl) CallTalk(ctx context.Context, method string, params, resul
 		b, _ := json.Marshal(map[string]any{"realtime": map[string]any{"ready": f.capable, "activeProvider": "synthetic", "providers": []any{map[string]any{"id": "synthetic", "configured": true, "transports": []string{"webrtc"}, "brains": []string{"agent-consult"}}}}})
 		return json.Unmarshal(b, result)
 	case "talk.client.create":
+		f.createParams = params.(map[string]any)
 		f.createCalls++
 		f.created = true
 		p := params.(map[string]any)
@@ -89,7 +92,7 @@ func TestSessionWaitsForPeerProviderAndAudioThenClosesOnce(t *testing.T) {
 	defer peer.Close()
 	control := &fakeControl{event: make(chan connection.TalkEvent, 8), peer: peer, capable: true}
 	session := NewSession(control, "agent:synthetic:context", d)
-	session.requirePolicy = false
+	session.nativeMedia = false
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err = session.Open(ctx); err != nil {
@@ -108,7 +111,7 @@ func TestSessionRejectsMissingCapabilitiesBeforeOpeningMicrophone(t *testing.T) 
 	d := &fakeDevice{frames: make(chan []int16)}
 	control := &fakeControl{event: make(chan connection.TalkEvent, 8)}
 	session := NewSession(control, "agent:synthetic:context", d)
-	session.requirePolicy = false
+	session.nativeMedia = false
 	if err := session.Open(context.Background()); err == nil {
 		t.Fatal("unready provider accepted")
 	}
@@ -159,12 +162,38 @@ func TestCatalogWarmingRetriesOnlyTheReadNotSessionCreation(t *testing.T) {
 	d := &fakeDevice{frames: make(chan []int16)}
 	control := &fakeControl{event: make(chan connection.TalkEvent, 8), warming: 1}
 	session := NewSession(control, "agent:synthetic:context", d)
-	session.requirePolicy = false
+	session.nativeMedia = false
 	if err := session.Open(context.Background()); err == nil {
 		t.Fatal("unready provider accepted")
 	}
 	session.Close()
 	if control.catalogCalls != 2 || control.createCalls != 1 || !control.created || d.started.Load() != 0 {
 		t.Fatal("warming retry or capture gate failed")
+	}
+}
+
+func TestModelSelectionUsesGatewayDefaultOrExplicitCatalogueChoice(t *testing.T) {
+	for _, model := range []string{"", "synthetic-future-live-model"} {
+		control := &fakeControl{event: make(chan connection.TalkEvent, 8)}
+		session := NewSession(control, "agent:synthetic:context", &fakeDevice{frames: make(chan []int16)})
+		session.nativeMedia = false
+		session.Model = model
+		if model != "" {
+			session.Provider = "synthetic-provider"
+		}
+		_ = session.Open(context.Background())
+		session.Close()
+		if model == "" {
+			if _, ok := control.createParams["model"]; ok {
+				t.Fatal("Gateway default overridden")
+			}
+			if _, ok := control.createParams["provider"]; ok {
+				t.Fatal("default provider overridden")
+			}
+		} else {
+			if control.createParams["model"] != model || control.catalogParams["model"] != model || control.createParams["provider"] != session.Provider {
+				t.Fatal("model/catalogue selection mismatch")
+			}
+		}
 	}
 }

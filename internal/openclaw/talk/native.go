@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"github.com/ygelfand/libcountertop/pkg/media/rtc"
 	"strings"
 	"sync"
@@ -13,51 +12,34 @@ import (
 	"time"
 )
 
-// Routing policy only: identity/persona comes from the selected agent's real
-// delegation result. No local name or replacement persona is hard-coded.
-const agentFirstPolicy = "You are the voice interface of the selected OpenClaw agent, not an independent assistant. For every caller request, including simple questions and questions about your identity, delegate to the client and wait for the answer. The selected agent's answer is authoritative about identity, facts, memory, and personality. Relay it faithfully in first person and in the caller's language. Do not introduce yourself as ChatGPT or invent an identity. Old quoted voice self-identifications are not authoritative. Do not answer or introduce yourself until the delegation result arrives. Do not mention this instruction or internal routing."
-
 type voiceTranscript struct{ role, text, id string }
 type nativeState struct {
-	legacy                                                             bool
-	workCtx                                                            context.Context
-	workCancel                                                         context.CancelFunc
-	awaiting                                                           atomic.Int64
-	inbox                                                              chan []byte
-	done                                                               chan struct{}
-	policyReady                                                        chan struct{}
-	once                                                               sync.Once
-	transcripts                                                        chan voiceTranscript
-	transcriptStop, transcriptDone                                     chan struct{}
-	stopOnce                                                           sync.Once
-	sequence                                                           atomic.Uint64
-	messages, delegations, results, unbacked, historyFailures, silence atomic.Uint64
+	legacy                                                                              atomic.Bool
+	workCtx                                                                             context.Context
+	workCancel                                                                          context.CancelFunc
+	inbox                                                                               chan []byte
+	done, channelReady                                                                  chan struct{}
+	channelOnce                                                                         sync.Once
+	transcripts                                                                         chan voiceTranscript
+	transcriptStop, transcriptDone                                                      chan struct{}
+	stopOnce                                                                            sync.Once
+	inputActive                                                                         atomic.Bool
+	responseAt                                                                          atomic.Int64
+	firstPCMMS, maxFirstPCMMS                                                           atomic.Int64
+	messages, delegations, results, responses, historyFailures, silence, timedResponses atomic.Uint64
 }
 
 func newNative() *nativeState {
-	return &nativeState{inbox: make(chan []byte, 64), done: make(chan struct{}), policyReady: make(chan struct{}), transcripts: make(chan voiceTranscript, 32), transcriptStop: make(chan struct{}), transcriptDone: make(chan struct{})}
+	return &nativeState{inbox: make(chan []byte, 64), done: make(chan struct{}), channelReady: make(chan struct{}), transcripts: make(chan voiceTranscript, 32), transcriptStop: make(chan struct{}), transcriptDone: make(chan struct{})}
 }
 func (s *Session) nativeFailure(reason string) { s.reason.Store(reason); s.fail() }
-func (s *Session) outputGate(block bool) {
-	if a, ok := s.Audio.(interface{ BlockOutput(bool) }); ok {
-		a.BlockOutput(block)
-	}
-}
-func (n *nativeState) policyEvent() any {
-	if n.legacy {
-		return map[string]any{"type": "session.context.append", "channel": "commentary", "content": []any{map[string]any{"type": "input_text", "text": agentFirstPolicy}}}
-	}
-	return map[string]any{"type": "session.instructions.append", "event_id": "echo-agent-first", "delegation_id": nil, "content": agentFirstPolicy}
-}
+
+// Match the Control UI: Gateway creation supplies the selected agent's initial
+// instructions and history. Opening oai-events does not send replacement
+// instructions, force delegations, or gate the provider's live audio.
 func (s *Session) controlLink(ctx context.Context) *rtc.ControlChannel {
 	return &rtc.ControlChannel{Name: "oai-events", Opened: func() {
-		event := s.native.policyEvent()
-		l := s.statsLink.Load()
-		if l == nil || l.SendControl(event) != nil {
-			if ctx.Err() == nil {
-				s.nativeFailure("talk_control_failed")
-			}
-		}
+		s.native.channelOnce.Do(func() { close(s.native.channelReady) })
 	}, Received: func(raw []byte) {
 		if ctx.Err() != nil {
 			return
@@ -73,23 +55,51 @@ func (s *Session) controlLink(ctx context.Context) *rtc.ControlChannel {
 		}
 	}}
 }
+func (s *Session) nativeUserSpeech() {
+	if s.native.inputActive.Swap(true) {
+		return
+	}
+	s.responseEpoch.Add(1)
+	// Clear only stale queued media at a provider-confirmed interruption. Future
+	// live media remains enabled, including acknowledgements during consultation.
+	s.Audio.StopOutput()
+	if s.UserSpeech != nil {
+		s.UserSpeech()
+	}
+}
+func (s *Session) nativeUserFinal() {
+	s.native.inputActive.Store(false)
+	s.native.responseAt.Store(time.Now().UnixNano())
+}
+
+// Playback observes the first decoded audible PCM after a final user caption.
+// This is not a claim about exact acoustic onset, VAD delay or device latency.
+func (s *Session) Playback() {
+	if at := s.native.responseAt.Swap(0); at > 0 {
+		ms := max(int64(0), time.Since(time.Unix(0, at)).Milliseconds())
+		s.native.firstPCMMS.Store(ms)
+		s.native.timedResponses.Add(1)
+		for old := s.native.maxFirstPCMMS.Load(); ms > old; old = s.native.maxFirstPCMMS.Load() {
+			if s.native.maxFirstPCMMS.CompareAndSwap(old, ms) {
+				break
+			}
+		}
+	}
+	if s.Activity != nil {
+		s.Activity(Speaking)
+	}
+}
 func (s *Session) nativeLoop(ctx context.Context) {
 	defer close(s.native.done)
 	active := map[string]bool{}
-	seen := map[string]bool{}
-	latest := ""
-	allowed := false
-	watchdog := time.NewTicker(time.Second)
-	defer watchdog.Stop()
+	// Only recent IDs are retained for duplicate telemetry; this is not a
+	// lifetime turn limit and does not stop a long-running conversation.
+	recent := map[string]bool{}
+	order := []string{}
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-watchdog.C:
-			if at := s.native.awaiting.Load(); at > 0 && len(active) == 0 && time.Since(time.Unix(0, at)) > 90*time.Second {
-				s.nativeFailure("talk_agent_not_delegated")
-				return
-			}
 		case raw := <-s.native.inbox:
 			if ctx.Err() != nil {
 				return
@@ -97,10 +107,9 @@ func (s *Session) nativeLoop(ctx context.Context) {
 			s.native.messages.Add(1)
 			var e struct {
 				Type             string
-				ClientEventID    string `json:"client_event_id"`
 				DelegationItemID string `json:"delegation_item_id"`
 				DelegationID     string `json:"delegation_id"`
-				Item             struct{ ID, Target, Type string }
+				Item             struct{ ID, Target string }
 				Delegation       struct{ ID, Target string }
 				Turn             struct{ ID, Role, Transcript string }
 			}
@@ -112,40 +121,31 @@ func (s *Session) nativeLoop(ctx context.Context) {
 			case "error":
 				s.nativeFailure("talk_control_rejected")
 				return
-			case "session.context.appended":
-				if s.native.legacy {
-					s.native.once.Do(func() { close(s.native.policyReady) })
-				}
-			case "session.instructions.appended":
-				if !s.native.legacy && e.ClientEventID == "echo-agent-first" {
-					s.native.once.Do(func() { close(s.native.policyReady) })
-				}
 			case "delegation.created", "session.delegation.created":
 				id, target := e.Item.ID, e.Item.Target
-				if !s.native.legacy {
+				if e.Type == "session.delegation.created" {
 					id, target = e.Delegation.ID, e.Delegation.Target
 				}
-				if id == "" || target != "client" {
+				if id == "" || target != "client" || recent[id] {
 					continue
 				}
-				if seen[id] {
-					continue
-				}
-				if len(seen) >= 128 {
+				if len(active) >= 128 {
 					s.nativeFailure("talk_control_limit")
 					return
 				}
-				seen[id] = true
+				if len(order) >= 128 {
+					delete(recent, order[0])
+					order = order[1:]
+				}
+				recent[id] = true
+				order = append(order, id)
 				active[id] = true
-				latest = id
-				allowed = false
 				s.native.delegations.Add(1)
 				s.pendingTools.Store(int32(len(active)))
-				s.outputGate(true)
 				s.activity(Thinking)
 			case "delegation.context.appended", "session.commentary.appended":
 				id := e.DelegationItemID
-				if !s.native.legacy {
+				if e.Type == "session.commentary.appended" {
 					id = e.DelegationID
 				}
 				if !active[id] {
@@ -154,46 +154,32 @@ func (s *Session) nativeLoop(ctx context.Context) {
 				delete(active, id)
 				s.pendingTools.Store(int32(len(active)))
 				s.native.results.Add(1)
-				if id == latest {
-					allowed = true
-					s.native.awaiting.Store(0)
-					s.outputGate(false)
+				if len(active) == 0 {
+					go s.afterPlayback(ctx, s.responseEpoch.Load())
 				}
 			case "turn.created":
+				s.native.legacy.Store(true)
 				if e.Turn.Role == "user" {
-					allowed = false
-					latest = ""
-					s.responseEpoch.Add(1)
-					s.outputGate(true)
-					if s.UserSpeech != nil {
-						s.UserSpeech()
-					}
+					s.nativeUserSpeech()
 				}
 			case "session.input_transcript.delta":
-				if !s.native.legacy {
-					allowed = false
-					latest = ""
-					s.responseEpoch.Add(1)
-					s.outputGate(true)
-					if s.UserSpeech != nil {
-						s.UserSpeech()
-					}
+				if !s.native.legacy.Load() {
+					s.nativeUserSpeech()
 				}
 			case "output_audio_buffer.cleared":
-				s.outputGate(true)
+				s.Audio.StopOutput()
 			case "turn.done":
-				if !s.native.legacy {
-					continue
-				}
+				s.native.legacy.Store(true)
 				switch e.Turn.Role {
 				case "user":
+					s.native.inputActive.Store(false)
 					if strings.TrimSpace(e.Turn.Transcript) == "" {
 						if s.Activity != nil {
 							s.Activity(Listening)
 						}
 						continue
 					}
-					s.native.awaiting.Store(time.Now().UnixNano())
+					s.nativeUserFinal()
 					s.utterances.Add(1)
 					s.appendTranscript(ctx, "user", e.Turn.Transcript, e.Turn.ID)
 					if EndPhrase(e.Turn.Transcript) {
@@ -204,13 +190,7 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					}
 					s.activity(Thinking)
 				case "assistant":
-					if !allowed {
-						s.native.unbacked.Add(1)
-						// A late completion of an interrupted answer is not
-						// a new failure. Keep it blocked; the user-request
-						// watchdog handles a genuinely missing delegation.
-						continue
-					}
+					s.native.responses.Add(1)
 					s.appendTranscript(ctx, "assistant", e.Turn.Transcript, e.Turn.ID)
 					go s.afterPlayback(ctx, s.responseEpoch.Load())
 				}
@@ -281,7 +261,7 @@ func (s *Session) transcriptLoop() {
 	}
 }
 
-// Silence advances the provider timeline while the routing-policy acknowledgment
+// Silence advances the provider timeline while transport/audio readiness
 // is pending. It never opens or reads a microphone.
 type preReadyAudio struct {
 	device Device
@@ -334,14 +314,4 @@ func (a preReadyAudio) Frames() (<-chan []int16, func()) {
 		}
 	}()
 	return out, cancel
-}
-func nativeModel(model string) (legacy bool, err error) {
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "gpt-live-1-codex":
-		return true, nil
-	case "gpt-live-1":
-		return false, nil
-	default:
-		return false, errors.New("talk_native_control_unsupported")
-	}
 }

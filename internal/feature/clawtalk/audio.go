@@ -20,8 +20,6 @@ type deviceAudio struct {
 	playMu                           sync.Mutex
 	playout                          talk.PlayoutBuffer
 	playDone                         chan struct{}
-	blocked                          bool
-	held                             []int16
 	lastSpeech, lastPacket           time.Time
 	decoded, silenceSkipped          atomic.Uint64
 	maxReceiveGapMS, maxPlayoutGapMS atomic.Int64
@@ -120,18 +118,6 @@ func (a *deviceAudio) Play(pcm []int16) {
 		recordMax(&a.maxReceiveGapMS, now.Sub(a.lastPacket).Milliseconds())
 	}
 	a.lastPacket = now
-	if a.blocked {
-		// Keep only 80 ms of the most recent media to absorb data-channel/RTP
-		// ordering skew when the native agent result is acknowledged.
-		a.held = append(a.held, pcm...)
-		max := speaker.Rate * 80 / 1000 * speaker.Channels
-		if len(a.held) > max {
-			copy(a.held, a.held[len(a.held)-max:])
-			a.held = a.held[:max]
-		}
-		a.playMu.Unlock()
-		return
-	}
 	if audible {
 		a.lastSpeech = now
 	} else if a.lastSpeech.IsZero() || now.Sub(a.lastSpeech) > 400*time.Millisecond {
@@ -164,7 +150,7 @@ func (a *deviceAudio) playoutPump() {
 			recordMax(&a.maxPlayoutGapMS, now.Sub(previous).Milliseconds())
 			previous = now
 			a.playMu.Lock()
-			if a.ctx.Err() == nil && !a.blocked {
+			if a.ctx.Err() == nil {
 				lane := speaker.Get().Lane(config.StreamVoice)
 				if pcm := a.playout.Take(lane.Queued()); len(pcm) > 0 {
 					lane.Play(pcm)
@@ -184,35 +170,8 @@ func (a *deviceAudio) StopOutput() {
 	a.playMu.Lock()
 	defer a.playMu.Unlock()
 	a.playout.Reset()
-	clear(a.held)
-	a.held = nil
 	a.lastSpeech = time.Time{}
 	speaker.Get().Lane(config.StreamVoice).Drain()
-}
-func (a *deviceAudio) BlockOutput(block bool) {
-	a.playMu.Lock()
-	audible := false
-	if block {
-		a.blocked = true
-		a.playout.Reset()
-		clear(a.held)
-		a.held = nil
-		a.lastSpeech = time.Time{}
-		speaker.Get().Lane(config.StreamVoice).Drain()
-	} else if a.blocked {
-		a.blocked = false
-		audible = talk.Audible(a.held)
-		if audible {
-			a.lastSpeech = time.Now()
-		}
-		a.playout.Push(a.held)
-		clear(a.held)
-		a.held = nil
-	}
-	a.playMu.Unlock()
-	if audible && a.onPlay != nil {
-		a.onPlay()
-	}
 }
 func recordMax(v *atomic.Int64, n int64) {
 	for old := v.Load(); n > old; old = v.Load() {

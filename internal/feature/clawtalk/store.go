@@ -12,6 +12,8 @@ import (
 )
 
 type Slot struct {
+	Provider     string `json:"provider,omitempty"`
+	Model        string `json:"model,omitempty"`
 	OpenClaw     bool   `json:"openclaw"`
 	Agent        string `json:"agent,omitempty"`
 	AgentLabel   string `json:"agentLabel,omitempty"`

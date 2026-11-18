@@ -4,6 +4,7 @@ package settings
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
 	"github.com/ygelfand/echolocal/internal/feature/detect"
@@ -13,6 +14,7 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,11 +42,16 @@ func talkRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), bool) {
 	if agent == "" {
 		agent = say.T("clawtalk.select_agent")
 	}
+	model := s.Model
+	if model == "" {
+		model = say.T("clawtalk.gateway_default")
+	}
 	rows = append(rows,
 		menu.Row{Label: say.T("clawtalk.agent"), Value: agent, Kind: menu.Chevron, Open: func() menu.View { return talkAgentPage(slot) }},
+		menu.Row{Label: say.T("clawtalk.model"), Value: model, Hint: say.T("clawtalk.model_hint"), Kind: menu.Chevron, Open: func() menu.View { return talkModelPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.resume"), Hint: say.T("clawtalk.resume_hint"), Kind: menu.Toggle, On: s.Resume},
 	)
-	acts = append(acts, nil, func(int) {
+	acts = append(acts, nil, nil, func(int) {
 		saveTalk(slot, func(v *clawtalk.Slot) { v.Resume = !s.Resume })
 		shell.Get().Redraw()
 	})
@@ -257,4 +264,67 @@ func saveTalk(slot int, change func(*clawtalk.Slot)) error {
 	talkSaveFailed.Store(err != nil)
 	shell.Get().Redraw()
 	return err
+}
+
+type talkModelProvider struct {
+	ID, Label                  string
+	Configured                 bool
+	SupportsToolCalls          *bool
+	Transports, Brains, Models []string
+	VoicesByModel              map[string][]string
+}
+type talkModelSelection struct{ Provider, Model string }
+
+func talkModelChoices(providers []talkModelProvider) []talkChoice {
+	out := []talkChoice{{"", say.T("clawtalk.gateway_default")}}
+	for _, provider := range providers {
+		if provider.ID != "openai" || !provider.Configured || !containsTalkValue(provider.Transports, "webrtc") || !containsTalkValue(provider.Brains, "agent-consult") {
+			continue
+		}
+		// Advertised per-model voice profiles are the Gateway's native Live model
+		// catalogue. Never freeze a list of current model names in this client.
+		native := []string{}
+		for model, voices := range provider.VoicesByModel {
+			if len(voices) > 0 {
+				native = append(native, model)
+			}
+		}
+		sort.Strings(native)
+		for _, model := range native {
+			id, _ := json.Marshal(talkModelSelection{provider.ID, model})
+			out = append(out, talkChoice{string(id), model + " · " + provider.Label})
+		}
+	}
+	return out
+}
+func containsTalkValue(list []string, value string) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}
+func talkModelPage(slot int) *sharedshell.Page {
+	saved := clawtalk.Get().Store.Get(slot)
+	return talkPicker(say.T("clawtalk.model"), func(ctx context.Context) ([]talkChoice, error) {
+		var catalog struct {
+			Realtime struct{ Providers []talkModelProvider }
+		}
+		params := map[string]any{}
+		if saved.Context != "" {
+			params["sessionKey"] = saved.Context
+		}
+		err := claw().CallTalk(ctx, "talk.catalog", params, &catalog)
+		return talkModelChoices(catalog.Realtime.Providers), err
+	}, func(v talkChoice) {
+		var selected talkModelSelection
+		if v.id != "" && json.Unmarshal([]byte(v.id), &selected) != nil {
+			return
+		}
+		clawtalk.Get().Stop()
+		if saveTalk(slot, func(s *clawtalk.Slot) { s.Provider = selected.Provider; s.Model = selected.Model }) == nil {
+			shell.Get().Pop()
+		}
+	})
 }

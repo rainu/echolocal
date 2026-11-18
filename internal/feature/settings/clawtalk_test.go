@@ -31,3 +31,13 @@ func TestTalkMenusTranslateAndKeepRoutingIdentifiersBackendOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestVoiceModelPickerIsDrivenByGatewayCatalogue(t *testing.T) {
+	choices := talkModelChoices([]talkModelProvider{
+		{ID: "openai", Label: "Synthetic", Configured: true, Transports: []string{"webrtc"}, Brains: []string{"agent-consult"}, VoicesByModel: map[string][]string{"future-model-2099": {"synthetic-voice"}}},
+		{ID: "unconfigured", Configured: false, Transports: []string{"webrtc"}, Brains: []string{"agent-consult"}, VoicesByModel: map[string][]string{"must-not-appear": {"voice"}}},
+	})
+	if len(choices) != 2 || choices[0].id != "" || !strings.Contains(choices[1].label, "future-model-2099") {
+		t.Fatal("models frozen to client version or invalid provider exposed")
+	}
+}

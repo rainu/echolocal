@@ -58,3 +58,15 @@ func TestCorruptRoutingFailsClosedWithoutHAFallback(t *testing.T) {
 		t.Fatal("corrupt file overwritten")
 	}
 }
+
+func TestVoiceModelChoicePersistsIndependentlyPerSlot(t *testing.T) {
+	path := t.TempDir() + "/routing.json"
+	s := load(path)
+	if e := s.Update(0, func(v *Slot) { v.Provider = "synthetic-provider"; v.Model = "future-model-2099" }); e != nil {
+		t.Fatal(e)
+	}
+	again := load(path)
+	if again.Get(0).Model != "future-model-2099" || again.Get(1).Model != "" {
+		t.Fatal("model selection lost or shared between slots")
+	}
+}

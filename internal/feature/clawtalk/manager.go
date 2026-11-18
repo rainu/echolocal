@@ -127,7 +127,6 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	})
 	_ = claim
 	a := newAudio(ctx, m.Mute)
-	a.onPlay = func() { m.Controller.Activity(talk.Speaking) }
 	bound, bindErr := claw.Get().BindTalk()
 	if bindErr != nil {
 		a.Close()
@@ -135,11 +134,13 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		return
 	}
 	b := talk.NewSession(bound, v.Context, a)
+	b.Provider, b.Model = v.Provider, v.Model
 	m.mu.Lock()
 	m.lastBackend = b
 	m.lastAudio = a
 	m.mu.Unlock()
 	b.Activity = m.Controller.Activity
+	a.onPlay = b.Playback
 	b.UserSpeech = m.Controller.UserSpeech
 	b.End = func() { m.Stop() }
 	b.Failure = m.Controller.Fail
