@@ -48,6 +48,7 @@ type Session struct {
 	statsLink         atomic.Pointer[rtc.Link]
 	stage             atomic.Int32
 	setupMS           atomic.Int64
+	reason            atomic.Value
 	pendingTools      atomic.Int32
 	tools, utterances atomic.Uint64
 	responseEpoch     atomic.Uint64
@@ -68,7 +69,12 @@ func (s *Session) fail() {
 		}
 	})
 }
-func (s *Session) Open(parent context.Context) error {
+func (s *Session) Open(parent context.Context) (openErr error) {
+	defer func() {
+		if openErr != nil {
+			s.reason.Store(safeReason(openErr))
+		}
+	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	began := time.Now()
@@ -84,6 +90,16 @@ func (s *Session) Open(parent context.Context) error {
 	}
 	s.unsubscribe = unsubscribe
 	go s.control(ctx, events)
+	// Creation is the authoritative capability/authentication check; no fallback.
+	s.stage.Store(3)
+	var launch connection.TalkLaunch
+	err = s.Client.CallTalk(startup, "talk.client.create", map[string]any{"sessionKey": s.Target, "voiceSessionId": s.id, "mode": "realtime", "transport": "webrtc", "brain": "agent-consult", "capabilities": []string{"gateway-control-v1"}}, &launch)
+	if err != nil {
+		return err
+	}
+	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" || launch.ClientControl.Owner != "gateway" {
+		return errors.New("talk_contract_invalid")
+	}
 	s.stage.Store(2)
 	var catalogue struct {
 		Realtime struct {
@@ -96,8 +112,25 @@ func (s *Session) Open(parent context.Context) error {
 			}
 		}
 	}
-	if err = s.Client.CallTalk(startup, "talk.catalog", map[string]any{"sessionKey": s.Target}, &catalogue); err != nil {
-		return err
+	for attempt := 0; attempt < 8; attempt++ {
+		err = s.Client.CallTalk(startup, "talk.catalog", map[string]any{"sessionKey": s.Target}, &catalogue)
+		if err == nil {
+			break
+		}
+		var rejected *connection.RPCRejection
+		if !errors.As(err, &rejected) || !rejected.Retryable {
+			return err
+		}
+		if attempt == 7 {
+			return err
+		}
+		wait := time.NewTimer(time.Duration(250*(1<<min(attempt, 2))) * time.Millisecond)
+		select {
+		case <-wait.C:
+		case <-startup.Done():
+			wait.Stop()
+			return startup.Err()
+		}
 	}
 	capable := false
 	for _, provider := range catalogue.Realtime.Providers {
@@ -107,16 +140,6 @@ func (s *Session) Open(parent context.Context) error {
 	}
 	if !catalogue.Realtime.Ready || !capable {
 		return errors.New("talk_capability_unavailable")
-	}
-	// Creation is the authoritative capability/authentication check; no fallback.
-	s.stage.Store(3)
-	var launch connection.TalkLaunch
-	err = s.Client.CallTalk(startup, "talk.client.create", map[string]any{"sessionKey": s.Target, "voiceSessionId": s.id, "mode": "realtime", "transport": "webrtc", "brain": "agent-consult", "capabilities": []string{"gateway-control-v1"}}, &launch)
-	if err != nil {
-		return err
-	}
-	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" || launch.ClientControl.Owner != "gateway" {
-		return errors.New("talk_contract_invalid")
 	}
 	connected := make(chan struct{})
 	var once sync.Once
@@ -306,6 +329,7 @@ func (s *Session) activity(state State) {
 
 type Diagnostics struct {
 	Stage                                   string
+	Reason                                  string
 	SetupMS                                 int64
 	Sent, Received, Lost, Tools, Utterances uint64
 }
@@ -317,6 +341,9 @@ func (s *Session) Diagnostics() Diagnostics {
 		n = 0
 	}
 	d := Diagnostics{Stage: names[n], SetupMS: s.setupMS.Load(), Tools: s.tools.Load(), Utterances: s.utterances.Load()}
+	if value := s.reason.Load(); value != nil {
+		d.Reason = value.(string)
+	}
 	if l := s.statsLink.Load(); l != nil {
 		stats := l.Stats()
 		d.Sent = stats.AudioSent
@@ -333,4 +360,18 @@ func has(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func safeReason(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "cancelled"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	switch err.Error() {
+	case "rpc_rejected", "rpc_cancelled", "rpc_timeout", "rpc_busy", "rpc_disconnected", "rpc_delivery_uncertain", "rpc_invalid_response", "talk_control_unavailable", "talk_contract_invalid", "talk_capability_unavailable", "talk_peer_failed", "talk_offer_failed", "talk_offer_rejected", "talk_offer_origin", "talk_answer_failed", "talk_answer_invalid", "talk_provider_failed", "talk_start_timeout", "talk_audio_unavailable", "talk_connection_changed", "talk_launch_invalid":
+		return err.Error()
+	}
+	return "talk_failed"
 }

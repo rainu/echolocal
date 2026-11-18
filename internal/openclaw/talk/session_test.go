@@ -3,6 +3,7 @@ package talk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/libcountertop/pkg/media/rtc"
 	"sync"
@@ -25,12 +26,16 @@ func (d *fakeDevice) StopOutput()                      {}
 func (d *fakeDevice) ReadyTone()                       {}
 
 type fakeControl struct {
-	mu      sync.Mutex
-	event   chan connection.TalkEvent
-	peer    *rtc.Link
-	id      string
-	capable bool
-	closed  atomic.Int32
+	mu           sync.Mutex
+	event        chan connection.TalkEvent
+	peer         *rtc.Link
+	id           string
+	capable      bool
+	created      bool
+	warming      int
+	catalogCalls int
+	createCalls  int
+	closed       atomic.Int32
 }
 
 func (f *fakeControl) SubscribeTalk() (<-chan connection.TalkEvent, func(), error) {
@@ -39,9 +44,19 @@ func (f *fakeControl) SubscribeTalk() (<-chan connection.TalkEvent, func(), erro
 func (f *fakeControl) CallTalk(ctx context.Context, method string, params, result any) error {
 	switch method {
 	case "talk.catalog":
+		f.catalogCalls++
+		if f.warming > 0 {
+			f.warming--
+			return &connection.RPCRejection{Retryable: true}
+		}
+		if !f.created {
+			return errors.New("synthetic context does not exist before creation")
+		}
 		b, _ := json.Marshal(map[string]any{"realtime": map[string]any{"ready": f.capable, "activeProvider": "synthetic", "providers": []any{map[string]any{"id": "synthetic", "configured": true, "transports": []string{"webrtc"}, "brains": []string{"agent-consult"}}}}})
 		return json.Unmarshal(b, result)
 	case "talk.client.create":
+		f.createCalls++
+		f.created = true
 		p := params.(map[string]any)
 		f.id = p["voiceSessionId"].(string)
 		launch := result.(*connection.TalkLaunch)
@@ -126,5 +141,27 @@ func TestPlaybackCompletionCannotExpireAnActiveOrNewerResponse(t *testing.T) {
 	session.afterPlayback(ctx, 1)
 	if last.Load() != 0 {
 		t.Fatal("old response changed newer activity")
+	}
+}
+
+func TestSafeReasonNeverIncludesProviderOrContextDetails(t *testing.T) {
+	if got := safeReason(errors.New("synthetic-private-context synthetic-secret")); got != "talk_failed" {
+		t.Fatal("raw error leaked")
+	}
+	if got := safeReason(errors.New("rpc_rejected")); got != "rpc_rejected" {
+		t.Fatal("safe reason missing")
+	}
+}
+
+func TestCatalogWarmingRetriesOnlyTheReadNotSessionCreation(t *testing.T) {
+	d := &fakeDevice{frames: make(chan []int16)}
+	control := &fakeControl{event: make(chan connection.TalkEvent, 8), warming: 1}
+	session := NewSession(control, "agent:synthetic:context", d)
+	if err := session.Open(context.Background()); err == nil {
+		t.Fatal("unready provider accepted")
+	}
+	session.Close()
+	if control.catalogCalls != 2 || control.createCalls != 1 || !control.created || d.started.Load() != 0 {
+		t.Fatal("warming retry or capture gate failed")
 	}
 }

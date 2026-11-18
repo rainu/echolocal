@@ -130,7 +130,7 @@ func (r *rpcLink) call(ctx context.Context, method string, params any, result an
 			return errors.New("rpc_delivery_uncertain")
 		}
 		if !f.OK {
-			return errors.New("rpc_rejected")
+			return &RPCRejection{Retryable: f.Error.Code == "UNAVAILABLE" && f.Error.Retryable}
 		}
 		if result != nil && json.Unmarshal(f.Payload, result) != nil {
 			return errors.New("rpc_invalid_response")
@@ -158,3 +158,9 @@ func (c *Client) EnableTalk() error {
 	}
 	return nil
 }
+
+// RPCRejection contains no Gateway text or identifiers. Retryable is only set
+// for an explicit retryable UNAVAILABLE response, never an uncertain delivery.
+type RPCRejection struct{ Retryable bool }
+
+func (e *RPCRejection) Error() string { return "rpc_rejected" }
