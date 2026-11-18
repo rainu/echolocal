@@ -66,3 +66,14 @@ Each OpenClaw slot has separate start/end sound choices, including Default, Off,
 Speaker-preemption and provider-end callbacks retain the cancellation function of their own activation, never a global stop targeting a possible successor. Terminal and activity updates are generation-fenced. User cancellation during connecting is reported as ended rather than a random provider failure. This closes a demonstrable stale-callback race; it does not prove that race caused the previously reported silent attempt.
 
 Diagnostics retain at most six completed activation reports in device memory, plus current counters. Reports contain lifecycle stage, safe failure class, timing and aggregate media counters, never voice/target IDs, captions, audio or signaling. The ring is not persisted across restart. Queued-output clearing is counted separately to distinguish provider-confirmed interruption from packet loss or hardware underrun. No requests are replayed and no extra speech suppression, model override or automatic reconnection loop is added.
+
+
+## Caption display and punctuation regression
+
+The active Talk page now displays recognized user and assistant turns, newest first, with wrapped text and explicit role labels. The screen uses provider-final captions; it does not promise word-by-word transcription or sample-accurate synchronization with speech. A separate capture indicator requires a fresh microphone frame within 500ms and current capture ownership. Transport readiness alone cannot light it. Capture activity is not proof of correct speech recognition or acoustic echo rejection.
+
+A history entry in the assistant submenu and the active page opens this device's last six activations. The volatile display cache retains at most 32 captions per activation and 4096 Unicode code points per caption. It is not written to disk or included in diagnostics; restarting the service clears it. It does not retrieve or display older Gateway contexts, tool results or other devices' conversations. Late callbacks and duplicate turn IDs cannot enter the current activation.
+
+ASR may place a courtesy suffix in a separate punctuation-delimited clause. End-command recognition now ignores only complete trailing courtesy clauses before checking the explicit command; negated/explanatory utterances remain excluded. End feedback remains tied to actual local teardown, not the model saying farewell.
+
+The playout reserve starts at 120ms on a healthy connection. Actual packet-arrival stalls can raise the next rebuffer target to at most 400ms, with a bounded 600ms software queue. Learning does not pause an already playing queue, does not gate semantic Live responses, and does not add a provider round trip. This can mitigate repeated jitter after a stall; it cannot eliminate the first unexpected stall or a slow model/agent response. Audible quality still requires hardware acceptance.

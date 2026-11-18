@@ -41,6 +41,7 @@ type Session struct {
 	Provider, Model   string
 	Audio             Device
 	Activity          func(State)
+	Caption           func(role, text, id string)
 	UserSpeech        func()
 	End, Failure      func()
 	mu                sync.Mutex
@@ -316,6 +317,9 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 					continue
 				}
 				if p.Role == "assistant" {
+					if s.Caption != nil {
+						s.Caption(p.Role, p.Text, "")
+					}
 					if s.nativeEnabled.Load() {
 						s.native.responses.Add(1)
 					}
@@ -325,6 +329,9 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 					continue
 				}
 				s.utterances.Add(1)
+				if s.Caption != nil {
+					s.Caption(p.Role, p.Text, "")
+				}
 				if !s.nativeEnabled.Load() {
 					s.Audio.StopOutput()
 				}
@@ -406,6 +413,18 @@ func EndPhrase(text string) bool {
 	if len(clauses) == 0 {
 		return false
 	}
+	// ASR may punctuate a courtesy suffix as a separate clause. Skip only
+	// complete courtesy clauses, never arbitrary words or negations.
+	for len(clauses) > 1 {
+		tail := strings.TrimSpace(clauses[len(clauses)-1])
+		switch tail {
+		case "danke", "vielen dank", "bitte", "thanks", "thank you", "please", "grazie", "cảm ơn":
+			clauses = clauses[:len(clauses)-1]
+		default:
+			goto commandClause
+		}
+	}
+commandClause:
 	text = strings.TrimSpace(clauses[len(clauses)-1])
 	text = strings.Join(strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }), " ")
 	commands := []string{"end conversation", "stop conversation", "goodbye", "gespräch beenden", "gesprach beenden", "unterhaltung beenden", "auf wiedersehen", "termina conversazione", "fine conversazione", "arrivederci", "kết thúc cuộc trò chuyện", "tạm biệt"}

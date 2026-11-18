@@ -187,3 +187,24 @@ func TestStartupSendsOnlySilenceUntilTransportAndAudioReady(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeFinalCaptionReachesDisplayBeforeEnd(t *testing.T) {
+	s, _, _ := nativeHarness(t)
+	var mu sync.Mutex
+	roles := []string{}
+	s.Caption = func(role, text, id string) { mu.Lock(); roles = append(roles, role); mu.Unlock() }
+	ended := make(chan struct{})
+	s.End = func() { close(ended) }
+	emit(s, `{"type":"turn.done","turn":{"id":"a","role":"assistant","transcript":"synthetic answer"}}`)
+	emit(s, `{"type":"turn.done","turn":{"id":"u","role":"user","transcript":"Unterhaltung beenden, bitte"}}`)
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("punctuated end command did not terminate native session")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(roles) != 2 || roles[0] != "assistant" || roles[1] != "user" {
+		t.Fatal("display missed final captions")
+	}
+}

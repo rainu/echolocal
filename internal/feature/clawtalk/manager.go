@@ -13,10 +13,8 @@ import (
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/layout"
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
-	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	"github.com/ygelfand/libcountertop/pkg/display/shell"
 	sharedcomponent "github.com/ygelfand/libcountertop/pkg/runtime/component"
-	"github.com/ygelfand/libcountertop/pkg/say"
 	"sync"
 	"time"
 )
@@ -24,6 +22,7 @@ import (
 type Manager struct {
 	generation  uint64
 	history     talk.History
+	captions    talk.ConversationLog
 	Store       *Store
 	Controller  *talk.Controller
 	mu          sync.Mutex
@@ -95,6 +94,7 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 	m.active = true
 	m.generation++
 	generation := m.generation
+	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio = nil, nil
 	m.error = false
 	m.forcedMuted = false
@@ -157,6 +157,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	b.Activity = func(state talk.State) { m.activityOwned(generation, state) }
 	a.onPlay = b.Playback
 	b.UserSpeech = func() { m.userSpeechOwned(generation) }
+	b.Caption = func(role, text, id string) { m.captionOwned(generation, role, text, id) }
 	b.End = cancel
 	b.Failure = func() { m.markOwned(generation, talk.Failed); cancel() }
 	if e = m.Controller.Start(ctx, b, time.Duration(v.Timeout)*time.Second); e != nil {
@@ -189,15 +190,6 @@ func (m *Manager) state() talk.State {
 		return talk.Failed
 	}
 	return m.Controller.State()
-}
-func (m *Manager) conversationPage() *shell.Page {
-	return &shell.Page{
-		Title: "OpenClaw",
-		Build: func() ([]menu.Row, []func(int)) {
-			return []menu.Row{{Label: say.T("clawtalk.state." + string(m.state())), Hint: say.T("clawtalk.end_hint"), Kind: menu.Plain}}, []func(int){nil}
-		},
-		Actions: []shell.Action{{Label: say.T("clawtalk.end"), MinHeight: 72, Role: shell.Danger, Do: func() { m.Stop() }}},
-	}
 }
 
 func (m *Manager) Mute() {

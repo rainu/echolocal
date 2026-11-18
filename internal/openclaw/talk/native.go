@@ -223,6 +223,9 @@ func (s *Session) appendTranscript(ctx context.Context, role, text, turnID strin
 	}
 	hash := sha256.Sum256([]byte(s.id + "|" + role + "|" + turnID))
 	item := voiceTranscript{role, text, "echo-" + hex.EncodeToString(hash[:16])}
+	if s.Caption != nil {
+		s.Caption(role, text, item.id)
+	}
 	select {
 	case s.native.transcripts <- item:
 	default:

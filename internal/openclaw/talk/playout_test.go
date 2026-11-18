@@ -66,3 +66,36 @@ func TestShortTailEventuallyPlaysAndResetRestartsPrefill(t *testing.T) {
 		t.Fatal("reset did not restore prefill")
 	}
 }
+
+func TestPlayoutLearnsBoundedReserveWithoutPausingActiveSpeech(t *testing.T) {
+	var b PlayoutBuffer
+	b.ObserveGap(20)
+	if b.reserveFrames != 0 {
+		t.Fatal("normal packet cadence increased latency")
+	}
+	b.ObserveGap(386)
+	if b.reserveFrames != PlayoutRate*400/1000 {
+		t.Fatal("stall reserve not learned/bounded")
+	}
+	b.Push(make([]int16, 960*2))
+	for i := 0; i < 39; i++ {
+		if len(b.Take(0)) != 0 {
+			t.Fatal("learned reserve bypassed")
+		}
+	}
+	if len(b.Take(0)) == 0 {
+		t.Fatal("short tail stranded by learned reserve")
+	}
+	b.Push(make([]int16, 960*2))
+	b.ObserveGap(9999)
+	if len(b.Take(0)) == 0 {
+		t.Fatal("active speech paused to grow reserve")
+	}
+	if b.reserveFrames > PlayoutRate*400/1000 {
+		t.Fatal("reserve unbounded")
+	}
+	b.Reset()
+	if b.reserveFrames != PlayoutRate*400/1000 {
+		t.Fatal("interruption discarded learned network reserve")
+	}
+}

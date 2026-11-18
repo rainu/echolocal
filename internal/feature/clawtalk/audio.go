@@ -21,6 +21,7 @@ import (
 type deviceAudio struct {
 	startTone, endTone               string
 	ready                            atomic.Bool
+	lastCaptureMS                    atomic.Int64
 	playMu                           sync.Mutex
 	playout                          talk.PlayoutBuffer
 	playDone                         chan struct{}
@@ -97,6 +98,7 @@ func (a *deviceAudio) pump() {
 				return
 			}
 			a.captured.Add(1)
+			a.lastCaptureMS.Store(time.Now().UnixMilli())
 			select {
 			case a.frames <- f:
 			default:
@@ -119,7 +121,12 @@ func (a *deviceAudio) Play(pcm []int16) {
 		return
 	}
 	if !a.lastPacket.IsZero() {
-		recordMax(&a.maxReceiveGapMS, now.Sub(a.lastPacket).Milliseconds())
+		gap := now.Sub(a.lastPacket).Milliseconds()
+		recordMax(&a.maxReceiveGapMS, gap)
+		// Learn only a mid-speech stall, not ordinary idle/comfort-noise gaps.
+		if audible && !a.lastSpeech.IsZero() && now.Sub(a.lastSpeech) < time.Second {
+			a.playout.ObserveGap(int(gap))
+		}
 	}
 	a.lastPacket = now
 	if audible {

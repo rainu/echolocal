@@ -6,6 +6,7 @@ type PlayoutBuffer struct {
 	samples            []int16
 	started            bool
 	waitTicks          int
+	reserveFrames      int
 	Underruns, Dropped uint64
 	PeakFrames         int
 }
@@ -15,7 +16,7 @@ const (
 	PlayoutRate     = 48000
 	prefillFrames   = PlayoutRate * 120 / 1000
 	laneFrames      = PlayoutRate * 100 / 1000
-	maxBufferFrames = PlayoutRate * 300 / 1000
+	maxBufferFrames = PlayoutRate * 600 / 1000
 )
 
 func (b *PlayoutBuffer) Push(pcm []int16) {
@@ -37,7 +38,8 @@ func (b *PlayoutBuffer) Take(queuedFrames int) []int16 {
 			return nil
 		}
 		b.waitTicks++
-		if frames < prefillFrames && b.waitTicks < 12 {
+		reserve := maxInt(prefillFrames, b.reserveFrames)
+		if frames < reserve && b.waitTicks < reserve/(PlayoutRate/100) {
 			return nil
 		}
 		b.waitTicks = 0
@@ -89,4 +91,15 @@ func Audible(pcm []int16) bool {
 		energy += v * v
 	}
 	return energy > int64(len(pcm))*16*16
+}
+
+// ObserveGap learns a bounded reserve from actual packet-arrival stalls.
+// Healthy connections keep the 120ms startup budget. A stalled stream uses
+// up to 400ms on the next rebuffer, never pauses an already playing queue.
+func (b *PlayoutBuffer) ObserveGap(milliseconds int) {
+	if milliseconds < 60 {
+		return
+	}
+	milliseconds = min(400, milliseconds+20)
+	b.reserveFrames = maxInt(b.reserveFrames, PlayoutRate*milliseconds/1000)
 }
