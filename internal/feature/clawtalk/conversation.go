@@ -41,7 +41,7 @@ func (m *Manager) conversationPage() *shell.Page {
 	return &shell.Page{Title: "OpenClaw", Build: func() ([]menu.Row, []func(int)) {
 		state := m.state()
 		m.mu.Lock()
-		active, a := m.active, m.lastAudio
+		active, a, generation := m.active, m.lastAudio, m.generation
 		m.mu.Unlock()
 		micKey := "clawtalk.mic_off"
 		if active {
@@ -53,8 +53,11 @@ func (m *Manager) conversationPage() *shell.Page {
 		rows := []menu.Row{{Label: say.T("clawtalk.state." + string(state)), Hint: say.T("clawtalk.end_hint"), Kind: menu.Plain}, {Label: say.T(micKey), Hint: say.T("clawtalk.caption_hint"), Kind: menu.Plain}}
 		calls := m.captions.Snapshot()
 		var entries []talk.Caption
-		if len(calls) > 0 {
-			entries = calls[len(calls)-1].Entries
+		for _, c := range calls {
+			if c.Generation == generation {
+				entries = c.Entries
+				break
+			}
 		}
 		rows = append(rows, captionRows(entries)...)
 		return rows, make([]func(int), len(rows))
@@ -66,14 +69,21 @@ func (m *Manager) conversationPage() *shell.Page {
 
 // HistoryPage only exposes this device's bounded in-memory caption cache.
 func (m *Manager) HistoryPage() *shell.Page {
-	return &shell.Page{Title: say.T("clawtalk.history"), Actions: m.historyEndActions(), Build: func() ([]menu.Row, []func(int)) {
+	return &shell.Page{Title: say.T("clawtalk.history"), Actions: append(m.historyEndActions(), m.deleteHistoryAction(0)), Build: func() ([]menu.Row, []func(int)) {
 		calls := m.captions.Snapshot()
 		rows := []menu.Row{}
 		for i := len(calls) - 1; i >= 0; i-- {
-			c := calls[i]
-			rows = append(rows, menu.Row{Label: c.Started.Local().Format("15:04:05"), Kind: menu.Chevron, Open: func() menu.View {
-				return &shell.Page{Title: c.Started.Local().Format("15:04:05"), Actions: m.historyEndActions(), Build: func() ([]menu.Row, []func(int)) {
-					rows := captionRows(c.Entries)
+			generation, started := calls[i].Generation, calls[i].Started
+			rows = append(rows, menu.Row{Label: started.Local().Format("15:04:05"), Kind: menu.Chevron, Open: func() menu.View {
+				return &shell.Page{Title: started.Local().Format("15:04:05"), Actions: append(m.historyEndActions(), m.deleteHistoryAction(generation)), Build: func() ([]menu.Row, []func(int)) {
+					var entries []talk.Caption
+					for _, c := range m.captions.Snapshot() {
+						if c.Generation == generation {
+							entries = c.Entries
+							break
+						}
+					}
+					rows := captionRows(entries)
 					return rows, make([]func(int), len(rows))
 				}}
 			}})
@@ -91,3 +101,29 @@ func (m *Manager) historyEndActions() []shell.Action {
 
 // Show opens the current/last display without starting audio or a new session.
 func (m *Manager) Show() { shellfeature.Get().Push(m.conversationPage()) }
+
+func (m *Manager) deleteHistoryAction(generation uint64) shell.Action {
+	key := "clawtalk.delete_one"
+	if generation == 0 {
+		key = "clawtalk.delete_all"
+	}
+	return shell.Action{Label: say.T(key), MinHeight: 64, Role: shell.Danger, Do: func() {
+		shellfeature.Get().Push(&shell.Page{Title: say.T(key), Build: func() ([]menu.Row, []func(int)) {
+			return []menu.Row{{Label: say.T("clawtalk.history_local"), Hint: say.T("clawtalk.delete_hint"), Kind: menu.Plain}}, []func(int){nil}
+		}, Actions: []shell.Action{
+			{Label: say.T("openclaw.action.cancel"), MinHeight: 64, Do: func() { shellfeature.Get().Pop() }},
+			{Label: say.T("openclaw.action.delete"), MinHeight: 64, Role: shell.Danger, Do: func() {
+				m.mu.Lock()
+				if generation == 0 {
+					m.captions.Clear()
+				} else {
+					m.captions.Remove(generation)
+				}
+				m.uiDirty = true
+				m.mu.Unlock()
+				shellfeature.Get().Pop()
+				shellfeature.Get().Redraw()
+			}},
+		}})
+	}}
+}

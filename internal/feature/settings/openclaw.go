@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
 	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	"github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/echolocal/internal/openclaw"
@@ -17,7 +18,16 @@ import (
 
 func claw() *openclaw.Client { return featureclaw.Get().Client }
 
-func openclawPage() *sharedshell.Page { return openclawClientPage(claw()) }
+func openclawPage() *sharedshell.Page {
+	return &sharedshell.Page{Title: say.T("openclaw.title"), Build: func() ([]menu.Row, []func(int)) {
+		rows := []menu.Row{{Label: say.T("openclaw.connection"), Kind: menu.Chevron, Open: func() menu.View { return openclawClientPage(claw()) }}}
+		for slot := 0; slot < 2; slot++ {
+			rows = append(rows, menu.Row{Label: say.F("assistants.slot", map[string]any{"N": slot + 1}), Kind: menu.Chevron, Open: func() menu.View { return talkOptionsPage(slot) }})
+		}
+		rows = append(rows, menu.Row{Label: say.T("clawtalk.history"), Hint: say.T("clawtalk.history_local"), Kind: menu.Chevron, Open: func() menu.View { return clawtalk.Get().HistoryPage() }})
+		return rows, make([]func(int), len(rows))
+	}}
+}
 
 func openclawClientPage(c *openclaw.Client) *sharedshell.Page {
 	var draftMu sync.Mutex

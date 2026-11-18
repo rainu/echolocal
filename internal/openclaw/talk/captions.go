@@ -71,3 +71,24 @@ func (l *ConversationLog) Snapshot() []Conversation {
 	}
 	return out
 }
+
+// Remove erases only the local display cache. A deleted active generation is
+// not recreated by future captions; the next activation starts a new cache.
+func (l *ConversationLog) Remove(generation uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i := range l.calls {
+		if l.calls[i].Generation == generation {
+			copy(l.calls[i:], l.calls[i+1:])
+			l.calls[len(l.calls)-1] = Conversation{}
+			l.calls = l.calls[:len(l.calls)-1]
+			return
+		}
+	}
+}
+func (l *ConversationLog) Clear() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	clear(l.calls)
+	l.calls = nil
+}

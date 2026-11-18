@@ -79,3 +79,10 @@ ASR may place a courtesy suffix in a separate punctuation-delimited clause. End-
 The playout reserve starts at 120ms on a healthy connection. Actual packet-arrival stalls can raise the next rebuffer target to at most 400ms, with a bounded 600ms software queue. Learning does not pause an already playing queue, does not gate semantic Live responses, and does not add a provider round trip. This can mitigate repeated jitter after a stall; it cannot eliminate the first unexpected stall or a slow model/agent response. Audible quality still requires hardware acceptance.
 
 The live display refreshes only on changed captions, lifecycle or capture freshness, rather than rebuilding a long conversation ten times per second. The developer `talk show` command opens the current/last page without starting capture, allowing a real-device display inspection without room audio.
+
+
+## Centralized settings and local-history deletion
+
+The assistant submenu now contains only the speech-target selector for the OpenClaw integration; shared wake-word and device options remain unchanged. The OpenClaw root contains Connection (the existing connection editor), Assistant 1/2 conversation settings, and a shared local-history browser. Agent, catalogue model, resume/context, start/end tones and inactivity timeout remain per slot, but are edited centrally. Inactive slots explain where to choose their speech target.
+
+The local caption browser supports deleting a single activation or clearing all local display histories, each with a confirmation that explicitly excludes Gateway conversation deletion. It neither deletes a remote context nor changes resume/context selection. Deleting an active cache hides subsequent captions for that generation until a fresh activation. Detail pages look up the generation on redraw instead of retaining a stale caption snapshot; the live page cannot fall back to an older conversation after deletion. Core tests cover erase, non-resurrection and future activations.

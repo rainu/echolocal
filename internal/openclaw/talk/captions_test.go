@@ -32,3 +32,27 @@ func TestCaptionCacheBoundedIsolatedAndCopied(t *testing.T) {
 		t.Fatal("caption text unbounded")
 	}
 }
+
+func TestDeletedCaptionHistoryCannotResurrect(t *testing.T) {
+	var l ConversationLog
+	l.Begin(1)
+	l.Append(1, "user", "synthetic", "a")
+	l.Begin(2)
+	l.Append(2, "assistant", "synthetic", "b")
+	l.Remove(2)
+	l.Append(2, "user", "late", "c")
+	if got := l.Snapshot(); len(got) != 1 || got[0].Generation != 1 {
+		t.Fatal("deleted active call resurrected")
+	}
+	l.Remove(99)
+	l.Clear()
+	l.Append(2, "user", "late", "c")
+	if len(l.Snapshot()) != 0 {
+		t.Fatal("clear resurrected")
+	}
+	l.Begin(3)
+	l.Append(3, "user", "fresh", "d")
+	if len(l.Snapshot()) != 1 || len(l.Snapshot()[0].Entries) != 1 {
+		t.Fatal("future activation blocked")
+	}
+}

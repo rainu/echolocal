@@ -14,7 +14,7 @@ func TestTalkMenusTranslateAndKeepRoutingIdentifiersBackendOnly(t *testing.T) {
 	defer say.Use(before)
 	for _, lang := range say.Languages() {
 		say.Use(lang)
-		rows, acts, replace := talkRowsFor(0, clawtalk.Slot{OpenClaw: true, Agent: "synthetic-private-agent", Context: "agent:synthetic-private-agent:private", Resume: true, Timeout: 60})
+		rows, acts, replace := talkOptionsRowsFor(0, clawtalk.Slot{OpenClaw: true, Agent: "synthetic-private-agent", Context: "agent:synthetic-private-agent:private", Resume: true, Timeout: 60})
 		if !replace || len(rows) != len(acts) {
 			t.Fatal("routing row/action mismatch")
 		}
@@ -24,6 +24,10 @@ func TestTalkMenusTranslateAndKeepRoutingIdentifiersBackendOnly(t *testing.T) {
 					t.Errorf("%s identifier leaked into presentation", lang)
 				}
 			}
+		}
+		targetRows, _, targetReplace := talkRowsFor(0, clawtalk.Slot{OpenClaw: true})
+		if !targetReplace || len(targetRows) != 1 || targetRows[0].Label != say.T("clawtalk.target") {
+			t.Fatal("OpenClaw options remain in assistant menu")
 		}
 		rows, _, replace = talkRowsFor(1, clawtalk.Slot{})
 		if replace || len(rows) != 1 || rows[0].Value != "Home Assistant" {
@@ -39,5 +43,20 @@ func TestVoiceModelPickerIsDrivenByGatewayCatalogue(t *testing.T) {
 	})
 	if len(choices) != 2 || choices[0].id != "" || !strings.Contains(choices[1].label, "future-model-2099") {
 		t.Fatal("models frozen to client version or invalid provider exposed")
+	}
+}
+
+func TestOpenClawRootHasCentralSlotAndHistoryNavigation(t *testing.T) {
+	rows, acts := openclawPage().Build()
+	if len(rows) != 4 || len(acts) != 4 {
+		t.Fatal("unexpected central navigation")
+	}
+	for _, r := range rows {
+		if r.Open == nil {
+			t.Fatal("central row has no destination")
+		}
+	}
+	if rows[3].Label != say.T("clawtalk.history") {
+		t.Fatal("global history missing")
 	}
 }

@@ -33,12 +33,17 @@ func talkRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), bool) {
 	}
 	rows := []menu.Row{{Label: say.T("clawtalk.target"), Value: target, Kind: menu.Chevron, Open: func() menu.View { return talkTargetPage(slot) }}}
 	acts := []func(int){nil}
+	return rows, acts, s.OpenClaw
+}
+func talkOptionsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), bool) {
+	rows := []menu.Row{}
+	acts := []func(int){}
+	if !s.OpenClaw {
+		return []menu.Row{{Label: say.T("clawtalk.configure_target"), Kind: menu.Plain}}, []func(int){nil}, false
+	}
 	if talkSaveFailed.Load() {
 		rows = append(rows, menu.Row{Label: say.T("openclaw.error.storage"), Kind: menu.Plain})
 		acts = append(acts, nil)
-	}
-	if !s.OpenClaw {
-		return rows, acts, false
 	}
 	agent := s.AgentLabel
 	if agent == "" {
@@ -75,8 +80,6 @@ func talkRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), bool) {
 		menu.Row{Label: say.T("clawtalk.start_tone"), Value: talkToneLabel(s.StartTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, false) }},
 		menu.Row{Label: say.T("clawtalk.end_tone"), Value: talkToneLabel(s.EndTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, true) }})
 	acts = append(acts, nil, nil)
-	rows = append(rows, menu.Row{Label: say.T("clawtalk.history"), Kind: menu.Chevron, Open: func() menu.View { return clawtalk.Get().HistoryPage() }})
-	acts = append(acts, nil)
 	rows = append(rows, menu.Row{Label: say.T("clawtalk.timeout"), Value: say.F("clawtalk.seconds", map[string]any{"N": s.Timeout}), Kind: menu.Chevron, Open: func() menu.View { return talkTimeoutPage(slot) }})
 	acts = append(acts, nil)
 	return rows, acts, true
@@ -384,6 +387,13 @@ func talkTonePage(slot int, end bool) *sharedshell.Page {
 				}
 			})
 		}
+		return rows, acts
+	}}
+}
+
+func talkOptionsPage(slot int) *sharedshell.Page {
+	return &sharedshell.Page{Title: say.F("assistants.slot", map[string]any{"N": slot + 1}), Build: func() ([]menu.Row, []func(int)) {
+		rows, acts, _ := talkOptionsRowsFor(slot, clawtalk.Get().Store.Get(slot))
 		return rows, acts
 	}}
 }
