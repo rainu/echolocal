@@ -29,6 +29,7 @@ import (
 const Protocol = 4
 
 type credentials struct {
+	Talk          bool   `json:"talk,omitempty"`
 	BootstrapOnly bool   `json:"bootstrapOnly,omitempty"`
 	URL           string `json:"url"`
 	Bootstrap     string `json:"bootstrap,omitempty"`
@@ -47,6 +48,7 @@ type Status struct {
 }
 
 type Client struct {
+	rpc           *rpcLink
 	op            sync.Mutex
 	mu            sync.Mutex
 	path, version string
@@ -318,8 +320,12 @@ func connectParams(s credentials, nonce string, at int64, version string) map[st
 	if s.Token == "" && s.BootstrapOnly {
 		auth = map[string]any{"bootstrapToken": token}
 	}
-	payload := strings.Join([]string{"v3", id, "openclaw-linux", "ui", "operator", "", fmt.Sprint(at), token, nonce, "android", "tablet"}, "|")
-	return map[string]any{"minProtocol": Protocol, "maxProtocol": Protocol, "client": map[string]any{"id": "openclaw-linux", "displayName": "EchoLocal", "version": version, "platform": "android", "deviceFamily": "tablet", "mode": "ui"}, "role": "operator", "scopes": []string{}, "auth": auth, "device": map[string]any{"id": id, "publicKey": base64.RawURLEncoding.EncodeToString(public), "signature": base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(payload))), "signedAt": at, "nonce": nonce}}
+	scopes := []string{}
+	if s.Talk {
+		scopes = []string{"operator.read", "operator.talk"}
+	}
+	payload := strings.Join([]string{"v3", id, "openclaw-linux", "ui", "operator", strings.Join(scopes, ","), fmt.Sprint(at), token, nonce, "android", "tablet"}, "|")
+	return map[string]any{"minProtocol": Protocol, "maxProtocol": Protocol, "client": map[string]any{"id": "openclaw-linux", "displayName": "EchoLocal", "version": version, "platform": "android", "deviceFamily": "tablet", "mode": "ui"}, "role": "operator", "scopes": scopes, "auth": auth, "device": map[string]any{"id": id, "publicKey": base64.RawURLEncoding.EncodeToString(public), "signature": base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(payload))), "signedAt": at, "nonce": nonce}}
 }
 func classify(err error) string {
 	var dns *net.DNSError
@@ -465,6 +471,19 @@ func (c *Client) attempt(ctx context.Context) bool {
 			return false
 		}
 	}
+	link := newRPCLink(conn)
+	link.origin = s.URL
+	c.mu.Lock()
+	c.rpc = link
+	c.mu.Unlock()
+	defer func() {
+		link.close()
+		c.mu.Lock()
+		if c.rpc == link {
+			c.rpc = nil
+		}
+		c.mu.Unlock()
+	}()
 	c.mark("connected", "", "in", "hello")
 	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 	for {
@@ -476,6 +495,13 @@ func (c *Client) attempt(ctx context.Context) bool {
 			return true
 		}
 		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+		if msg.Type == "event" {
+			link.event(msg)
+		}
+		if msg.Type == "res" {
+			link.deliver(msg)
+			continue
+		}
 		if msg.Type == "event" && msg.Event == "shutdown" {
 			c.mark("disconnected", "unavailable", "in", "shutdown")
 			return true

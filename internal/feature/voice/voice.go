@@ -42,17 +42,20 @@ func build() *Voice {
 	ours := wake.Lib().Ours()
 	slots := wanted(ours, wakeword.Slots)
 
-	v := &Voice{satellite.New(
+	var v *Voice
+	v = &Voice{satellite.New(
 		&esphome.VoiceSatellite{OnExternalWakeWords: wake.Lib().Answer},
 		dependencies(),
 		satellite.Options{
-			Slots:   wakeword.Slots,
-			Initial: slots,
-			Timers:  timer.Get(),
-			Alarms:  alarm.Get(),
-			Sound:   speaker.Sound(),
-			Player:  media.Get(),
-			Save:    func(slot int, id string) error { return config.Set().Wake(slot).ID(id) },
+			Slots:         wakeword.Slots,
+			Route:         func(slot int, heard bool) bool { return routeTalk(v, slot) },
+			StopAlternate: stopTalk,
+			Initial:       slots,
+			Timers:        timer.Get(),
+			Alarms:        alarm.Get(),
+			Sound:         speaker.Sound(),
+			Player:        media.Get(),
+			Save:          func(slot int, id string) error { return config.Set().Wake(slot).ID(id) },
 		},
 	)}
 	slog.Info("wake words", "ours", len(ours), "slots", slots)
