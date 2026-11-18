@@ -47,3 +47,16 @@ func TestCaptionRowsTranslateOrderAndRetiredOwnership(t *testing.T) {
 		t.Fatal("retired captions entered current conversation")
 	}
 }
+
+func TestTalkActionsUseCurrentlySelectedLanguage(t *testing.T) {
+	before := say.Chosen()
+	defer say.Use(before)
+	m := &Manager{}
+	for _, lang := range say.Languages() {
+		say.Use(lang)
+		actions := m.conversationPage().Actions
+		if len(actions) != 2 || actions[0].Label != say.T("clawtalk.history") || actions[1].Label != say.T("clawtalk.end") {
+			t.Fatalf("stale action locale: %s", lang)
+		}
+	}
+}

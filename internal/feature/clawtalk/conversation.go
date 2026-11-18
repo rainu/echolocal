@@ -90,4 +90,4 @@ func (m *Manager) historyEndActions() []shell.Action {
 }
 
 // Show opens the current/last display without starting audio or a new session.
-func (m *Manager) Show() { shellfeature.Get().Push(m.page) }
+func (m *Manager) Show() { shellfeature.Get().Push(m.conversationPage()) }

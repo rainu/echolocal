@@ -13,7 +13,6 @@ import (
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/layout"
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
-	"github.com/ygelfand/libcountertop/pkg/display/shell"
 	sharedcomponent "github.com/ygelfand/libcountertop/pkg/runtime/component"
 	"sync"
 	"time"
@@ -34,12 +33,10 @@ type Manager struct {
 	forcedMuted bool
 	lastBackend *talk.Session
 	lastAudio   *deviceAudio
-	page        *shell.Page
 }
 
 var Get = sync.OnceValue(func() *Manager {
 	m := &Manager{Store: load(layout.StateDir + "/openclaw-assistants.json"), Controller: talk.New(), ctx: context.Background()}
-	m.page = m.conversationPage()
 	mute.Get().Changed.Listen(func(on bool) {
 		if on {
 			m.Mute()
@@ -118,7 +115,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}()
 	sh := shellfeature.Get()
 	idle.Get().Wake()
-	held := sh.Hold(m.page)
+	held := sh.Hold(m.conversationPage())
 	defer held.Keep(false)
 	v, e := m.Store.Target(slot)
 	if e != nil {
