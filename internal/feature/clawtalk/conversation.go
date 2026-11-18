@@ -16,6 +16,7 @@ func (m *Manager) captionOwned(generation uint64, role, text, id string) {
 	defer m.mu.Unlock()
 	if m.active && m.generation == generation {
 		m.captions.Append(generation, role, text, id)
+		m.uiDirty = true
 	}
 }
 func microphoneLive(active bool, a *deviceAudio, now int64) bool {
@@ -87,3 +88,6 @@ func (m *Manager) HistoryPage() *shell.Page {
 func (m *Manager) historyEndActions() []shell.Action {
 	return []shell.Action{{Label: say.T("clawtalk.end"), MinHeight: 72, Role: shell.Danger, Do: func() { m.Stop() }}}
 }
+
+// Show opens the current/last display without starting audio or a new session.
+func (m *Manager) Show() { shellfeature.Get().Push(m.page) }

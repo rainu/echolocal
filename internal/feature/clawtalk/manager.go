@@ -23,6 +23,7 @@ type Manager struct {
 	generation  uint64
 	history     talk.History
 	captions    talk.ConversationLog
+	uiDirty     bool
 	Store       *Store
 	Controller  *talk.Controller
 	mu          sync.Mutex
@@ -168,12 +169,25 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
+	var previousState talk.State
+	previousMic := false
 	for m.Controller.Busy() {
 		select {
 		case <-ctx.Done():
 			m.Controller.Stop()
 		case <-ticker.C:
-			sh.Redraw()
+			state := m.state()
+			live := microphoneLive(true, a, time.Now().UnixMilli())
+			m.mu.Lock()
+			dirty := m.uiDirty
+			m.uiDirty = false
+			m.mu.Unlock()
+			// Captions can be long. Do not rebuild the whole page at 10Hz
+			// when neither content, lifecycle nor capture status changed.
+			if dirty || state != previousState || live != previousMic {
+				sh.Redraw()
+				previousState, previousMic = state, live
+			}
 		}
 	}
 }

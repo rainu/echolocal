@@ -14,6 +14,10 @@ import (
 
 func talkCommands(t *harness.Tree) {
 	root := &cobra.Command{Use: "talk", Short: "Bounded Talk lifecycle diagnostics"}
+	root.AddCommand(&cobra.Command{Use: "show", Args: cobra.NoArgs, Short: "Show current or last Talk without starting capture", Run: func(cmd *cobra.Command, _ []string) {
+		clawtalk.Get().Show()
+		fmt.Fprintln(cmd.OutOrStdout(), "shown without starting capture")
+	}})
 	root.AddCommand(&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(clawtalk.Get().Status())
 	}})
