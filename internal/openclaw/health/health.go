@@ -38,10 +38,14 @@ type Snapshot struct {
 	Memory       Memory    `json:"memory"`
 	Disk         Disk      `json:"disk"`
 	LoadAverage  []float64 `json:"loadAverage,omitempty"`
+	CPULoad      CPULoad   `json:"cpuLoad"`
 }
 type Collector struct {
-	mu   sync.Mutex
-	last Snapshot
+	mu          sync.Mutex
+	last        Snapshot
+	load        cpuLoad
+	loadAttempt time.Time
+	readStat    func() ([]byte, error)
 }
 
 func ParseCPU(data string) (total, idle uint64, err error) {
@@ -91,15 +95,25 @@ func ParseMemory(data string) Memory {
 	}
 	return Memory{true, total, avail, total - avail}
 }
-func (c *Collector) Reset() { c.mu.Lock(); c.last = Snapshot{}; c.mu.Unlock() }
+func (c *Collector) Reset() {
+	c.mu.Lock()
+	c.last = Snapshot{}
+	c.load = cpuLoad{}
+	c.loadAttempt = time.Time{}
+	c.mu.Unlock()
+}
 func (c *Collector) Collect(ctx context.Context) (Snapshot, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if ctx.Err() != nil {
 		return Snapshot{}, ctx.Err()
 	}
+	if c.readStat == nil {
+		c.readStat = func() ([]byte, error) { return os.ReadFile("/proc/stat") }
+	}
+	c.sampleLoad(ctx.Err(), time.Now())
 	if c.last.MeasuredAtMS != 0 && time.Since(time.UnixMilli(c.last.MeasuredAtMS)) < time.Minute {
-		return c.last, nil
+		return c.withLoad(c.last), nil
 	}
 	s := Snapshot{CPU: CPU{Count: runtime.NumCPU(), IntervalMS: 1000}, Disk: Disk{Path: "/data"}}
 	started := time.Now()
@@ -149,7 +163,7 @@ func (c *Collector) Collect(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, ctx.Err()
 	}
 	c.last = s
-	return s, nil
+	return c.withLoad(s), nil
 }
 
 // HostStats returns only fields accepted by the current closed Gateway schema.
@@ -159,8 +173,8 @@ func (s Snapshot) HostStats() map[string]any {
 		return nil
 	}
 	p := map[string]any{"cpuCount": s.CPU.Count, "memoryTotalBytes": s.Memory.TotalBytes, "memoryFreeBytes": s.Memory.AvailableBytes}
-	if len(s.LoadAverage) == 3 {
-		p["loadAverage"] = s.LoadAverage
+	if s.CPULoad.Available && len(s.CPULoad.Averages) == 3 {
+		p["loadAverage"] = s.CPULoad.Averages
 	}
 	if s.Disk.Available {
 		p["diskTotalBytes"] = s.Disk.TotalBytes

@@ -3,6 +3,7 @@ package openclaw
 import (
 	"context"
 	"encoding/json"
+	"github.com/ygelfand/echolocal/internal/openclaw/health"
 	"time"
 )
 
@@ -12,6 +13,7 @@ func (c *Client) nodeHealth(ctx context.Context, r *rpcLink) {
 	if c.node == nil || c.access == nil {
 		return
 	}
+	var lastPublish time.Time
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
@@ -24,7 +26,7 @@ func (c *Client) nodeHealth(ctx context.Context, r *rpcLink) {
 		generation := c.access.generation
 		c.access.mu.Unlock()
 		result, err := c.access.Execute(ctx, "echolocal.diagnostics.status", json.RawMessage("{}"))
-		if err == nil {
+		if err == nil && (lastPublish.IsZero() || time.Since(lastPublish) >= time.Minute) {
 			if status, ok := result.(map[string]any); ok {
 				if stats, ok := status["hostStats"]; ok && stats != nil {
 					// Hold the policy lock through delivery so a completed revocation cannot
@@ -35,6 +37,7 @@ func (c *Client) nodeHealth(ctx context.Context, r *rpcLink) {
 						if e == nil {
 							send, done := context.WithTimeout(ctx, 3*time.Second)
 							_ = r.call(send, "node.event", map[string]any{"event": "node.host.stats", "payloadJSON": string(raw)}, nil)
+							lastPublish = time.Now()
 							done()
 						}
 					}
@@ -42,6 +45,6 @@ func (c *Client) nodeHealth(ctx context.Context, r *rpcLink) {
 				}
 			}
 		}
-		timer.Reset(time.Minute)
+		timer.Reset(health.LoadSampleInterval)
 	}
 }

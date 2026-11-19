@@ -116,3 +116,54 @@ func TestHealthUsesExistingNodeEventContract(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestHealthSamplesOftenButPublishesAtMostOncePerMinute(t *testing.T) {
+	var samples, sent atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ws, e := (&websocket.Upgrader{}).Upgrade(w, req, nil)
+		if e != nil {
+			return
+		}
+		defer ws.Close()
+		for {
+			var f map[string]any
+			if ws.ReadJSON(&f) != nil {
+				return
+			}
+			sent.Add(1)
+			if ws.WriteJSON(map[string]any{"type": "res", "id": f["id"], "ok": true, "payload": map[string]any{"handled": true}}) != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+	ws, _, e := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer ws.Close()
+	link := newRPCLink(ws)
+	defer link.close()
+	go func() {
+		for {
+			var f frame
+			if ws.ReadJSON(&f) != nil {
+				return
+			}
+			link.deliver(f)
+		}
+	}()
+	a := NewNodeAccess(filepath.Join(t.TempDir(), "grants"))
+	a.Register(NodeOperation{Command: "echolocal.diagnostics.status", Group: "diagnostics", Run: func(context.Context, json.RawMessage) (any, error) {
+		samples.Add(1)
+		return map[string]any{"hostStats": map[string]any{"cpuCount": 4, "memoryTotalBytes": 1024, "memoryFreeBytes": 512}}, nil
+	}})
+	c := NewNode(filepath.Join(t.TempDir(), "node"), "test", NodeMetadata{})
+	c.AttachNodeAccess(a)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	c.nodeHealth(ctx, link)
+	if samples.Load() != 2 || sent.Load() != 1 {
+		t.Fatalf("samples=%d events=%d", samples.Load(), sent.Load())
+	}
+}

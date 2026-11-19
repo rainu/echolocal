@@ -16,7 +16,9 @@ policy generation again under the policy lock before transmission. Cleanup
 clears the in-memory cache. An already in-flight delivery has a three-second
 deadline; a completed revocation cannot be followed by a new delivery.
 
-Collection is cached for at most 60 seconds, including diagnostic invocations.
+CPU utilization, RAM, disk and original kernel load are cached for at most
+60 seconds, including diagnostic invocations. CPU-demand load has its own
+in-memory five-second sampler and measurement timestamp (see below).
 The measurement time is `health.measuredAtMs` (Unix milliseconds), not the
 time that a cached result was requested. Per-metric `available` booleans
 distinguish unavailable values from genuine zero usage.
@@ -33,8 +35,9 @@ distinguish unavailable values from genuine zero usage.
   Available = f_bavail * block size; used = total - available (space not
   available to ordinary applications, including any filesystem reservation).
   No credential files or user content are read.
-* Load average: optional kernel 1/5/15 minute values, explicitly separate
-  from CPU utilization.
+* Original Linux load: optional kernel 1/5/15 minute values remain in
+  health.loadAverage for diagnostics only, explicitly separate from both
+  CPU utilization and the CPU-demand estimate below.
 
 ## Verified Gateway contract and current limitations
 
@@ -107,3 +110,56 @@ The previous binary's verified hash is:
 45edfc3dca0a1777703f1451a57f8a4c77e6241e1093e7e22d8b3020043fe95f.
 A device-local binary rollback was retained; reinstall it through the normal
 installer, preserving settings. Exact private paths are kept in operational notes.
+
+
+## Owner-requested CPU-demand load for the existing UI
+
+The owner explicitly requested retaining the existing load indicator while
+excluding Fire OS D-state kernel/driver sleepers from its CPU-pressure signal.
+The unchanged Gateway schema/UI interprets loadAverage[0] / cpuCount as a
+fraction, warns at 70%, and marks danger at 100%. Kernel load near 17 on this
+8-CPU device therefore appears saturated despite much lower measured CPU usage.
+
+For EchoLocal, **hostStats.loadAverage now carries an estimated runnable-only
+CPU-demand load**, NOT standard Linux loadavg and NOT CPU percentage. This is
+an explicitly requested compatibility projection; consumers expecting canonical
+Linux load must use health.loadAverage instead. No core-count inflation or
+subtraction of a guessed fixed D-thread baseline is used.
+
+The collector reads only /proc/stat:procs_running, the system-wide scheduler
+count of running/runnable tasks, at most once every five seconds. One current
+observer thread is discounted, with the result clamped at zero. No per-task
+enumeration, command-line reads, subprocesses or flash writes are needed.
+D-state tasks are not included by this kernel counter.
+
+For each five-second snapshot x and actual elapsed monotonic time dt, the
+1/5/15-minute series is updated as:
+
+    average += (x - average) * (1 - exp(-dt / tau))
+    tau = 60, 300, 900 seconds
+
+These are sampled exponential averages, not exact rolling arithmetic windows.
+Short CPU bursts between samples can be missed. A load of 8 represents mean
+sampled demand for 8 CPUs, not necessarily exactly 100% busy time. The already
+available cpu.percent remains the measured CPU-time utilization.
+
+health.cpuLoad includes availability, the three averages, current runnable
+count, source, sampledAtMs, sampleIntervalMs, observedMs and warmingUp.
+A new connection/history is seeded from its first actual sample (never a
+fabricated healthy zero), and is marked warmingUp for the first 15 minutes.
+Missing/malformed counters invalidate history and omit the compatible
+loadAverage field; a subsequent valid sample reseeds it. Gaps over 30 seconds
+also reseed. No stale historical estimate is silently reused after reconnect
+or permission edits.
+
+The connected Node runs the existing diagnostics executor every five seconds.
+The heavy one-second CPU-time probe and RAM/disk/kernel-load reads retain their
+one-minute cache; host-stats transmission remains at most once per minute.
+Denied diagnostics never reaches the collector. Existing cancellation,
+policy-generation fences and disconnect cleanup stop/reset the sampler.
+
+The current UI cannot label this custom source or its warm-up state. That
+limitation and the compatibility meaning must remain documented; a future
+Gateway/UI extension should distinguish CPU-demand load, original kernel
+load and CPU utilization explicitly. This projection does not implement the
+outstanding native CPU-percent/availability/timestamp UI extension.
