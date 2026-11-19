@@ -55,7 +55,7 @@ func (s *Settings) Name() string { return "settings" }
 
 func Open() { shell.Get().Push(root()) }
 
-var pages = map[string]func() *sharedshell.Page{"settings": root, "camera": cameraPage}
+var pages = map[string]func() *sharedshell.Page{"settings": root, "camera": cameraPage, "openclaw": openclawPage}
 
 func OpenPage(name string) bool {
 	page, ok := pages[name]
