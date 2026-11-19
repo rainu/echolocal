@@ -10,7 +10,7 @@ import (
 // No request IDs, tokens, server messages or raw results enter diagnostics.
 func (c *Client) awaitOperatorUpgrade(ctx context.Context, r *rpcLink, scopes []string) {
 	var request struct{ RequestID string }
-	err := r.call(ctx, "device.scopes.requestUpgrade", map[string]any{"scopes": scopes}, &request)
+	err := r.call(ctx, "device.scopes.requestUpgrade", map[string]any{"scopes": upgradeRequestScopes(scopes)}, &request)
 	reason := "scope_upgrade_rejected"
 	var result struct {
 		Status, DeviceToken string
@@ -52,4 +52,37 @@ func (c *Client) awaitOperatorUpgrade(ctx context.Context, r *rpcLink, scopes []
 	c.upgradeTerminal = reason
 	c.mu.Unlock()
 	r.conn.Close()
+}
+
+// Gateway 2026.11.4 knows ten scopes but requestUpgrade validates at most eight.
+// Its verified roleScopesAllow rules cover session read/write through write or
+// admin (session read also through read). Omit only those already implied scopes
+// from the approval request; NEVER alter the selected/signed handshake scope set.
+func upgradeRequestScopes(scopes []string) []string {
+	out := append([]string{}, scopes...)
+	has := func(scope string) bool {
+		for _, s := range scopes {
+			if s == scope {
+				return true
+			}
+		}
+		return false
+	}
+	for _, redundant := range []string{"operator.sessions.read", "operator.sessions.write"} {
+		if len(out) <= 8 {
+			break
+		}
+		covered := has("operator.admin") || has("operator.write") || (redundant == "operator.sessions.read" && has("operator.read"))
+		if !covered {
+			continue
+		}
+		next := []string{}
+		for _, s := range out {
+			if s != redundant {
+				next = append(next, s)
+			}
+		}
+		out = next
+	}
+	return out
 }

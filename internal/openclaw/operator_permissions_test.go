@@ -157,6 +157,9 @@ func TestOperatorLiveScopeUpgradeProtocol(t *testing.T) {
 					conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": true, "payload": map[string]any{"type": "hello-ok", "protocol": Protocol, "auth": map[string]any{"role": "operator", "scopes": []string{}}}})
 					var call map[string]any
 					conn.ReadJSON(&call)
+					if len(call["params"].(map[string]any)["scopes"].([]any)) > 8 {
+						t.Error("exceeded Gateway upgrade schema limit")
+					}
 					if call["method"] != "device.scopes.requestUpgrade" {
 						t.Error("wrong upgrade method")
 					}
@@ -212,5 +215,25 @@ func TestOperatorLiveScopeUpgradeProtocol(t *testing.T) {
 				t.Fatal("upgrade reset identity or selection")
 			}
 		})
+	}
+}
+
+func TestUpgradeRequestLimitDoesNotChangeHandshakeSelection(t *testing.T) {
+	all := SupportedOperatorScopes()
+	requested := upgradeRequestScopes(all)
+	if len(requested) != 8 {
+		t.Fatal("Gateway upgrade limit")
+	}
+	for _, s := range requested {
+		if s == "operator.sessions.read" || s == "operator.sessions.write" {
+			t.Fatal("implied scopes retained over limit")
+		}
+	}
+	if len(all) != 10 {
+		t.Fatal("selection mutated")
+	}
+	restricted := []string{"operator.read", "operator.talk"}
+	if !reflect.DeepEqual(upgradeRequestScopes(restricted), restricted) {
+		t.Fatal("unnecessary reduction")
 	}
 }

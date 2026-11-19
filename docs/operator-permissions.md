@@ -64,3 +64,13 @@ persistence, signed handshake derivation, role separation, identity continuity,
 pending approval and retry, live reconnect grants and grant clearing.
 Device and voice validation results belong in the issue; unit tests alone are
 not proof of an approved Talk-to-Node round trip.
+
+## Gateway upgrade schema compatibility
+
+Gateway 2026.11.4 recognizes ten scopes but its requestUpgrade schema accepts at
+most eight entries. Its verified shared/operator-scope-compat rules imply session
+read/write through operator.write or operator.admin (session read also through
+operator.read). Only when exceeding that schema limit, the approval request omits
+already implied session entries. The saved selection and signed handshake still
+explicitly request every selected scope, including all ten for All permissions.
+No authority is added beyond the user's selection.
