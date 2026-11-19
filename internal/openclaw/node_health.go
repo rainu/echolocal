@@ -23,7 +23,7 @@ func (c *Client) nodeHealth(ctx context.Context, r *rpcLink) {
 		c.access.mu.Lock()
 		generation := c.access.generation
 		c.access.mu.Unlock()
-		result, err := c.access.Execute(ctx, "diagnostics.status", json.RawMessage("{}"))
+		result, err := c.access.Execute(ctx, "echolocal.diagnostics.status", json.RawMessage("{}"))
 		if err == nil {
 			if status, ok := result.(map[string]any); ok {
 				if stats, ok := status["hostStats"]; ok && stats != nil {

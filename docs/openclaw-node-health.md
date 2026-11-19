@@ -2,7 +2,7 @@
 
 ## Collection and policy
 
-The existing `diagnostics.status` operation now returns a `health` snapshot
+The existing `echolocal.diagnostics.status` operation now returns a `health` snapshot
 and, when compatible, `hostStats`. It remains in the diagnostics permission
 group. The Node connection sends `node.event` / `node.host.stats` immediately
 after connection and at most once per minute. Operator-only connections never

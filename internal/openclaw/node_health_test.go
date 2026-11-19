@@ -16,7 +16,7 @@ import (
 func TestHealthDeniedNeverCollects(t *testing.T) {
 	a := NewNodeAccess(filepath.Join(t.TempDir(), "grants"))
 	var calls atomic.Int32
-	a.Register(NodeOperation{Command: "diagnostics.status", Group: "diagnostics", Run: func(context.Context, json.RawMessage) (any, error) { calls.Add(1); return nil, nil }})
+	a.Register(NodeOperation{Command: "echolocal.diagnostics.status", Group: "diagnostics", Run: func(context.Context, json.RawMessage) (any, error) { calls.Add(1); return nil, nil }})
 	if e := a.SetGrants(map[string]bool{"diagnostics": false}); e != nil {
 		t.Fatal(e)
 	}
@@ -33,7 +33,7 @@ func TestHealthRevocationCancelsCollection(t *testing.T) {
 	a := NewNodeAccess(filepath.Join(t.TempDir(), "grants"))
 	entered := make(chan struct{})
 	stopped := make(chan struct{})
-	a.Register(NodeOperation{Command: "diagnostics.status", Group: "diagnostics", Run: func(ctx context.Context, _ json.RawMessage) (any, error) {
+	a.Register(NodeOperation{Command: "echolocal.diagnostics.status", Group: "diagnostics", Run: func(ctx context.Context, _ json.RawMessage) (any, error) {
 		close(entered)
 		<-ctx.Done()
 		close(stopped)
@@ -88,7 +88,7 @@ func TestHealthUsesExistingNodeEventContract(t *testing.T) {
 		}
 	}()
 	a := NewNodeAccess(filepath.Join(t.TempDir(), "grants"))
-	a.Register(NodeOperation{Command: "diagnostics.status", Group: "diagnostics", Run: func(context.Context, json.RawMessage) (any, error) {
+	a.Register(NodeOperation{Command: "echolocal.diagnostics.status", Group: "diagnostics", Run: func(context.Context, json.RawMessage) (any, error) {
 		return map[string]any{"hostStats": map[string]any{"cpuCount": 4, "memoryTotalBytes": 1024, "memoryFreeBytes": 512}}, nil
 	}})
 	c := NewNode(filepath.Join(t.TempDir(), "node"), "test", NodeMetadata{})
