@@ -13,14 +13,15 @@ import (
 // rpcLink belongs to one authenticated socket. Lost or uncertain requests are
 // never transferred to a replacement connection.
 type rpcLink struct {
-	conn    *websocket.Conn
-	origin  string
-	write   sync.Mutex
-	mu      sync.Mutex
-	next    uint64
-	pending map[string]chan frame
-	closed  bool
-	subs    map[*eventSubscription]bool
+	conn      *websocket.Conn
+	origin    string
+	write     sync.Mutex
+	mu        sync.Mutex
+	next      uint64
+	pending   map[string]chan frame
+	closed    bool
+	nodeCalls map[string]context.CancelFunc
+	subs      map[*eventSubscription]bool
 }
 
 func newRPCLink(conn *websocket.Conn) *rpcLink {
@@ -33,6 +34,9 @@ func (r *rpcLink) close() {
 		return
 	}
 	r.closed = true
+	for _, cancel := range r.nodeCalls {
+		cancel()
+	}
 	for sub := range r.subs {
 		close(sub.ch)
 		delete(r.subs, sub)
@@ -81,11 +85,20 @@ func (c *Client) CallTalk(ctx context.Context, method string, params any, result
 	return err
 }
 func (r *rpcLink) call(ctx context.Context, method string, params any, result any) error {
+	return r.callBounded(ctx, method, params, result, 128*1024)
+}
+
+// nodeResult has a separate outbound budget for bounded image/video results.
+// It cannot widen any operator/Talk request or inbound command parameter budget.
+func (r *rpcLink) nodeResult(ctx context.Context, reply any) error {
+	return r.callBounded(ctx, "node.invoke.result", reply, nil, 9*1024*1024)
+}
+func (r *rpcLink) callBounded(ctx context.Context, method string, params any, result any, limit int) error {
 	if ctx.Err() != nil {
 		return errors.New("rpc_cancelled")
 	}
 	data, err := json.Marshal(params)
-	if err != nil || len(data) > 128*1024 {
+	if err != nil || len(data) > limit {
 		return errors.New("rpc_invalid_params")
 	}
 	r.mu.Lock()

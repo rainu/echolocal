@@ -28,9 +28,27 @@ func (c *Client) connectParams(s credentials, nonce string, at int64) map[string
 	p := connectParams(s, nonce, at, c.version)
 	client := p["client"].(map[string]any)
 	client["id"], client["mode"] = "openclaw-android", "node"
-	client["displayName"], client["modelIdentifier"] = c.node.Name, c.node.Model
+	name := s.DisplayName
+	if name == "" {
+		name = c.node.Name
+	}
+	client["displayName"], client["modelIdentifier"] = name, c.node.Model
 	p["role"], p["scopes"] = "node", []string{}
 	p["caps"], p["commands"] = []string{}, []string{}
+	if c.access != nil {
+		commands := c.access.Commands()
+		p["commands"] = commands
+		caps := []string{}
+		seen := map[string]bool{}
+		for _, command := range commands {
+			cap, _, _ := strings.Cut(command, ".")
+			if !seen[cap] {
+				seen[cap] = true
+				caps = append(caps, cap)
+			}
+		}
+		p["caps"] = caps
+	}
 	device := p["device"].(map[string]any)
 	token := s.Token
 	if token == "" {

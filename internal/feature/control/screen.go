@@ -38,6 +38,7 @@ import (
 )
 
 func showing(t *harness.Tree) {
+	t.Top(nodePermissionsCommand(), nodeExecuteCommand(), nodeCommandsCommand())
 	t.Add(harness.DisplayTask, displaycmd.Commands(displaycmd.Dependencies{
 		Panel:    display.Get,
 		GPU:      gpu.Get,

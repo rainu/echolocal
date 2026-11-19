@@ -4,7 +4,9 @@ package openclaw
 
 import (
 	"context"
+	"github.com/ygelfand/echolocal/internal/feature/shell"
 	"sync"
+	"time"
 
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
@@ -19,12 +21,18 @@ func init() {
 
 type Service struct {
 	*connection.Client
-	Node *connection.Client
+	Node        *connection.Client
+	Connections *connection.Connections
 }
+
+var NodeSetup func(*connection.NodeAccess)
 
 var get = sync.OnceValue(func() *Service {
 	b := board.Detect()
-	return &Service{Client: connection.New(layout.StateDir+"/openclaw.json", layout.Version), Node: connection.NewNode(layout.StateDir+"/openclaw-node.json", layout.Version, connection.NodeMetadata{Name: "EchoLocal · " + b.DefaultName, Model: b.Model})}
+	s := &Service{Client: connection.New(layout.StateDir+"/openclaw.json", layout.Version), Node: connection.NewNode(layout.StateDir+"/openclaw-node.json", layout.Version, connection.NodeMetadata{Name: b.DefaultName, Model: b.Model})}
+	s.Connections = connection.NewConnections(layout.StateDir+"/openclaw-connection.json", s.Client, s.Node, b.DefaultName+" · UI", b.DefaultName+" · Node")
+	s.Node.AttachNodeAccess(connection.NewNodeAccess(layout.StateDir + "/openclaw-node-permissions.json"))
+	return s
 })
 
 func Get() *Service             { return get() }
@@ -34,8 +42,24 @@ func (s *Service) Run(ctx context.Context) error {
 		return nil
 	}
 	s.Client.Start()
+	if NodeSetup != nil {
+		NodeSetup(s.Node.NodeAccess())
+	}
 	s.Node.Start()
-	<-ctx.Done()
-	s.Node.Close()
-	return s.Client.Close()
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	ui, node := s.Client.Status(), s.Node.Status()
+	for {
+		select {
+		case <-ctx.Done():
+			s.Node.Close()
+			return s.Client.Close()
+		case <-tick.C:
+			nextUI, nextNode := s.Client.Status(), s.Node.Status()
+			if nextUI != ui || nextNode != node {
+				ui, node = nextUI, nextNode
+				shell.Get().Redraw()
+			}
+		}
+	}
 }
