@@ -34,9 +34,13 @@ operator scopes.
 
 Changing the selection stops the existing socket before persisting and
 reauthenticating. It preserves the device key and cached token. A previously
-disabled connection stays disabled. The operator client first uses its cached device token. After a device-token
-authentication rejection it retries once with an already configured shared
-Gateway credential, because a device token cannot request scopes beyond its grant. Node authentication is
+disabled connection stays disabled. The operator client first uses its cached device token. A rejected scope
+expansion reconnects the same identity with no scopes, then uses the supported
+owner-bound device.scopes.requestUpgrade / device.scopes.waitUpgrade methods.
+Pending upgrades cannot use Talk. Approval supplies a new device token, which
+is stored privately before a fresh signed handshake requests the selected scopes.
+Rejection and expiry disconnect and show explicit sanitized status.
+No shared credential, identity reset or automatic approval is required. Node authentication is
 unchanged. Without a suitable credential an expansion can be rejected before
 pairing: edit the private Connection credential and retry. Never reset the
 device identity to obtain an upgrade.

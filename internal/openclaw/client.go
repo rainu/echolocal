@@ -49,22 +49,24 @@ type Status struct {
 }
 
 type Client struct {
-	operatorSharedRetry bool
-	shared              *Connections
-	access              *NodeAccess
-	node                *NodeMetadata
-	rpc                 *rpcLink
-	op                  sync.Mutex
-	mu                  sync.Mutex
-	path, version       string
-	born                time.Time
-	saved               credentials
-	state, reason       string
-	granted             []string
-	events              []Event
-	cancel              context.CancelFunc
-	done                chan struct{}
-	dialer              *websocket.Dialer
+	operatorSharedRetry  bool
+	operatorUpgradeRetry bool
+	upgradeTerminal      string
+	shared               *Connections
+	access               *NodeAccess
+	node                 *NodeMetadata
+	rpc                  *rpcLink
+	op                   sync.Mutex
+	mu                   sync.Mutex
+	path, version        string
+	born                 time.Time
+	saved                credentials
+	state, reason        string
+	granted              []string
+	events               []Event
+	cancel               context.CancelFunc
+	done                 chan struct{}
+	dialer               *websocket.Dialer
 }
 
 func New(path, version string) *Client {
@@ -179,6 +181,8 @@ func (c *Client) startLocked() {
 	c.stopLocked()
 	c.mu.Lock()
 	c.operatorSharedRetry = false
+	c.operatorUpgradeRetry = false
+	c.upgradeTerminal = ""
 	c.mu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
@@ -373,6 +377,13 @@ func (c *Client) run(ctx context.Context) {
 	delay := time.Second
 	for ctx.Err() == nil {
 		retry := c.attempt(ctx)
+		c.mu.Lock()
+		terminal := c.upgradeTerminal
+		c.mu.Unlock()
+		if terminal != "" {
+			c.mark("error", terminal, "in", "scope_upgrade")
+			return
+		}
 		if ctx.Err() != nil || !retry {
 			return
 		}
@@ -400,6 +411,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 	s := c.snapshot()
 	c.mu.Lock()
 	sharedRetry := c.operatorSharedRetry
+	upgradeRetry := c.operatorUpgradeRetry
 	c.mu.Unlock()
 	if sharedRetry {
 		s.Token = ""
@@ -459,7 +471,12 @@ func (c *Client) attempt(ctx context.Context) bool {
 	rid := hex.EncodeToString(id)
 	// No handshake fields or raw Gateway errors enter the diagnostic event buffer.
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": c.connectParams(s, challenge.Nonce, time.Now().UnixMilli())}); e != nil {
+	handshake := s
+	if upgradeRetry {
+		empty := []string{}
+		handshake.OperatorScopes = &empty
+	}
+	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": c.connectParams(handshake, challenge.Nonce, time.Now().UnixMilli())}); e != nil {
 		c.mark("error", "network", "out", "connect")
 		return true
 	}
@@ -481,6 +498,14 @@ func (c *Client) attempt(ctx context.Context) bool {
 		}
 	}
 	if !res.OK {
+		if c.node == nil && !upgradeRetry && !sharedRetry && s.Token != "" &&
+			(res.Error.Details.Code == "AUTH_DEVICE_TOKEN_MISMATCH" || res.Error.Details.Code == "AUTH_TOKEN_MISMATCH") {
+			c.mu.Lock()
+			c.operatorUpgradeRetry = true
+			c.mu.Unlock()
+			return true
+		}
+
 		// The cached token may be valid but too narrow for a scope expansion.
 		// Retry at most once using an already configured shared credential.
 		// Do not erase the identity/token, request new credentials or approve pairing.
@@ -560,6 +585,10 @@ func (c *Client) attempt(ctx context.Context) bool {
 		c.mu.Unlock()
 	}()
 	c.mark("connected", "", "in", "hello")
+	if upgradeRetry {
+		c.mark("pairing", "approval_required", "local", "scope_upgrade")
+		go c.awaitOperatorUpgrade(ctx, link, selectedOperatorScopes(s))
+	}
 	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 	for {
 		var msg frame

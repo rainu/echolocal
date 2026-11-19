@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestOperatorDefaultsMigrationAndPersistence(t *testing.T) {
@@ -137,38 +138,79 @@ func TestOperatorScopeChangeDoesNotEnableTalk(t *testing.T) {
 	}
 }
 
-func TestOperatorScopeUpgradeRetriesConfiguredSharedCredentialOnce(t *testing.T) {
-	var attempts atomic.Int32
-	srv, endpoint := server(t, func(conn *websocket.Conn) {
-		req := challenge(conn)
-		params := req["params"].(map[string]any)
-		token := params["auth"].(map[string]any)["token"]
-		n := attempts.Add(1)
-		if n == 1 {
-			if token != "synthetic-device-token" {
-				t.Error("did not try cached token")
+func TestOperatorLiveScopeUpgradeProtocol(t *testing.T) {
+	for _, decision := range []string{"approved", "rejected", "expired"} {
+		t.Run(decision, func(t *testing.T) {
+			var attempts atomic.Int32
+			srv, endpoint := server(t, func(conn *websocket.Conn) {
+				req := challenge(conn)
+				p := req["params"].(map[string]any)
+				n := attempts.Add(1)
+				if n == 1 {
+					conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": false, "error": map[string]any{"details": map[string]any{"code": "AUTH_DEVICE_TOKEN_MISMATCH"}}})
+					return
+				}
+				if n == 2 {
+					if len(p["scopes"].([]any)) != 0 {
+						t.Error("upgrade fallback retained authority")
+					}
+					conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": true, "payload": map[string]any{"type": "hello-ok", "protocol": Protocol, "auth": map[string]any{"role": "operator", "scopes": []string{}}}})
+					var call map[string]any
+					conn.ReadJSON(&call)
+					if call["method"] != "device.scopes.requestUpgrade" {
+						t.Error("wrong upgrade method")
+					}
+					conn.WriteJSON(map[string]any{"type": "res", "id": call["id"], "ok": true, "payload": map[string]any{"requestId": "synthetic-upgrade"}})
+					conn.ReadJSON(&call)
+					if call["method"] != "device.scopes.waitUpgrade" {
+						t.Error("wrong wait method")
+					}
+					conn.WriteJSON(map[string]any{"type": "res", "id": call["id"], "ok": true, "payload": map[string]any{"status": decision, "deviceToken": "synthetic-upgraded-token", "scopes": SupportedOperatorScopes()}})
+					var ignored any
+					conn.ReadJSON(&ignored)
+					return
+				}
+				if p["auth"].(map[string]any)["token"] != "synthetic-upgraded-token" || len(p["scopes"].([]any)) != len(SupportedOperatorScopes()) {
+					t.Error("approved handshake wrong")
+				}
+				hello(conn, req)
+				var ignored any
+				conn.ReadJSON(&ignored)
+			})
+			c := client(t, srv, endpoint)
+			defer c.Disconnect()
+			s := c.saved
+			s.Token = "synthetic-device-token"
+			s.Bootstrap = ""
+			if err := c.persist(s); err != nil {
+				t.Fatal(err)
 			}
-			conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": false, "error": map[string]any{"details": map[string]any{"code": "AUTH_DEVICE_TOKEN_MISMATCH"}}})
-			return
-		}
-		if token != "synthetic-bootstrap" {
-			t.Error("did not retry configured shared credential")
-		}
-		conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": false, "error": map[string]any{"details": map[string]any{"code": "PAIRING_REQUIRED"}}})
-	})
-	c := client(t, srv, endpoint)
-	defer c.Disconnect()
-	s := c.saved
-	s.Token = "synthetic-device-token"
-	if err := c.persist(s); err != nil {
-		t.Fatal(err)
-	}
-	key := append([]byte{}, s.Private...)
-	if err := c.Connect(); err != nil {
-		t.Fatal(err)
-	}
-	waitState(t, c, "pairing")
-	if attempts.Load() != 2 || c.saved.Token != "synthetic-device-token" || !reflect.DeepEqual(key, c.saved.Private) {
-		t.Fatal("fallback reset authority")
+			key := append([]byte{}, s.Private...)
+			if err := c.Connect(); err != nil {
+				t.Fatal(err)
+			}
+			if decision == "approved" {
+				waitState(t, c, "connected")
+				// connected may briefly precede the pending state on the zero-scope socket.
+				deadline := time.Now().Add(5 * time.Second)
+				for attempts.Load() < 3 && time.Now().Before(deadline) {
+					time.Sleep(5 * time.Millisecond)
+				}
+				if attempts.Load() != 3 {
+					t.Fatal("did not reconnect with approved token")
+				}
+			} else {
+				waitState(t, c, "error")
+				if c.Status().Reason != "scope_upgrade_"+decision {
+					t.Fatal(c.Status())
+				}
+				if len(c.GrantedOperatorScopes()) != 0 {
+					t.Fatal("rejection left active grants")
+				}
+			}
+			if !reflect.DeepEqual(key, c.saved.Private) || !reflect.DeepEqual(c.RequestedOperatorScopes(), SupportedOperatorScopes()) {
+				t.Fatal("upgrade reset identity or selection")
+			}
+		})
 	}
 }

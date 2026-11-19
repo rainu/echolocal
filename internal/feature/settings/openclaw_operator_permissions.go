@@ -55,7 +55,7 @@ func operatorPermissionsPage(c *openclaw.Client) *sharedshell.Page {
 			{Label: operatorText("hint"), Kind: menu.Plain},
 			{Label: operatorText("requested"), Hint: format(requested), Kind: menu.Plain},
 			{Label: operatorText("granted"), Hint: format(c.GrantedOperatorScopes()), Kind: menu.Plain},
-			{Label: clawState(state.State), Hint: clawReason(state.Reason), Kind: menu.Plain},
+			{Label: clawState(state.State), Hint: operatorReason(state.Reason), Kind: menu.Plain},
 			{Label: operatorText("all"), On: len(requested) == len(openclaw.SupportedOperatorScopes()), Kind: menu.Toggle},
 		}
 		acts := []func(int){nil, nil, nil, nil, func(int) {
@@ -109,4 +109,20 @@ func operatorScopeLabel(scope string) string {
 		return de[scope]
 	}
 	return en[scope]
+}
+
+func operatorReason(reason string) string {
+	if strings.HasPrefix(reason, "scope_upgrade_") {
+		if say.Chosen() == "de" {
+			switch reason {
+			case "scope_upgrade_rejected":
+				return "Rechteerweiterung abgelehnt; getrennt. Erneut verbinden zum Wiederholen."
+			case "scope_upgrade_expired":
+				return "Freigabe abgelaufen; getrennt. Erneut verbinden zum Wiederholen."
+			}
+			return "Rechteerweiterung fehlgeschlagen; getrennt. Gateway-Freigabe prüfen und erneut verbinden."
+		}
+		return "Scope upgrade " + strings.TrimPrefix(reason, "scope_upgrade_") + "; disconnected. Check Gateway approval and reconnect to retry."
+	}
+	return clawReason(reason)
 }
