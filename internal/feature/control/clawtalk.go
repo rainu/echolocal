@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
+	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	"github.com/ygelfand/echolocal/internal/feature/voice"
 	harness "github.com/ygelfand/libcountertop/pkg/runtime/control"
 	"strconv"
@@ -39,4 +40,14 @@ func talkCommands(t *harness.Tree) {
 		return nil
 	}})
 	t.Top(root)
+	node := &cobra.Command{Use: "node", Short: "Manage only the local OpenClaw Node connection"}
+	node.AddCommand(&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(featureclaw.Get().Node.Status())
+	}})
+	node.AddCommand(&cobra.Command{Use: "events", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(featureclaw.Get().Node.Events())
+	}})
+	node.AddCommand(&cobra.Command{Use: "connect", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return featureclaw.Get().Node.Connect() }})
+	node.AddCommand(&cobra.Command{Use: "disconnect", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return featureclaw.Get().Node.Disconnect() }})
+	t.Top(node)
 }

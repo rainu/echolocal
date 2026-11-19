@@ -17,9 +17,15 @@ func init() {
 	component.Register(sharedcomponent.Network, Get, sharedcomponent.Order(25), component.Needs(board.Panel))
 }
 
-type Service struct{ *connection.Client }
+type Service struct {
+	*connection.Client
+	Node *connection.Client
+}
 
-var get = sync.OnceValue(func() *Service { return &Service{connection.New(layout.StateDir+"/openclaw.json", layout.Version)} })
+var get = sync.OnceValue(func() *Service {
+	b := board.Detect()
+	return &Service{Client: connection.New(layout.StateDir+"/openclaw.json", layout.Version), Node: connection.NewNode(layout.StateDir+"/openclaw-node.json", layout.Version, connection.NodeMetadata{Name: "EchoLocal · " + b.DefaultName, Model: b.Model})}
+})
 
 func Get() *Service             { return get() }
 func (s *Service) Name() string { return "openclaw" }
@@ -28,6 +34,8 @@ func (s *Service) Run(ctx context.Context) error {
 		return nil
 	}
 	s.Client.Start()
+	s.Node.Start()
 	<-ctx.Done()
+	s.Node.Close()
 	return s.Client.Close()
 }

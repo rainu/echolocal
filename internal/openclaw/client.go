@@ -1,5 +1,4 @@
-// Package openclaw implements the connection-only device-pairing milestone.
-// It deliberately exposes no chat RPCs or node capabilities.
+// Package openclaw implements separately authenticated operator and Node connections.
 package openclaw
 
 import (
@@ -48,6 +47,7 @@ type Status struct {
 }
 
 type Client struct {
+	node          *NodeMetadata
 	rpc           *rpcLink
 	op            sync.Mutex
 	mu            sync.Mutex
@@ -171,6 +171,9 @@ func (c *Client) startLocked() {
 // Configure never returns endpoints or credentials in errors. An empty token
 // preserves the existing bootstrap credential only for the same endpoint.
 func (c *Client) Configure(endpoint, bootstrap string) error {
+	if c.node != nil {
+		return errors.New("credentials_missing")
+	}
 	return c.configure(endpoint, bootstrap, false, false)
 }
 
@@ -195,7 +198,7 @@ func (c *Client) EditableConnection() (string, string) {
 // UpdateConnection saves the visible editor values. An edited credential must
 // replace cached auth, otherwise the old device token would silently win.
 func (c *Client) UpdateConnection(endpoint, token string) error {
-	return c.configure(endpoint, token, false, true)
+	return c.configure(endpoint, token, c.node != nil, true)
 }
 func (c *Client) configure(endpoint, bootstrap string, bootstrapOnly, editing bool) error {
 	if err := ValidateEndpoint(endpoint); err != nil {
@@ -216,7 +219,7 @@ func (c *Client) configure(endpoint, bootstrap string, bootstrapOnly, editing bo
 		if bootstrap == "" {
 			s.Bootstrap, s.Token, s.BootstrapOnly = "", "", false
 		} else if bootstrap != current {
-			s.Bootstrap, s.Token, s.BootstrapOnly = bootstrap, "", false
+			s.Bootstrap, s.Token, s.BootstrapOnly = bootstrap, "", bootstrapOnly
 		}
 	} else if bootstrap != "" {
 		s.Bootstrap = bootstrap
@@ -424,15 +427,26 @@ func (c *Client) attempt(ctx context.Context) bool {
 	rid := hex.EncodeToString(id)
 	// No handshake fields or raw Gateway errors enter the diagnostic event buffer.
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": connectParams(s, challenge.Nonce, time.Now().UnixMilli(), c.version)}); e != nil {
+	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": c.connectParams(s, challenge.Nonce, time.Now().UnixMilli())}); e != nil {
 		c.mark("error", "network", "out", "connect")
 		return true
 	}
 	c.mark("connecting", "", "out", "connect")
 	var res frame
-	if conn.ReadJSON(&res) != nil || res.Type != "res" || res.ID != rid {
-		c.mark("error", "protocol", "in", "connect")
-		return false
+	// Gateway registration can broadcast events before the correlated hello.
+	// Keep the original handshake deadline and bound pre-hello event traffic.
+	for skipped := 0; ; skipped++ {
+		if conn.ReadJSON(&res) != nil {
+			c.mark("error", "protocol", "in", "connect")
+			return false
+		}
+		if res.Type == "res" && res.ID == rid {
+			break
+		}
+		if res.Type != "event" || skipped >= 15 {
+			c.mark("error", "protocol", "in", "connect")
+			return false
+		}
 	}
 	if !res.OK {
 		state, reason := "error", "authentication"
@@ -454,10 +468,17 @@ func (c *Client) attempt(ctx context.Context) bool {
 	var hello struct {
 		Type     string
 		Protocol int
-		Auth     struct{ DeviceToken string }
+		Auth     struct {
+			DeviceToken, Role string
+			Scopes            []string
+		}
 	}
 	if json.Unmarshal(res.Payload, &hello) != nil || hello.Type != "hello-ok" || hello.Protocol != Protocol {
 		c.mark("error", "protocol", "in", "hello")
+		return false
+	}
+	if c.node != nil && (hello.Auth.Role != "node" || len(hello.Auth.Scopes) != 0) {
+		c.mark("error", "authentication", "in", "hello")
 		return false
 	}
 	if hello.Auth.DeviceToken != "" {

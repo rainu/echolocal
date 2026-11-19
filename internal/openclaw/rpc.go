@@ -139,6 +139,9 @@ func (r *rpcLink) call(ctx context.Context, method string, params any, result an
 // EnableTalk must only follow explicit user authorization. Connection-only
 // clients continue to request no scopes until this preference is enabled.
 func (c *Client) EnableTalk() error {
+	if c.node != nil {
+		return errors.New("talk_authorization_required")
+	}
 	c.op.Lock()
 	defer c.op.Unlock()
 	if c.saved.Talk {
