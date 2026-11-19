@@ -149,8 +149,8 @@ func (r *rpcLink) callBounded(ctx context.Context, method string, params any, re
 	}
 }
 
-// EnableTalk must only follow explicit user authorization. Connection-only
-// clients continue to request no scopes until this preference is enabled.
+// EnableTalk enables local Talk use. Operator handshake scopes are configured
+// independently; this cannot silently override an explicit restricted selection.
 func (c *Client) EnableTalk() error {
 	if c.node != nil {
 		return errors.New("talk_authorization_required")

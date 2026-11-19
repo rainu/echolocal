@@ -65,7 +65,8 @@ func openclawConnectionPage(g *openclaw.Connections) *sharedshell.Page {
 			{Label: say.T("openclaw.token.label"), Value: d.Token, Kind: menu.Password, Save: edit(func(s *openclaw.ConnectionSettings, v string) { s.Token = v })},
 			{Label: connectionText("uiName"), Value: d.UIName, Kind: menu.Field, Save: edit(func(s *openclaw.ConnectionSettings, v string) { s.UIName = v })},
 			{Label: connectionText("nodeName"), Value: d.NodeName, Kind: menu.Field, Save: edit(func(s *openclaw.ConnectionSettings, v string) { s.NodeName = v })},
-			{Label: connectionText("permissions"), Hint: connectionText("permissionsHint"), Kind: menu.Chevron, Open: func() menu.View { return nodePermissionsPageFor(g.Node) }},
+			{Label: operatorText("title"), Kind: menu.Chevron, Open: func() menu.View { return operatorPermissionsPage(g.UI) }},
+			{Label: connectionText("node") + " · " + connectionText("permissions"), Hint: connectionText("permissionsHint"), Kind: menu.Chevron, Open: func() menu.View { return nodePermissionsPageFor(g.Node) }},
 			{Label: connectionText("diagUI"), Kind: menu.Chevron, Open: func() menu.View { return clawDiagnostics(g.UI, connectionText("diagUI")) }},
 			{Label: connectionText("diagNode"), Kind: menu.Chevron, Open: func() menu.View { return clawDiagnostics(g.Node, connectionText("diagNode")) }},
 		}
