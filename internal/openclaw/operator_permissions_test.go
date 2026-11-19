@@ -147,7 +147,7 @@ func TestOperatorLiveScopeUpgradeProtocol(t *testing.T) {
 				p := req["params"].(map[string]any)
 				n := attempts.Add(1)
 				if n == 1 {
-					conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": false, "error": map[string]any{"details": map[string]any{"code": "AUTH_DEVICE_TOKEN_MISMATCH"}}})
+					conn.WriteJSON(map[string]any{"type": "res", "id": req["id"], "ok": false, "error": map[string]any{"details": map[string]any{"code": "AUTH_SCOPE_MISMATCH"}}})
 					return
 				}
 				if n == 2 {

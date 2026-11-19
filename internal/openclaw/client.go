@@ -499,7 +499,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 	}
 	if !res.OK {
 		if c.node == nil && !upgradeRetry && !sharedRetry && s.Token != "" &&
-			(res.Error.Details.Code == "AUTH_DEVICE_TOKEN_MISMATCH" || res.Error.Details.Code == "AUTH_TOKEN_MISMATCH") {
+			(res.Error.Details.Code == "AUTH_SCOPE_MISMATCH" || res.Error.Details.Code == "AUTH_DEVICE_TOKEN_MISMATCH" || res.Error.Details.Code == "AUTH_TOKEN_MISMATCH") {
 			c.mu.Lock()
 			c.operatorUpgradeRetry = true
 			c.mu.Unlock()
@@ -510,7 +510,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 		// Retry at most once using an already configured shared credential.
 		// Do not erase the identity/token, request new credentials or approve pairing.
 		if c.node == nil && !sharedRetry && s.Token != "" && s.Bootstrap != "" && !s.BootstrapOnly &&
-			(res.Error.Details.Code == "AUTH_DEVICE_TOKEN_MISMATCH" || res.Error.Details.Code == "AUTH_TOKEN_MISMATCH") {
+			(res.Error.Details.Code == "AUTH_SCOPE_MISMATCH" || res.Error.Details.Code == "AUTH_DEVICE_TOKEN_MISMATCH" || res.Error.Details.Code == "AUTH_TOKEN_MISMATCH") {
 			c.mu.Lock()
 			c.operatorSharedRetry = true
 			c.mu.Unlock()
