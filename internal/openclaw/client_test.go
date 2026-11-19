@@ -74,8 +74,8 @@ func TestPairingSuccessPersistenceAndSignature(t *testing.T) {
 		pub, _ := base64.RawURLEncoding.DecodeString(d["publicKey"].(string))
 		sig, _ := base64.RawURLEncoding.DecodeString(d["signature"].(string))
 		hash := sha256.Sum256(pub)
-		payload := strings.Join([]string{"v3", hex.EncodeToString(hash[:]), "openclaw-linux", "ui", "operator", "", jsonNumber(d["signedAt"]), "synthetic-bootstrap", "synthetic-nonce", "android", "tablet"}, "|")
-		verified.Store(p["role"] == "operator" && len(p["scopes"].([]any)) == 0 && ed25519.Verify(pub, []byte(payload), sig))
+		payload := strings.Join([]string{"v3", hex.EncodeToString(hash[:]), "openclaw-linux", "ui", "operator", strings.Join(SupportedOperatorScopes(), ","), jsonNumber(d["signedAt"]), "synthetic-bootstrap", "synthetic-nonce", "android", "tablet"}, "|")
+		verified.Store(p["role"] == "operator" && len(p["scopes"].([]any)) == len(SupportedOperatorScopes()) && ed25519.Verify(pub, []byte(payload), sig))
 		hello(conn, req)
 		var f any
 		conn.ReadJSON(&f)

@@ -25,6 +25,8 @@ func (c *Client) connectParams(s credentials, nonce string, at int64) map[string
 		return connectParams(s, nonce, at, c.version)
 	}
 	s.Talk = false
+	empty := []string{}
+	s.OperatorScopes = &empty
 	p := connectParams(s, nonce, at, c.version)
 	client := p["client"].(map[string]any)
 	client["id"], client["mode"] = "openclaw-android", "node"

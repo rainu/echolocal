@@ -28,14 +28,15 @@ import (
 const Protocol = 4
 
 type credentials struct {
-	DisplayName   string `json:"displayName,omitempty"`
-	Talk          bool   `json:"talk,omitempty"`
-	BootstrapOnly bool   `json:"bootstrapOnly,omitempty"`
-	URL           string `json:"url"`
-	Bootstrap     string `json:"bootstrap,omitempty"`
-	Private       []byte `json:"private,omitempty"`
-	Token         string `json:"deviceToken,omitempty"`
-	Enabled       bool   `json:"enabled"`
+	OperatorScopes *[]string `json:"operatorScopes,omitempty"`
+	DisplayName    string    `json:"displayName,omitempty"`
+	Talk           bool      `json:"talk,omitempty"`
+	BootstrapOnly  bool      `json:"bootstrapOnly,omitempty"`
+	URL            string    `json:"url"`
+	Bootstrap      string    `json:"bootstrap,omitempty"`
+	Private        []byte    `json:"private,omitempty"`
+	Token          string    `json:"deviceToken,omitempty"`
+	Enabled        bool      `json:"enabled"`
 }
 
 type Event struct {
@@ -48,20 +49,24 @@ type Status struct {
 }
 
 type Client struct {
-	shared        *Connections
-	access        *NodeAccess
-	node          *NodeMetadata
-	rpc           *rpcLink
-	op            sync.Mutex
-	mu            sync.Mutex
-	path, version string
-	born          time.Time
-	saved         credentials
-	state, reason string
-	events        []Event
-	cancel        context.CancelFunc
-	done          chan struct{}
-	dialer        *websocket.Dialer
+	operatorSharedRetry  bool
+	operatorUpgradeRetry bool
+	upgradeTerminal      string
+	shared               *Connections
+	access               *NodeAccess
+	node                 *NodeMetadata
+	rpc                  *rpcLink
+	op                   sync.Mutex
+	mu                   sync.Mutex
+	path, version        string
+	born                 time.Time
+	saved                credentials
+	state, reason        string
+	granted              []string
+	events               []Event
+	cancel               context.CancelFunc
+	done                 chan struct{}
+	dialer               *websocket.Dialer
 }
 
 func New(path, version string) *Client {
@@ -174,6 +179,11 @@ func (c *Client) stopLocked() {
 }
 func (c *Client) startLocked() {
 	c.stopLocked()
+	c.mu.Lock()
+	c.operatorSharedRetry = false
+	c.operatorUpgradeRetry = false
+	c.upgradeTerminal = ""
+	c.mu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 	c.done = make(chan struct{})
@@ -343,10 +353,7 @@ func connectParams(s credentials, nonce string, at int64, version string) map[st
 	if s.Token == "" && s.BootstrapOnly {
 		auth = map[string]any{"bootstrapToken": token}
 	}
-	scopes := []string{}
-	if s.Talk {
-		scopes = []string{"operator.read", "operator.talk"}
-	}
+	scopes := selectedOperatorScopes(s)
 	payload := strings.Join([]string{"v3", id, "openclaw-linux", "ui", "operator", strings.Join(scopes, ","), fmt.Sprint(at), token, nonce, "android", "tablet"}, "|")
 	return map[string]any{"minProtocol": Protocol, "maxProtocol": Protocol, "client": map[string]any{"id": "openclaw-linux", "displayName": displayName, "version": version, "platform": "android", "deviceFamily": "tablet", "mode": "ui"}, "role": "operator", "scopes": scopes, "auth": auth, "device": map[string]any{"id": id, "publicKey": base64.RawURLEncoding.EncodeToString(public), "signature": base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(payload))), "signedAt": at, "nonce": nonce}}
 }
@@ -370,6 +377,13 @@ func (c *Client) run(ctx context.Context) {
 	delay := time.Second
 	for ctx.Err() == nil {
 		retry := c.attempt(ctx)
+		c.mu.Lock()
+		terminal := c.upgradeTerminal
+		c.mu.Unlock()
+		if terminal != "" {
+			c.mark("error", terminal, "in", "scope_upgrade")
+			return
+		}
 		if ctx.Err() != nil || !retry {
 			return
 		}
@@ -390,8 +404,18 @@ func (c *Client) run(ctx context.Context) {
 	}
 }
 func (c *Client) attempt(ctx context.Context) bool {
+	c.mu.Lock()
+	c.granted = nil
+	c.mu.Unlock()
 	c.mark("connecting", "", "local", "connect")
 	s := c.snapshot()
+	c.mu.Lock()
+	sharedRetry := c.operatorSharedRetry
+	upgradeRetry := c.operatorUpgradeRetry
+	c.mu.Unlock()
+	if sharedRetry {
+		s.Token = ""
+	}
 	if ValidateEndpoint(s.URL) != nil || len(s.Private) != ed25519.PrivateKeySize || (s.Token == "" && s.Bootstrap == "") {
 		c.mark("error", "settings", "local", "connect")
 		return false
@@ -447,7 +471,12 @@ func (c *Client) attempt(ctx context.Context) bool {
 	rid := hex.EncodeToString(id)
 	// No handshake fields or raw Gateway errors enter the diagnostic event buffer.
 	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": c.connectParams(s, challenge.Nonce, time.Now().UnixMilli())}); e != nil {
+	handshake := s
+	if upgradeRetry {
+		empty := []string{}
+		handshake.OperatorScopes = &empty
+	}
+	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": c.connectParams(handshake, challenge.Nonce, time.Now().UnixMilli())}); e != nil {
 		c.mark("error", "network", "out", "connect")
 		return true
 	}
@@ -469,6 +498,25 @@ func (c *Client) attempt(ctx context.Context) bool {
 		}
 	}
 	if !res.OK {
+		if c.node == nil && !upgradeRetry && !sharedRetry && s.Token != "" &&
+			(res.Error.Details.Code == "AUTH_SCOPE_MISMATCH" || res.Error.Details.Code == "AUTH_DEVICE_TOKEN_MISMATCH" || res.Error.Details.Code == "AUTH_TOKEN_MISMATCH") {
+			c.mu.Lock()
+			c.operatorUpgradeRetry = true
+			c.mu.Unlock()
+			return true
+		}
+
+		// The cached token may be valid but too narrow for a scope expansion.
+		// Retry at most once using an already configured shared credential.
+		// Do not erase the identity/token, request new credentials or approve pairing.
+		if c.node == nil && !sharedRetry && s.Token != "" && s.Bootstrap != "" && !s.BootstrapOnly &&
+			(res.Error.Details.Code == "AUTH_SCOPE_MISMATCH" || res.Error.Details.Code == "AUTH_DEVICE_TOKEN_MISMATCH" || res.Error.Details.Code == "AUTH_TOKEN_MISMATCH") {
+			c.mu.Lock()
+			c.operatorSharedRetry = true
+			c.mu.Unlock()
+			c.mark("reconnecting", "authentication", "in", "scope_reauthenticate")
+			return true
+		}
 		state, reason := "error", "authentication"
 		switch res.Error.Details.Code {
 		case "PAIRING_REQUIRED":
@@ -497,6 +545,10 @@ func (c *Client) attempt(ctx context.Context) bool {
 		c.mark("error", "protocol", "in", "hello")
 		return false
 	}
+	if c.node == nil && hello.Auth.Role != "" && hello.Auth.Role != "operator" {
+		c.mark("error", "authentication", "in", "hello")
+		return false
+	}
 	if c.node != nil && (hello.Auth.Role != "node" || len(hello.Auth.Scopes) != 0) {
 		c.mark("error", "authentication", "in", "hello")
 		return false
@@ -516,6 +568,9 @@ func (c *Client) attempt(ctx context.Context) bool {
 	link.origin = s.URL
 	c.mu.Lock()
 	c.rpc = link
+	if c.node == nil {
+		c.granted = append([]string(nil), hello.Auth.Scopes...)
+	}
 	c.mu.Unlock()
 	defer func() {
 		link.close()
@@ -525,10 +580,15 @@ func (c *Client) attempt(ctx context.Context) bool {
 		c.mu.Lock()
 		if c.rpc == link {
 			c.rpc = nil
+			c.granted = nil
 		}
 		c.mu.Unlock()
 	}()
 	c.mark("connected", "", "in", "hello")
+	if upgradeRetry {
+		c.mark("pairing", "approval_required", "local", "scope_upgrade")
+		go c.awaitOperatorUpgrade(ctx, link, selectedOperatorScopes(s))
+	}
 	conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 	for {
 		var msg frame

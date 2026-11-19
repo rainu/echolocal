@@ -70,7 +70,7 @@ func (c *Client) CallTalk(ctx context.Context, method string, params any, result
 	}
 	c.mu.Lock()
 	r := c.rpc
-	enabled := c.saved.Talk
+	enabled := c.saved.Talk && !c.operatorUpgradeRetry
 	c.mu.Unlock()
 	if !enabled {
 		return errors.New("talk_authorization_required")
@@ -128,7 +128,11 @@ func (r *rpcLink) callBounded(ctx context.Context, method string, params any, re
 		r.conn.Close()
 		return errors.New("rpc_delivery_uncertain")
 	}
-	timer := time.NewTimer(30 * time.Second)
+	wait := 30 * time.Second
+	if method == "device.scopes.waitUpgrade" {
+		wait = 11 * time.Minute
+	}
+	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
@@ -149,8 +153,8 @@ func (r *rpcLink) callBounded(ctx context.Context, method string, params any, re
 	}
 }
 
-// EnableTalk must only follow explicit user authorization. Connection-only
-// clients continue to request no scopes until this preference is enabled.
+// EnableTalk enables local Talk use. Operator handshake scopes are configured
+// independently; this cannot silently override an explicit restricted selection.
 func (c *Client) EnableTalk() error {
 	if c.node != nil {
 		return errors.New("talk_authorization_required")

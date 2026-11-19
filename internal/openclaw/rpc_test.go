@@ -21,7 +21,7 @@ func TestTalkScopesAreExplicitAndSigned(t *testing.T) {
 	}
 	p := connectParams(c.saved, "synthetic-nonce", 123, "test")
 	scopes := p["scopes"].([]string)
-	if strings.Join(scopes, ",") != "operator.read,operator.talk" {
+	if strings.Join(scopes, ",") != strings.Join(SupportedOperatorScopes(), ",") {
 		t.Fatal("wrong scopes")
 	}
 	d := p["device"].(map[string]any)

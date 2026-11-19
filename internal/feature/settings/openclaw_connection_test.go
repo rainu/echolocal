@@ -30,7 +30,7 @@ func TestCombinedConnectionMenuHasOneSecretFieldAndBothStatuses(t *testing.T) {
 		say.Use(lang)
 		page := openclawConnectionPage(g)
 		rows, acts := page.Build()
-		if len(rows) != 9 || len(acts) != 9 {
+		if len(rows) != 10 || len(acts) != 10 {
 			t.Fatal("combined form missing rows")
 		}
 		if rows[0].Value != clawState("disconnected") || rows[1].Value != clawState("disconnected") {
@@ -51,7 +51,7 @@ func TestCombinedConnectionMenuHasOneSecretFieldAndBothStatuses(t *testing.T) {
 		if rows[4].Value != "Echo UI" || rows[5].Value != "Echo Node" || rows[6].Open == nil {
 			t.Fatal("names or permissions missing")
 		}
-		if rows[7].Open == nil || rows[8].Open == nil {
+		if rows[7].Open == nil || rows[8].Open == nil || rows[9].Open == nil {
 			t.Fatal("separate diagnostics missing")
 		}
 		for _, index := range []int{3, 4, 5} {
@@ -59,13 +59,21 @@ func TestCombinedConnectionMenuHasOneSecretFieldAndBothStatuses(t *testing.T) {
 				t.Fatal("unnecessary configuration explanation", lang)
 			}
 		}
-		for _, index := range []int{7, 8} {
+		for _, index := range []int{8, 9} {
 			diag := rows[index].Open().(*sharedshell.Page)
 			if diag.Title != rows[index].Label {
 				t.Fatal("ambiguous diagnostics title", lang)
 			}
 		}
-		permissions := rows[6].Open().(*sharedshell.Page)
+		operator := rows[6].Open().(*sharedshell.Page)
+		if operator.Title != operatorText("title") {
+			t.Fatal("operator title", lang)
+		}
+		opRows, _ := operator.Build()
+		if !opRows[4].On {
+			t.Fatal("All not default", lang)
+		}
+		permissions := rows[7].Open().(*sharedshell.Page)
 		if permissions.Title != connectionText("permissions") {
 			t.Fatal("technical permissions title", lang)
 		}
