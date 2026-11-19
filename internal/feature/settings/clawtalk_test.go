@@ -49,7 +49,7 @@ func TestVoiceModelPickerIsDrivenByGatewayCatalogue(t *testing.T) {
 
 func TestOpenClawRootHasCentralSlotAndHistoryNavigation(t *testing.T) {
 	rows, acts := openclawPage().Build()
-	if len(rows) != 5 || len(acts) != 5 {
+	if len(rows) != 6 || len(acts) != 6 {
 		t.Fatal("unexpected central navigation")
 	}
 	for _, r := range rows {
@@ -57,7 +57,7 @@ func TestOpenClawRootHasCentralSlotAndHistoryNavigation(t *testing.T) {
 			t.Fatal("central row has no destination")
 		}
 	}
-	if rows[4].Label != say.T("clawtalk.history") {
+	if rows[5].Label != say.T("clawtalk.history") {
 		t.Fatal("global history missing")
 	}
 }

@@ -24,6 +24,7 @@ type NodeAccess struct {
 	active           map[uint64]context.CancelFunc
 	next, generation uint64
 	storageErr       bool
+	cleanup          []func()
 }
 
 func NewNodeAccess(path string) *NodeAccess {
@@ -96,7 +97,15 @@ func (a *NodeAccess) SetGrants(changes map[string]bool) error {
 	a.cancel()
 	return nil
 }
+func (a *NodeAccess) OnCleanup(fn func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cleanup = append(a.cleanup, fn)
+}
 func (a *NodeAccess) cancel() {
+	for _, fn := range a.cleanup {
+		fn()
+	}
 	a.generation++
 	for _, cancel := range a.active {
 		cancel()

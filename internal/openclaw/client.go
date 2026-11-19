@@ -47,6 +47,7 @@ type Status struct {
 }
 
 type Client struct {
+	access        *NodeAccess
 	node          *NodeMetadata
 	rpc           *rpcLink
 	op            sync.Mutex
@@ -499,6 +500,9 @@ func (c *Client) attempt(ctx context.Context) bool {
 	c.mu.Unlock()
 	defer func() {
 		link.close()
+		if c.access != nil {
+			c.access.Disconnect()
+		}
 		c.mu.Lock()
 		if c.rpc == link {
 			c.rpc = nil
@@ -518,6 +522,9 @@ func (c *Client) attempt(ctx context.Context) bool {
 		conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 		if msg.Type == "event" {
 			link.event(msg)
+			if c.access != nil {
+				c.nodeEvent(ctx, link, msg)
+			}
 		}
 		if msg.Type == "res" {
 			link.deliver(msg)

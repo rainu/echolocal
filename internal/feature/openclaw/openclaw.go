@@ -22,9 +22,13 @@ type Service struct {
 	Node *connection.Client
 }
 
+var NodeSetup func(*connection.NodeAccess)
+
 var get = sync.OnceValue(func() *Service {
 	b := board.Detect()
-	return &Service{Client: connection.New(layout.StateDir+"/openclaw.json", layout.Version), Node: connection.NewNode(layout.StateDir+"/openclaw-node.json", layout.Version, connection.NodeMetadata{Name: "EchoLocal · " + b.DefaultName, Model: b.Model})}
+	s := &Service{Client: connection.New(layout.StateDir+"/openclaw.json", layout.Version), Node: connection.NewNode(layout.StateDir+"/openclaw-node.json", layout.Version, connection.NodeMetadata{Name: "EchoLocal · " + b.DefaultName, Model: b.Model})}
+	s.Node.AttachNodeAccess(connection.NewNodeAccess(layout.StateDir + "/openclaw-node-permissions.json"))
+	return s
 })
 
 func Get() *Service             { return get() }
@@ -34,6 +38,9 @@ func (s *Service) Run(ctx context.Context) error {
 		return nil
 	}
 	s.Client.Start()
+	if NodeSetup != nil {
+		NodeSetup(s.Node.NodeAccess())
+	}
 	s.Node.Start()
 	<-ctx.Done()
 	s.Node.Close()
