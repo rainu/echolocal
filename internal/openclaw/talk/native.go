@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"github.com/ygelfand/libcountertop/pkg/media/rtc"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,6 +16,10 @@ import (
 
 type voiceTranscript struct{ role, text, id string }
 type nativeState struct {
+	deviceContext     map[string]any
+	sendDeviceContext func(map[string]any) error
+	deviceContextOnce sync.Once
+
 	legacy                                                                              atomic.Bool
 	workCtx                                                                             context.Context
 	workCancel                                                                          context.CancelFunc
@@ -56,8 +62,40 @@ func (s *Session) controlLink(ctx context.Context) *rtc.ControlChannel {
 		}
 	}}
 }
+
+// Configure before starting nativeLoop. Transport is loaded atomically; the
+// context is sent only at the first provider-confirmed user speech event.
+func (s *Session) configureDeviceContext(model string) {
+	if s.DeviceContext == "" {
+		return
+	}
+	s.native.deviceContext = deviceContextAppend(model, s.DeviceContext)
+	s.native.sendDeviceContext = func(event map[string]any) error {
+		link := s.statsLink.Load()
+		if link == nil {
+			return errors.New("talk_device_context_unavailable")
+		}
+		return link.SendControl(event)
+	}
+}
+
 func (s *Session) nativeUserSpeech() {
 	if s.native.inputActive.Swap(true) {
+		return
+	}
+	failed := false
+	s.native.deviceContextOnce.Do(func() {
+		if s.native.deviceContext == nil {
+			return
+		}
+		if s.native.sendDeviceContext == nil || s.native.sendDeviceContext(s.native.deviceContext) != nil {
+			failed = true
+			s.nativeFailure("talk_device_context_unavailable")
+			return
+		}
+		slog.Info("talk device context sent on first user speech", "wire_type", s.native.deviceContext["type"])
+	})
+	if failed {
 		return
 	}
 	s.responseEpoch.Add(1)
@@ -122,7 +160,28 @@ func (s *Session) nativeLoop(ctx context.Context) {
 				return
 			}
 			switch e.Type {
+			case "error", "session.closed", "session.created", "session.updated", "turn.created", "turn.done", "session.context.appended", "session.thinking.appended":
+				slog.Info("talk native event", "type", e.Type)
+			}
+			switch e.Type {
 			case "error":
+				var detail struct {
+					Error struct{ Code, Type, Param, Message string }
+				}
+				_ = json.Unmarshal(raw, &detail)
+				fields := []any{}
+				for _, term := range []string{"unknown", "unsupported", "invalid", "channel", "content", "session.context.append", "session.thinking.append", "delegation"} {
+					fields = append(fields, "mentions_"+term, strings.Contains(strings.ToLower(detail.Error.Message), term))
+				}
+				for key, value := range map[string]string{"code": detail.Error.Code, "type": detail.Error.Type, "param": detail.Error.Param} {
+					switch value {
+					case "invalid_request_error", "invalid_value", "unknown_parameter", "unknown_event", "unsupported_event", "type", "channel", "content", "delegation_id":
+						fields = append(fields, key, value)
+					default:
+						fields = append(fields, key+"_present", value != "")
+					}
+				}
+				slog.Error("talk native provider rejected control", fields...)
 				s.nativeFailure("talk_control_rejected")
 				return
 			case "delegation.created", "session.delegation.created":

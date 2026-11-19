@@ -1,7 +1,10 @@
 package talk
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -206,5 +209,78 @@ func TestNativeFinalCaptionReachesDisplayBeforeEnd(t *testing.T) {
 	defer mu.Unlock()
 	if len(roles) != 2 || roles[0] != "assistant" || roles[1] != "user" {
 		t.Fatal("display missed final captions")
+	}
+}
+
+func TestNativeRejectionIsDiagnosedWithoutProviderPayload(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	defer slog.SetDefault(previous)
+	s, _, _ := nativeHarness(t)
+	emit(s, `{"type":"error","error":{"type":"invalid_request_error","code":"secret-code-sentinel","param":"secret-param-sentinel","message":"Invalid content secret-message-sentinel"}}`)
+	<-s.native.done
+	if s.Diagnostics().Reason != "talk_control_rejected" {
+		t.Fatal("rejection reason lost")
+	}
+	for _, secret := range []string{"secret-code-sentinel", "secret-param-sentinel", "secret-message-sentinel"} {
+		if strings.Contains(output.String(), secret) {
+			t.Fatal("provider payload leaked")
+		}
+	}
+	if !strings.Contains(output.String(), "mentions_content=true") {
+		t.Fatal("missing safe classification")
+	}
+}
+
+func TestDeviceContextWaitsForActualUserAndIsSentOnce(t *testing.T) {
+	s, _, ctx := nativeHarness(t)
+	// Direct first-speech hook avoids transport dependence in this test.
+	var sent atomic.Int32
+	s.native.deviceContext = deviceContextAppend("gpt-live-1-codex", "synthetic device metadata")
+	s.native.sendDeviceContext = func(event map[string]any) error { sent.Add(1); return nil }
+	s.controlLink(ctx).Opened()
+	emit(s, `{"type":"session.context.appended"}`)
+	emit(s, `{"type":"turn.done","turn":{"role":"assistant","id":"old","transcript":"Goodbye"}}`)
+	eventually(t, func() bool { return s.native.responses.Load() == 1 })
+	if sent.Load() != 0 {
+		t.Fatal("startup/history triggered device context")
+	}
+	emit(s, `{"type":"turn.created","turn":{"role":"user"}}`)
+	eventually(t, func() bool { return sent.Load() == 1 })
+	emit(s, `{"type":"turn.done","turn":{"role":"user","id":"first","transcript":"synthetic request"}}`)
+	emit(s, `{"type":"turn.created","turn":{"role":"user"}}`)
+	eventually(t, func() bool { return s.utterances.Load() == 1 })
+	if sent.Load() != 1 {
+		t.Fatal("context sent again on followup")
+	}
+}
+
+func TestPublicDeviceContextStartsOnInputNotAssistant(t *testing.T) {
+	s, _, _ := nativeHarness(t)
+	s.native.legacy.Store(false)
+	var sent atomic.Int32
+	s.native.deviceContext = deviceContextAppend("gpt-live-1", "synthetic")
+	s.native.sendDeviceContext = func(map[string]any) error { sent.Add(1); return nil }
+	emit(s, `{"type":"session.output_transcript.delta"}`)
+	emit(s, `{"type":"session.input_transcript.delta"}`)
+	emit(s, `{"type":"session.input_transcript.delta"}`)
+	eventually(t, func() bool { return sent.Load() == 1 })
+	if sent.Load() != 1 {
+		t.Fatal("public context must be sent once on input")
+	}
+}
+func TestDeviceContextSendFailureRetainsExplicitReason(t *testing.T) {
+	s, _, _ := nativeHarness(t)
+	s.native.deviceContext = deviceContextAppend("gpt-live-1-codex", "synthetic")
+	s.native.sendDeviceContext = func(map[string]any) error { return context.Canceled }
+	emit(s, `{"type":"turn.created","turn":{"role":"user"}}`)
+	select {
+	case <-s.failed:
+	case <-time.After(time.Second):
+		t.Fatal("context failure ignored")
+	}
+	if s.Diagnostics().Reason != "talk_device_context_unavailable" {
+		t.Fatal("context failure reason lost")
 	}
 }

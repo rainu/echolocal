@@ -53,37 +53,61 @@ func talkOptionsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), boo
 	if model == "" {
 		model = say.T("clawtalk.gateway_default")
 	}
+
+	contextSummary := say.T("clawtalk.new_each")
+	if s.Resume {
+		contextSummary = say.T("clawtalk.resume")
+	}
 	rows = append(rows,
 		menu.Row{Label: say.T("clawtalk.agent"), Value: agent, Kind: menu.Chevron, Open: func() menu.View { return talkAgentPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.model"), Value: model, Hint: say.T("clawtalk.model_hint"), Kind: menu.Chevron, Open: func() menu.View { return talkModelPage(slot) }},
-		menu.Row{Label: say.T("clawtalk.resume"), Hint: say.T("clawtalk.resume_hint"), Kind: menu.Toggle, On: s.Resume},
-	)
-	acts = append(acts, nil, nil, func(int) {
-		saveTalk(slot, func(v *clawtalk.Slot) { v.Resume = !s.Resume })
-		shell.Get().Redraw()
-	})
-	contextLabel := s.ContextLabel
-	if contextLabel == "" {
-		contextLabel = say.T("clawtalk.new_context")
-		if s.Context != "" {
-			contextLabel = say.T("clawtalk.device_context")
-		}
-	}
-	if s.Resume {
-		rows = append(rows, menu.Row{Label: say.T("clawtalk.context"), Value: contextLabel, Kind: menu.Chevron, Open: func() menu.View { return talkContextPage(slot) }})
-		acts = append(acts, nil)
-	} else {
-		rows = append(rows, menu.Row{Label: say.T("clawtalk.new_each"), Kind: menu.Plain})
-		acts = append(acts, nil)
-	}
-	rows = append(rows,
+		menu.Row{Label: say.T("clawtalk.context"), Value: contextSummary, Kind: menu.Chevron, Open: func() menu.View { return talkConversationContextPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.start_tone"), Value: talkToneLabel(s.StartTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, false) }},
-		menu.Row{Label: say.T("clawtalk.end_tone"), Value: talkToneLabel(s.EndTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, true) }})
-	acts = append(acts, nil, nil)
+		menu.Row{Label: say.T("clawtalk.end_tone"), Value: talkToneLabel(s.EndTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, true) }},
+	)
+	acts = append(acts, nil, nil, nil, nil, nil)
+
 	rows = append(rows, menu.Row{Label: say.T("clawtalk.timeout"), Value: say.F("clawtalk.seconds", map[string]any{"N": s.Timeout}), Kind: menu.Chevron, Open: func() menu.View { return talkTimeoutPage(slot) }})
 	acts = append(acts, nil)
 	return rows, acts, true
 }
+
+// Conversation policy, existing-session selection and device prompt belong
+// together; audio/model settings remain on the assistant's main options page.
+func talkConversationContextPage(slot int) *TalkPromptEditor {
+	p := talkDevicePromptPage(slot)
+	p.Title = say.T("clawtalk.context")
+	p.Leading = func() ([]menu.Row, []func(int)) {
+		return talkContextSettingsRowsFor(slot, clawtalk.Get().Store.Get(slot))
+	}
+	return p
+}
+
+func talkContextSettingsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int)) {
+	rows := []menu.Row{}
+	acts := []func(int){}
+	if talkSaveFailed.Load() {
+		rows = append(rows, menu.Row{Label: say.T("openclaw.error.storage"), Kind: menu.Plain})
+		acts = append(acts, nil)
+	}
+	rows = append(rows, menu.Row{Label: say.T("clawtalk.resume"), Hint: say.T("clawtalk.resume_hint"), Kind: menu.Toggle, On: s.Resume})
+	acts = append(acts, func(int) { saveTalk(slot, func(v *clawtalk.Slot) { v.Resume = !s.Resume }); shell.Get().Redraw() })
+	if s.Resume {
+		label := s.ContextLabel
+		if label == "" {
+			label = say.T("clawtalk.new_context")
+			if s.Context != "" {
+				label = say.T("clawtalk.device_context")
+			}
+		}
+		rows = append(rows, menu.Row{Label: promptText("session"), Value: label, Kind: menu.Chevron, Open: func() menu.View { return talkContextPage(slot) }})
+	} else {
+		rows = append(rows, menu.Row{Label: say.T("clawtalk.new_each"), Kind: menu.Plain})
+	}
+	acts = append(acts, nil)
+	return rows, acts
+}
+
 func talkTargetPage(slot int) *sharedshell.Page {
 	return &sharedshell.Page{Title: say.T("clawtalk.target"), Build: func() ([]menu.Row, []func(int)) {
 		s := clawtalk.Get().Store.Get(slot)
@@ -185,7 +209,7 @@ func talkAgentPage(slot int) *sharedshell.Page {
 }
 func talkContextPage(slot int) *sharedshell.Page {
 	saved := clawtalk.Get().Store.Get(slot)
-	return talkPicker(say.T("clawtalk.context"), func(ctx context.Context) ([]talkChoice, error) {
+	return talkPicker(promptText("session"), func(ctx context.Context) ([]talkChoice, error) {
 		var result struct {
 			Sessions []struct{ Key, Label, DisplayName, DerivedTitle string }
 		}

@@ -82,3 +82,27 @@ func TestTalkFeedbackPersistsWithoutChangingOtherSlot(t *testing.T) {
 		t.Fatal("feedback lost or changed another slot")
 	}
 }
+
+func TestDeviceContextTemplateIsAtomicPersistentAndPerSlot(t *testing.T) {
+	path := t.TempDir() + "/routes.json"
+	s := load(path)
+	if s.Get(0).DeviceContextTemplate != "" {
+		t.Fatal("legacy settings lost default")
+	}
+	template := "Use {{node_id}} for {{device_name}}"
+	if err := s.Update(0, func(v *Slot) { v.DeviceContextTemplate = template }); err != nil {
+		t.Fatal(err)
+	}
+	if load(path).Get(0).DeviceContextTemplate != template || load(path).Get(1).DeviceContextTemplate != "" {
+		t.Fatal("template lost or sibling changed")
+	}
+	if err := s.Update(0, func(v *Slot) { v.DeviceContextTemplate = "{{unknown}}" }); err == nil {
+		t.Fatal("bad template persisted")
+	}
+	if load(path).Get(0).DeviceContextTemplate != template {
+		t.Fatal("failed save changed previous template")
+	}
+	if err := s.Update(0, func(v *Slot) { v.DeviceContextTemplate = "" }); err != nil || load(path).Get(0).DeviceContextTemplate != "" {
+		t.Fatal("reset did not persist")
+	}
+}

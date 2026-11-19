@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,15 +80,21 @@ func (s *Session) fail() {
 	})
 }
 func (s *Session) Open(parent context.Context) (openErr error) {
+	began := time.Now()
+	slog.Info("talk setup started", "provider", s.Provider, "model", s.Model, "native_media", s.nativeMedia, "device_context_present", s.DeviceContext != "")
 	defer func() {
+		elapsed := time.Since(began).Milliseconds()
+		s.setupMS.Store(elapsed)
 		if openErr != nil {
-			s.reason.Store(safeReason(openErr))
+			reason := safeReason(openErr)
+			s.reason.Store(reason)
+			slog.Error("talk setup failed", "stage", s.stage.Load(), "elapsed_ms", elapsed, "reason", reason)
+		} else {
+			slog.Info("talk setup ready", "elapsed_ms", elapsed)
 		}
 	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	began := time.Now()
-	defer func() { s.setupMS.Store(time.Since(began).Milliseconds()) }()
 	s.stage.Store(1)
 	ctx, cancel := context.WithCancel(parent)
 	s.cancel = cancel
@@ -117,6 +124,7 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 	if err != nil {
 		return err
 	}
+	slog.Info("talk session created", "provider", launch.Provider, "model", launch.Model, "transport", launch.Transport, "native_media", s.nativeMedia)
 	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" {
 		return errors.New("talk_contract_invalid")
 	}
@@ -125,6 +133,7 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 			return errors.New("talk_contract_invalid")
 		}
 		s.native.workCtx, s.native.workCancel = context.WithCancel(context.Background())
+		s.configureDeviceContext(launch.Model)
 		s.nativeEnabled.Store(true)
 		go s.nativeLoop(ctx)
 		go s.transcriptLoop()
@@ -235,17 +244,13 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 			return errors.New("talk_start_timeout")
 		}
 	}
-	// Append silent device context before opening the room microphone. Do not
-	// replace the Gateway-selected persona/history or create a transcript turn.
-	if s.nativeMedia && s.DeviceContext != "" {
-		if err = link.SendControl(deviceContextAppend(launch.Model, s.DeviceContext)); err != nil {
-			return errors.New("talk_device_context_unavailable")
-		}
-	}
+	// Do not append context at startup: even silent provider context can resume
+	// a historical turn. Native user-speech handling sends it once when needed.
 	s.stage.Store(6)
 	if err = s.Audio.Start(ctx); err != nil {
 		return errors.New("talk_audio_unavailable")
 	}
+	slog.Info("talk microphone capture started")
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -295,10 +300,13 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 	for {
 		select {
 		case <-ctx.Done():
+			slog.Info("talk control stream stopped", "reason", safeReason(ctx.Err()))
 			return
 		case e, ok := <-events:
 			if !ok {
 				if ctx.Err() == nil {
+					slog.Error("talk control stream closed unexpectedly")
+					s.reason.Store("control_stream_closed")
 					s.fail()
 				}
 				return
@@ -311,10 +319,18 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 			}
 			switch e.Event.Type {
 			case "session.ready":
+				slog.Info("talk provider event", "type", e.Event.Type)
 				s.providerReady.Do(func() { close(s.ready) })
 			case "session.error", "session.replaced":
+				reason := "provider_session_error"
+				if e.Event.Type == "session.replaced" {
+					reason = "provider_session_replaced"
+				}
+				s.reason.Store(reason)
+				slog.Error("talk provider event", "type", e.Event.Type, "reason", reason)
 				s.fail()
 			case "session.closed":
+				slog.Info("talk provider event", "type", e.Event.Type)
 				if ctx.Err() == nil && s.End != nil {
 					go s.End()
 				}
@@ -322,8 +338,10 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 			case "transcript.done":
 				var p struct{ Role, Text string }
 				if json.Unmarshal(e.Event.Payload, &p) != nil {
+					slog.Warn("talk transcript event malformed")
 					continue
 				}
+				slog.Info("talk transcript event", "role", p.Role)
 				if p.Role == "assistant" {
 					if s.Caption != nil {
 						s.Caption(p.Role, p.Text, "")
@@ -354,6 +372,7 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				}
 				s.activity(Thinking)
 			case "tool.call", "tool.result", "tool.error":
+				slog.Info("talk provider event", "type", e.Event.Type)
 				key := e.Event.CallID
 				if key == "" {
 					key = "uncorrelated"
@@ -369,15 +388,19 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				s.pendingTools.Store(int32(len(pending)))
 				s.activity(Thinking)
 			case "turn.started":
+				slog.Info("talk provider event", "type", e.Event.Type)
 				s.activity(Thinking)
 			case "output.audio.started":
+				slog.Info("talk provider event", "type", e.Event.Type)
 				s.activity(Speaking)
 			case "turn.cancelled":
+				slog.Info("talk provider event", "type", e.Event.Type)
 				s.Audio.StopOutput()
 				if s.Activity != nil {
 					s.Activity(Listening)
 				}
 			case "turn.ended", "output.audio.done":
+				slog.Info("talk provider event", "type", e.Event.Type)
 				// A protocol end is not yet audible completion. Keep response ownership
 				// until the existing speaker lane drains.
 				go s.afterPlayback(ctx, s.responseEpoch.Load())
@@ -528,7 +551,7 @@ func safeReason(err error) string {
 		return "timeout"
 	}
 	switch err.Error() {
-	case "talk_native_control_unsupported", "talk_control_failed", "talk_control_rejected", "talk_control_overflow", "rpc_rejected", "rpc_cancelled", "rpc_timeout", "rpc_busy", "rpc_disconnected", "rpc_delivery_uncertain", "rpc_invalid_response", "talk_control_unavailable", "talk_contract_invalid", "talk_capability_unavailable", "talk_peer_failed", "talk_offer_failed", "talk_offer_rejected", "talk_offer_origin", "talk_answer_failed", "talk_answer_invalid", "talk_provider_failed", "talk_start_timeout", "talk_audio_unavailable", "talk_connection_changed", "talk_launch_invalid":
+	case "talk_native_control_unsupported", "talk_control_failed", "talk_control_rejected", "talk_control_overflow", "rpc_rejected", "rpc_cancelled", "rpc_timeout", "rpc_busy", "rpc_disconnected", "rpc_delivery_uncertain", "rpc_invalid_response", "talk_control_unavailable", "talk_contract_invalid", "talk_capability_unavailable", "talk_peer_failed", "talk_offer_failed", "talk_offer_rejected", "talk_offer_origin", "talk_answer_failed", "talk_answer_invalid", "talk_provider_failed", "talk_start_timeout", "talk_audio_unavailable", "talk_connection_changed", "talk_launch_invalid", "talk_device_context_unavailable", "control_stream_closed":
 		return err.Error()
 	}
 	return "talk_failed"

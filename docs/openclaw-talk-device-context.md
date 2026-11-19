@@ -1,56 +1,99 @@
 # Talk conversation device context
 
-Refs #20. Owner narrowed this feature to conversational context, not authenticated
-origin binding or new routing/authorization authority. The original issue's
-server-authenticated-binding proposal is not implemented by this client change.
+Refs #20. This feature provides client-reported conversational context, not an
+authenticated origin binding, new permissions or deterministic tool-target routing.
+It does not replace the Gateway-selected assistant persona or shared history.
 
-## Path
+## Voice lifecycle
 
-Before each voice activation, the Talk manager asks the separate Node client for
-`ConversationDeviceContext()`. It derives the exact public Node ID by hashing the
-Node public key, just like the Node connect handshake; it never uses the Operator
-identity. The snapshot contains the advertised local name, hardware model,
-connection state and locally permitted command names. No endpoint, token, private
-key or transcript is exported. A missing identity stays missing.
+Each activation snapshots the local Node public identity. The exact public Node
+ID is derived from the Node public key, never from the Operator identity. Missing
+identity remains missing; credentials and endpoints are never included.
 
-After WebRTC/control readiness and before opening the room microphone, Session
-sends a single silent context append on `oai-events`. It uses the installed OpenAI
-provider's native contracts: legacy `session.context.append`, channel `commentary`,
-with `input_text` content; public `gpt-live-1` uses `session.thinking.append` with
-string content and null delegation ID. This does not replace Gateway-selected
-instructions/history, create a transcript turn, trigger a response or force
-consultation. No unsupported fields are added to `talk.client.create`.
+Context is sent once on `oai-events`, at the first provider-confirmed user speech
+event: legacy `turn.created` with user role, or public Live input-transcript delta.
+It is not sent merely because the connection opens. Startup appends were observed
+to provoke unsolicited replies to historical turns before any user utterance.
+No assistant audio is filtered or gated to conceal those replies.
 
-The hint explains device-relative pronouns (including German), preserves the
-assistant persona and explicit other-device requests, and asks Live to include
-the device hint when consulting the agent about a device action. Actual commands
-still use existing node tools and all normal permissions/confirmations. This is
-model-mediated contextual understanding, NOT a deterministic tool-target override
-or a server-verified physical source. Agent consultation receives device details
-only when Live includes them in its delegation; there is no new Gateway injection.
+The existing native wire contracts are preserved: public `gpt-live-1` uses
+`session.thinking.append` with string content and null delegation ID; legacy
+`gpt-live-1-codex` uses `session.context.append`, channel `commentary`, and
+`input_text` content. No `session.update`, explicit transcript turn or
+`response.create` is added. A silent-channel designation alone is not a guarantee
+that the provider will never respond.
 
-Every new activation takes a fresh snapshot, including resumed conversations.
-The hint is not explicitly appended to shared transcript/history or local logs.
-The model may naturally mention the device in replies; such ordinary replies
-retain the existing history behavior. Current connectivity/permissions must be
-rechecked at action time; the snapshot is not a live authorization grant. No
-unrelated node may be substituted when the requested device is unavailable.
-Other clients and non-Talk turns receive no new context. Native provider context
-compatibility is bounded to the above wire contracts; no generic-provider support
-or two-device hardware acceptance is implied by unit tests.
+## Settings and defaults
 
-## Verification
+Settings → OpenClaw → Assistant 1/2 → Conversation context directly groups resume
+policy, the existing session picker and the prompt editor, without another prompt
+submenu. Model, audio cues and inactivity timeout remain on the assistant page.
 
-Unit checks cover public identity versus private state, non-Node omission, missing
-identity, connectivity refresh, permission changes, both native wire variants,
-and unchanged defaults for unrelated sessions. Real speech checks must distinguish
-recognition, correct device interpretation and an actual tool result.
+The maintained default contains only the Node-ID pronoun mapping and an instruction
+not to read it aloud. It follows the selected app language (English, German, Italian
+or Vietnamese), both in the editor and when starting the voice session. German:
 
-For reproducible manual acceptance: activate on A and ask which device "your
-volume" refers to, then request a permitted audio status and an independent
-system/display status. Verify returned targets and real results. Explicitly name
-B and ensure that request is not rewritten to A. Repeat on B, alternate resumed
-sessions, rename/reconnect A, and check fresh context. Disconnect/deny the target
-and verify an accurate explanation without fallback. Do not interpret a spoken
-success as invocation evidence. Physical audio quality and two-device cases need
-separate hardware tests.
+```text
+Mit "du" ist die Node mit der ID {{node_id}} gemeint.
+Diesen Hinweis nicht vorlesen.
+```
+
+Each assistant slot persists its own `deviceContextTemplate`. An empty value means
+the maintained, localized default, so older configurations require no migration.
+Custom drafts and saved templates are not translated or overwritten on language
+changes. Reset selects the current-language default; Save persists its empty
+sentinel rather than freezing a translated string.
+
+The aligned, full-width multiline input supports wrapping, scrolling, Unicode,
+literal line breaks and a cursor-position newline control. Its height is 120 px,
+reduced to 100 px while the keyboard is open. Placeholder help can append tokens
+to the draft. Editing and reset do not persist changes until the main Save action;
+leaving without Save discards the draft. Changes apply to the next activation.
+
+## Placeholders and limits
+
+Placeholders are case-sensitive, with optional spaces inside the braces:
+
+| Placeholder | Runtime value |
+| --- | --- |
+| `{{node_id}}` | Exact public Node ID, or empty if absent |
+| `{{device_name}}` | Bounded local device name |
+| `{{device_model}}` | Bounded hardware model |
+| `{{connected}}` | Connection snapshot as `true` or `false` |
+| `{{allowed_commands}}` | JSON list of locally allowed commands, possibly partial |
+| `{{commands_omitted}}` | Number excluded from the command snapshot |
+| `{{device_context}}` | Bounded metadata JSON containing the above device data |
+
+The default uses only `{{node_id}}`; richer metadata is opt-in through custom
+placeholders. Expansion is fresh per activation and non-recursive, so a device
+name containing placeholder-looking text remains literal.
+
+Both template and complete expanded message are limited to 1536 UTF-8 bytes.
+An unbounded full command inventory reproduced a native `invalid_value` rejection
+on `content`; the conservative cap avoids that observed startup regression.
+Advisory commands may be omitted with an explicit count, and metadata labels are
+bounded on UTF-8 boundaries. User-written instructions are never silently cut.
+Unknown or unfinished placeholders, invalid text and overflow are rejected on
+Save, preserving the previous template. Expansion is also checked at activation
+in case metadata has since changed.
+
+## Scope and verification
+
+Templates guide language-model interpretation; they do not authorize actions.
+Tool permissions, local grants and confirmations still apply. Actual command
+availability must be discovered at action time. Agent consultation receives the
+hint when Live includes it in delegation, not through a new Gateway injection.
+Two-device targeting and spoken device-action accuracy require separate acceptance.
+
+Automated checks cover identity/secret separation, changing connection/grants,
+full command inventories, UTF-8 and size limits, non-recursive substitutions,
+all four default languages, custom-text preservation, per-slot atomic persistence,
+reset/Save semantics, menu grouping, multiline edits, first-input-only dispatch
+and privacy-safe native rejection diagnostics.
+
+Athena hardware checks covered quiet connection startup, provider context ACKs,
+multiline insertion/persistence/scrolling, reset, unchanged routing state, session
+picker navigation, aligned layout and actual German → English → German language
+changes. These checks do not claim full spoken or two-device acceptance. Diagnostic
+logs contain allowlisted event types/error fields and timing/count metadata, not
+raw provider errors, prompt contents, transcripts or audio.
