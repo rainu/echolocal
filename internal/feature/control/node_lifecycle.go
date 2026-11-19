@@ -19,7 +19,7 @@ import (
 
 func nodeInputAllowed() bool {
 	for _, v := range screens.Get().Stack() {
-		if p, ok := v.View.(*sharedshell.Page); ok {
+		if p := sharedshell.SettingsPage(v.View); p != nil {
 			title := strings.ToLower(p.Title)
 			if strings.Contains(title, "openclaw") || strings.Contains(title, "node-") {
 				return false

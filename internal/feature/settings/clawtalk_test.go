@@ -4,6 +4,7 @@ package settings
 
 import (
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
+	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	"github.com/ygelfand/libcountertop/pkg/say"
 	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 	"strings"
@@ -108,6 +109,54 @@ func TestToneDetailActionsTranslateExplicitly(t *testing.T) {
 		for i, k := range []string{"clawtalk.tone_preview", "clawtalk.tone_use"} {
 			if p.Actions[i].Label != say.T(k) || p.Actions[i].Label == k {
 				t.Fatalf("bad tone action in %s", lang)
+			}
+		}
+	}
+}
+
+func TestConversationContextSettingsAreGrouped(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range say.Languages() {
+		say.Use(lang)
+		slot := clawtalk.Slot{OpenClaw: true, Resume: true, Context: "agent:synthetic-private:session", Timeout: 60}
+		rows, acts, _ := talkOptionsRowsFor(0, slot)
+		found := false
+		for _, row := range rows {
+			if row.Label == say.T("clawtalk.context") {
+				found = row.Open != nil
+			}
+			if row.Label == promptText("title") || row.Label == promptText("session") || row.Kind == menu.Toggle {
+				t.Fatal("context controls still on main page")
+			}
+		}
+		if !found || len(rows) != len(acts) {
+			t.Fatal("context submenu missing")
+		}
+		children, taps := talkContextSettingsRowsFor(0, slot)
+		seen := map[string]bool{}
+		for _, row := range children {
+			seen[row.Label] = true
+			for _, text := range []string{row.Label, row.Value, row.Hint} {
+				if strings.Contains(text, "synthetic-private") || strings.Contains(text, "clawtalk.") {
+					t.Fatal("private identifier or untranslated key exposed")
+				}
+			}
+			if row.Label == promptText("title") {
+				t.Fatal("prompt still behind an extra submenu")
+			}
+			if row.Label == promptText("session") && row.Open == nil {
+				t.Fatal("context destination missing")
+			}
+		}
+		if len(children) != len(taps) || !seen[say.T("clawtalk.resume")] || !seen[promptText("session")] {
+			t.Fatal("group lost a context setting")
+		}
+		slot.Resume = false
+		children, _ = talkContextSettingsRowsFor(0, slot)
+		for _, row := range children {
+			if row.Label == promptText("session") {
+				t.Fatal("resume-off exposed stale session selection")
 			}
 		}
 	}

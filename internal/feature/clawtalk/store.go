@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/ygelfand/echolocal/internal/openclaw"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,17 +13,18 @@ import (
 )
 
 type Slot struct {
-	StartTone    string `json:"startTone,omitempty"`
-	EndTone      string `json:"endTone,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Model        string `json:"model,omitempty"`
-	OpenClaw     bool   `json:"openclaw"`
-	Agent        string `json:"agent,omitempty"`
-	AgentLabel   string `json:"agentLabel,omitempty"`
-	Context      string `json:"context,omitempty"`
-	ContextLabel string `json:"contextLabel,omitempty"`
-	Resume       bool   `json:"resume"`
-	Timeout      int    `json:"timeout"`
+	DeviceContextTemplate string `json:"deviceContextTemplate,omitempty"`
+	StartTone             string `json:"startTone,omitempty"`
+	EndTone               string `json:"endTone,omitempty"`
+	Provider              string `json:"provider,omitempty"`
+	Model                 string `json:"model,omitempty"`
+	OpenClaw              bool   `json:"openclaw"`
+	Agent                 string `json:"agent,omitempty"`
+	AgentLabel            string `json:"agentLabel,omitempty"`
+	Context               string `json:"context,omitempty"`
+	ContextLabel          string `json:"contextLabel,omitempty"`
+	Resume                bool   `json:"resume"`
+	Timeout               int    `json:"timeout"`
 }
 type Store struct {
 	mu      sync.Mutex
@@ -66,6 +68,9 @@ func (s *Store) Update(slot int, change func(*Slot)) error {
 	}
 	next := s.slots
 	change(&next[slot])
+	if err := openclaw.ValidateDeviceContextTemplate(next[slot].DeviceContextTemplate); err != nil {
+		return err
+	}
 	if next[slot].Timeout < 15 {
 		next[slot].Timeout = 60
 	}
