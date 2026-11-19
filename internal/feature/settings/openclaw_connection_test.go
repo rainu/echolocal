@@ -65,7 +65,15 @@ func TestCombinedConnectionMenuHasOneSecretFieldAndBothStatuses(t *testing.T) {
 				t.Fatal("ambiguous diagnostics title", lang)
 			}
 		}
-		permissions := rows[6].Open().(*sharedshell.Page)
+		operator := rows[6].Open().(*sharedshell.Page)
+		if operator.Title != operatorText("title") {
+			t.Fatal("operator title", lang)
+		}
+		opRows, _ := operator.Build()
+		if !opRows[4].On {
+			t.Fatal("All not default", lang)
+		}
+		permissions := rows[7].Open().(*sharedshell.Page)
 		if permissions.Title != connectionText("permissions") {
 			t.Fatal("technical permissions title", lang)
 		}
