@@ -20,6 +20,7 @@ func nodePermissionsPage() *sharedshell.Page {
 		"state": "Gerätezustand lesen", "diagnostics": "Begrenzte, bereinigte Diagnose",
 		"maintenance": "EchoLocal-Wartung ausführen", "tones": "Benutzerdefinierte Töne verwalten",
 	}
+	labels := map[string]string{"screen": "Bildschirm", "input": "Fernbedienung", "display": "Anzeige und Nachrichten", "settings": "Einstellungen", "audio": "Audio und Medien", "alarms": "Wecker und Timer", "intercom": "Gegensprechen", "camera": "Kamera", "state": "Gerätezustand", "diagnostics": "Diagnose", "maintenance": "Wartung", "tones": "Eigene Töne"}
 	var notice string
 	apply := func(g map[string]bool) {
 		if c.SetNodeGrants(g) != nil {
@@ -40,7 +41,7 @@ func nodePermissionsPage() *sharedshell.Page {
 		rows := []menu.Row{{Label: "Nur Node-Zugriff", Hint: "HA, WebUI und Talk bleiben unabhängig. Änderungen verbinden den Node neu.", Kind: menu.Plain}}
 		acts := []func(int){nil}
 		for _, g := range openclaw.PermissionGroups {
-			rows = append(rows, menu.Row{Label: g, Hint: hints[g], Kind: menu.Toggle, On: c.NodeAccess().Granted(g)})
+			rows = append(rows, menu.Row{Label: labels[g], Hint: hints[g], Kind: menu.Toggle, On: c.NodeAccess().Granted(g)})
 			acts = append(acts, func(int) { apply(map[string]bool{g: !c.NodeAccess().Granted(g)}) })
 		}
 		if notice != "" {

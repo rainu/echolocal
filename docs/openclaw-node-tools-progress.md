@@ -49,7 +49,7 @@ Actual registry metadata (all actions, fields and entities) is captured in [open
 
 Credential/secret kinds and authority domains (access, frontend, network, certs, cast, rtsp, OpenClaw policy/identities) are excluded. Free-text/list fields are excluded unless explicitly reviewed: clock date pattern, visual label, app order/dock and custom screen colors. Export never returns arbitrary configuration structs. Node cannot import its grants or edit credentials. Audio-related fields additionally require audio, camera/cameras require camera, call requires intercom, alarm/timer require alarms. Other approved non-secret domains use settings.
 
-Local administration: Echo settings -> OpenClaw -> Node-Berechtigungen, individual groups and all-on/all-off; local root/ADB control also provides `ctl node-permissions [GROUP|all on|off]`. This command is never Node-advertised or reachable through a generic Node proxy. Disabling Node grants does not change HA/WebUI/operator permission settings.
+Local administration: Echo settings -> OpenClaw -> Node-Berechtigungen, individual groups and all-on/all-off; local root/ADB control also provides `ctl node-permissions [GROUP|all on|off]`. For Gateway-independent device testing, local root/ADB also provides `ctl node-commands` and `ctl node-execute COMMAND [JSON]`, executing through the identical Node policy boundary. These local administration commands are never Node-advertised or reachable through a generic Node proxy. Disabling Node grants does not change HA/WebUI/operator permission settings.
 
 ## Explicit gaps and transport limits
 
