@@ -125,7 +125,7 @@ func (c *Collector) Collect(ctx context.Context) (Snapshot, error) {
 		s.Memory = ParseMemory(string(data))
 	}
 	var stat syscall.Statfs_t
-	if syscall.Statfs("/data", &stat) == nil && stat.Type != 0x01021994 && stat.Type != 0x858458f6 && stat.Bsize > 0 && stat.Blocks > 0 && stat.Bavail <= stat.Blocks {
+	if syscall.Statfs("/data", &stat) == nil && uint32(stat.Type) != 0x01021994 && uint32(stat.Type) != 0x858458f6 && stat.Bsize > 0 && stat.Blocks > 0 && stat.Bavail <= stat.Blocks {
 		total, avail := uint64(stat.Blocks)*uint64(stat.Bsize), uint64(stat.Bavail)*uint64(stat.Bsize)
 		s.Disk = Disk{true, "/data", total, avail, total - avail}
 	}
