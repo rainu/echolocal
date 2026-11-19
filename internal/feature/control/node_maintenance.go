@@ -20,7 +20,7 @@ func registerNodeMaintenance(a *connection.NodeAccess) {
 		if !ok || b.OnPress == nil || b.ObjectID != "purge_cache" {
 			continue
 		}
-		_ = a.Register(connection.NodeOperation{Command: "maintenance.purgeCache", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+		_ = nodeRegister(a, connection.NodeOperation{Command: "maintenance.purgeCache", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var p struct {
 				Confirm bool `json:"confirm"`
 			}
@@ -31,14 +31,14 @@ func registerNodeMaintenance(a *connection.NodeAccess) {
 			return map[string]bool{"scheduled": true}, nil
 		}})
 	}
-	_ = a.Register(connection.NodeOperation{Command: "maintenance.updateCheck", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "maintenance.updateCheck", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}
 		firmware.Get().Check(ctx)
 		return map[string]any{"checked": true}, nil
 	}})
-	_ = a.Register(connection.NodeOperation{Command: "maintenance.updateInstall", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "maintenance.updateInstall", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p struct {
 			Confirm bool   `json:"confirm"`
 			Version string `json:"version"`
@@ -54,7 +54,7 @@ func registerNodeMaintenance(a *connection.NodeAccess) {
 		}
 		return map[string]bool{"done": true}, nil
 	}})
-	_ = a.Register(connection.NodeOperation{Command: "device.sensors", Group: "state", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "device.sensors", Group: "state", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}

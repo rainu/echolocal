@@ -21,7 +21,7 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 		if group == "" {
 			continue
 		}
-		_ = a.Register(connection.NodeOperation{Command: "action." + action.Name, Group: group, Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+		_ = nodeRegister(a, connection.NodeOperation{Command: "action." + action.Name, Group: group, Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var p struct {
 				Args map[string]any `json:"args"`
 			}
@@ -85,7 +85,7 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 			return out, nil
 		}})
 	}
-	_ = a.Register(connection.NodeOperation{Command: "tones.list", Group: "tones", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "tones.list", Group: "tones", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}
@@ -97,7 +97,7 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 			if e.OnCommand == nil {
 				continue
 			}
-			_ = a.Register(connection.NodeOperation{Command: "audio.control." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.control." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 				var p struct {
 					Command      string   `json:"command"`
 					Volume       *float32 `json:"volume"`
@@ -144,7 +144,7 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 			if e.ObjectID != "test_playback" || e.OnPress == nil {
 				continue
 			}
-			_ = a.Register(connection.NodeOperation{Command: "audio.test", Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.test", Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 				if err := nodeEmpty(raw); err != nil {
 					return nil, err
 				}

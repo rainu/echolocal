@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"image/jpeg"
 	"io"
 	"strconv"
 	"strings"
@@ -20,7 +19,6 @@ import (
 	"github.com/ygelfand/echolocal/internal/layout"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	harness "github.com/ygelfand/libcountertop/pkg/runtime/control"
-	"github.com/ygelfand/libcountertop/pkg/runtime/control/screencmd"
 	setting "github.com/ygelfand/libcountertop/pkg/settings"
 )
 
@@ -51,22 +49,11 @@ func registerNodeTools(a *connection.NodeAccess) {
 	registerNodeDisplay(a)
 	registerNodeEntities(a)
 	add := func(name, group string, run func(context.Context, json.RawMessage) (any, error)) {
-		_ = a.Register(connection.NodeOperation{Command: name, Group: group, Run: run})
+		_ = nodeRegister(a, connection.NodeOperation{Command: name, Group: group, Run: run})
 	}
-	add("screen.snapshot", "screen", func(ctx context.Context, raw json.RawMessage) (any, error) {
-		if e := nodeEmpty(raw); e != nil {
-			return nil, e
-		}
-		img, e := screencmd.Composed(display.Get())
-		if e != nil {
-			return nil, errors.New("capture_unavailable")
-		}
-		var out bytes.Buffer
-		if jpeg.Encode(&out, img, &jpeg.Options{Quality: 80}) != nil {
-			return nil, errors.New("capture_unavailable")
-		}
-		return map[string]any{"format": "jpeg", "base64": base64.StdEncoding.EncodeToString(out.Bytes()), "width": img.Bounds().Dx(), "height": img.Bounds().Dy()}, nil
-	})
+	registerNodeScreen(a)
+	registerNodeConvenience(a)
+	registerNodeDevice(a)
 	if component.Board().CameraWidth > 0 {
 		add("camera.snap", "camera", func(ctx context.Context, raw json.RawMessage) (any, error) {
 			if e := nodeEmpty(raw); e != nil {
@@ -83,7 +70,7 @@ func registerNodeTools(a *connection.NodeAccess) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}
-		return map[string]any{"version": layout.Version, "commit": layout.GitCommit, "model": component.Board().Model, "board": component.Board().Codename}, nil
+		return map[string]any{"version": layout.Version, "commit": layout.GitCommit, "model": component.Board().Model, "board": component.Board().Codename, "deviceName": component.Board().Model, "modelIdentifier": component.Board().Codename, "systemName": "Android", "appVersion": layout.Version, "appBuild": layout.GitCommit}, nil
 	})
 	for name, path := range map[string][]string{
 		"input.tap": {"input", "tap"}, "input.swipe": {"input", "swipe"}, "input.hold": {"input", "hold"},
@@ -271,6 +258,8 @@ func nodeDomain(d string) bool {
 }
 func nodeSettingGroup(d string) string {
 	switch d {
+	case "screen":
+		return "display"
 	case "audio", "volume", "background", "microphone", "speaker", "media", "alerts", "feedback":
 		return "audio"
 	case "call":

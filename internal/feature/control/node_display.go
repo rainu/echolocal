@@ -12,13 +12,13 @@ import (
 )
 
 func registerNodeDisplay(a *connection.NodeAccess) {
-	_ = a.Register(connection.NodeOperation{Command: "display.pages", Group: "display", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "display.pages", Group: "display", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}
 		return dashboard.Tabs().List(), nil
 	}})
-	_ = a.Register(connection.NodeOperation{Command: "display.page", Group: "display", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "display.page", Group: "display", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p struct {
 			Key string `json:"key"`
 		}
@@ -37,7 +37,7 @@ func registerNodeDisplay(a *connection.NodeAccess) {
 		}
 		return nil, errors.New("unsupported_page")
 	}})
-	_ = a.Register(connection.NodeOperation{Command: "intercom.state", Group: "intercom", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "intercom.state", Group: "intercom", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}

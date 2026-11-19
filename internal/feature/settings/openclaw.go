@@ -20,9 +20,7 @@ func claw() *openclaw.Client { return featureclaw.Get().Client }
 
 func openclawPage() *sharedshell.Page {
 	return &sharedshell.Page{Title: say.T("openclaw.title"), Build: func() ([]menu.Row, []func(int)) {
-		rows := []menu.Row{{Label: say.T("openclaw.connection"), Kind: menu.Chevron, Open: func() menu.View { return openclawClientPage(claw()) }}}
-		rows = append(rows, menu.Row{Label: "OpenClaw Node", Kind: menu.Chevron, Open: func() menu.View { p := openclawClientPage(featureclaw.Get().Node); p.Title = "OpenClaw Node"; return p }})
-		rows = append(rows, menu.Row{Label: "Node-Berechtigungen", Kind: menu.Chevron, Open: func() menu.View { return nodePermissionsPage() }})
+		rows := []menu.Row{{Label: say.T("openclaw.connection"), Kind: menu.Chevron, Open: func() menu.View { return openclawConnectionPage(featureclaw.Get().Connections) }}}
 		for slot := 0; slot < 2; slot++ {
 			rows = append(rows, menu.Row{Label: say.F("assistants.slot", map[string]any{"N": slot + 1}), Kind: menu.Chevron, Open: func() menu.View { return talkOptionsPage(slot) }})
 		}
@@ -111,9 +109,13 @@ func clawForgetPage(c *openclaw.Client, forgotten func()) *sharedshell.Page {
 		},
 	}
 }
-func clawDiagnostics(c *openclaw.Client) *sharedshell.Page {
+func clawDiagnostics(c *openclaw.Client, titles ...string) *sharedshell.Page {
+	title := say.T("openclaw.diagnostics.title")
+	if len(titles) > 0 {
+		title = titles[0]
+	}
 	return &sharedshell.Page{
-		Title: say.T("openclaw.diagnostics.title"),
+		Title: title,
 		Build: func() ([]menu.Row, []func(int)) {
 			var rows []menu.Row
 			var acts []func(int)

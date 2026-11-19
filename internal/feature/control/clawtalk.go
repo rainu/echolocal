@@ -50,4 +50,9 @@ func talkCommands(t *harness.Tree) {
 	node.AddCommand(&cobra.Command{Use: "connect", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return featureclaw.Get().Node.Connect() }})
 	node.AddCommand(&cobra.Command{Use: "disconnect", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return featureclaw.Get().Node.Disconnect() }})
 	t.Top(node)
+	connectionStatus := &cobra.Command{Use: "connection", Short: "Local diagnostics for the shared OpenClaw connection"}
+	connectionStatus.AddCommand(&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(featureclaw.Get().Connections.Summary())
+	}})
+	t.Top(connectionStatus)
 }

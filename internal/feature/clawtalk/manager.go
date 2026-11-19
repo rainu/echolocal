@@ -4,6 +4,7 @@ package clawtalk
 
 import (
 	"context"
+	"errors"
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/feature/idle"
@@ -100,6 +101,38 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 	m.cancel = cancel
 	m.mu.Unlock()
 	go m.activate(ctx, cancel, slot, generation)
+	return true
+}
+
+// StartOwned starts only an already locally configured OpenClaw slot.
+// It exposes neither target configuration nor operator credentials.
+func (m *Manager) StartOwned(slot int, haBusy bool) (uint64, error) {
+	m.mu.Lock()
+	if slot < 0 || slot > 1 || m.active || haBusy || !m.Store.Get(slot).OpenClaw {
+		m.mu.Unlock()
+		return 0, errors.New("talk_unavailable")
+	}
+	m.active = true
+	m.generation++
+	generation := m.generation
+	m.captions.Begin(generation)
+	m.lastBackend, m.lastAudio = nil, nil
+	m.error, m.forcedMuted = false, false
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.cancel = cancel
+	m.mu.Unlock()
+	go m.activate(ctx, cancel, slot, generation)
+	return generation, nil
+}
+
+// StopOwned cannot stop a newer locally started conversation.
+func (m *Manager) StopOwned(generation uint64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.active || m.generation != generation || m.cancel == nil {
+		return false
+	}
+	m.cancel()
 	return true
 }
 func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot int, generation uint64) {

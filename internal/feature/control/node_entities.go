@@ -26,7 +26,7 @@ func registerNodeEntities(a *connection.NodeAccess) {
 			if g == "" || e.OnPress == nil {
 				continue
 			}
-			_ = a.Register(connection.NodeOperation{Command: "button." + e.ObjectID, Group: g, Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = nodeRegister(a, connection.NodeOperation{Command: "button." + e.ObjectID, Group: g, Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 				if err := nodeEmpty(raw); err != nil {
 					return nil, err
 				}
@@ -37,7 +37,7 @@ func registerNodeEntities(a *connection.NodeAccess) {
 			if (e.ObjectID != "noise_layer_1" && e.ObjectID != "noise_layer_2") || e.OnCommand == nil {
 				continue
 			}
-			_ = a.Register(connection.NodeOperation{Command: "audio.background." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.background." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 				var p struct {
 					Value *string `json:"value"`
 				}
@@ -62,7 +62,7 @@ func registerNodeEntities(a *connection.NodeAccess) {
 			if !strings.HasPrefix(e.ObjectID, "volume_") || e.OnCommand == nil {
 				continue
 			}
-			_ = a.Register(connection.NodeOperation{Command: "audio.volume." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.volume." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 				var p struct {
 					Value *float32 `json:"value"`
 				}

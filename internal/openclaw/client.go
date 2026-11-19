@@ -28,6 +28,7 @@ import (
 const Protocol = 4
 
 type credentials struct {
+	DisplayName   string `json:"displayName,omitempty"`
 	Talk          bool   `json:"talk,omitempty"`
 	BootstrapOnly bool   `json:"bootstrapOnly,omitempty"`
 	URL           string `json:"url"`
@@ -47,6 +48,7 @@ type Status struct {
 }
 
 type Client struct {
+	shared        *Connections
 	access        *NodeAccess
 	node          *NodeMetadata
 	rpc           *rpcLink
@@ -87,9 +89,10 @@ func (c *Client) Start() {
 	}
 }
 func (c *Client) Status() Status {
+	s := c.snapshot()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return Status{c.state, c.reason, c.saved.URL != "", c.saved.Token != "", c.saved.Enabled}
+	return Status{c.state, c.reason, s.URL != "", s.Token != "", s.Enabled}
 }
 func (c *Client) Events() []Event {
 	c.mu.Lock()
@@ -119,6 +122,14 @@ func ValidateEndpoint(raw string) error {
 	return nil
 }
 func (c *Client) persist(s credentials) error {
+	if c.shared != nil {
+		common := c.shared.Editable()
+		// The shared Gateway credential has one persistent source; never duplicate
+		// it into per-role identity files or confuse it with a device token.
+		if common.Token != "" && !s.BootstrapOnly {
+			s.Bootstrap = ""
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(c.path), 0700); err != nil {
 		return errors.New("storage")
 	}
@@ -187,6 +198,10 @@ func (c *Client) ConfigureBootstrap(endpoint, bootstrap string) error {
 // EditableConnection is exclusively for the private on-device editor.
 // Never serialize its result into diagnostics, exports or public artifacts.
 func (c *Client) EditableConnection() (string, string) {
+	if c.shared != nil {
+		s := c.shared.Editable()
+		return s.URL, s.Token
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	token := c.saved.Bootstrap
@@ -244,7 +259,7 @@ func (c *Client) Connect() error {
 	c.op.Lock()
 	defer c.op.Unlock()
 	c.stopLocked()
-	s := c.saved
+	s := c.snapshot()
 	if ValidateEndpoint(s.URL) != nil {
 		return errors.New("invalid_endpoint")
 	}
@@ -312,6 +327,10 @@ type frame struct {
 }
 
 func connectParams(s credentials, nonce string, at int64, version string) map[string]any {
+	displayName := s.DisplayName
+	if displayName == "" {
+		displayName = "EchoLocal"
+	}
 	private := ed25519.PrivateKey(s.Private)
 	public := private.Public().(ed25519.PublicKey)
 	hash := sha256.Sum256(public)
@@ -329,7 +348,7 @@ func connectParams(s credentials, nonce string, at int64, version string) map[st
 		scopes = []string{"operator.read", "operator.talk"}
 	}
 	payload := strings.Join([]string{"v3", id, "openclaw-linux", "ui", "operator", strings.Join(scopes, ","), fmt.Sprint(at), token, nonce, "android", "tablet"}, "|")
-	return map[string]any{"minProtocol": Protocol, "maxProtocol": Protocol, "client": map[string]any{"id": "openclaw-linux", "displayName": "EchoLocal", "version": version, "platform": "android", "deviceFamily": "tablet", "mode": "ui"}, "role": "operator", "scopes": scopes, "auth": auth, "device": map[string]any{"id": id, "publicKey": base64.RawURLEncoding.EncodeToString(public), "signature": base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(payload))), "signedAt": at, "nonce": nonce}}
+	return map[string]any{"minProtocol": Protocol, "maxProtocol": Protocol, "client": map[string]any{"id": "openclaw-linux", "displayName": displayName, "version": version, "platform": "android", "deviceFamily": "tablet", "mode": "ui"}, "role": "operator", "scopes": scopes, "auth": auth, "device": map[string]any{"id": id, "publicKey": base64.RawURLEncoding.EncodeToString(public), "signature": base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, []byte(payload))), "signedAt": at, "nonce": nonce}}
 }
 func classify(err error) string {
 	var dns *net.DNSError
@@ -372,7 +391,7 @@ func (c *Client) run(ctx context.Context) {
 }
 func (c *Client) attempt(ctx context.Context) bool {
 	c.mark("connecting", "", "local", "connect")
-	s := c.saved
+	s := c.snapshot()
 	if ValidateEndpoint(s.URL) != nil || len(s.Private) != ed25519.PrivateKeySize || (s.Token == "" && s.Bootstrap == "") {
 		c.mark("error", "settings", "local", "connect")
 		return false

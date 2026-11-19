@@ -1,6 +1,8 @@
 # EchoLocal Node tools (issue #13)
 
-Development preview, not final owner acceptance. Operator/Talk credentials and scopes are unchanged. The Node uses its separate existing identity.
+Owner accepted this bounded implementation for integration on 2026-11-19. Operator/Talk credentials and scopes are unchanged. The Node uses its separate existing identity.
+
+Canonical namespace and new typed commands: [command contracts](openclaw-node-commands.md). The operation matrix below describes the original internal adapters; all nonstandard wire names now use the echolocal prefix.
 
 ## Wire contract
 
@@ -49,11 +51,11 @@ Actual registry metadata (all actions, fields and entities) is captured in [open
 
 Credential/secret kinds and authority domains (access, frontend, network, certs, cast, rtsp, OpenClaw policy/identities) are excluded. Free-text/list fields are excluded unless explicitly reviewed: clock date pattern, visual label, app order/dock and custom screen colors. Export never returns arbitrary configuration structs. Node cannot import its grants or edit credentials. Audio-related fields additionally require audio, camera/cameras require camera, call requires intercom, alarm/timer require alarms. Other approved non-secret domains use settings.
 
-Local administration: Echo settings -> OpenClaw -> Node-Berechtigungen, individual groups and all-on/all-off; local root/ADB control also provides `ctl node-permissions [GROUP|all on|off]`. For Gateway-independent device testing, local root/ADB also provides `ctl node-commands` and `ctl node-execute COMMAND [JSON]`, executing through the identical Node policy boundary. These local administration commands are never Node-advertised or reachable through a generic Node proxy. Disabling Node grants does not change HA/WebUI/operator permission settings.
+Local administration: Echo settings -> OpenClaw -> Verbindung -> Berechtigungen, individual groups and all-on/all-off; local root/ADB control also provides `ctl node-permissions [GROUP|all on|off]`. For Gateway-independent device testing, local root/ADB also provides `ctl node-commands` and `ctl node-execute COMMAND [JSON]`, executing through the identical Node policy boundary. These local administration commands are never Node-advertised or reachable through a generic Node proxy. Disabling Node grants does not change HA/WebUI/operator permission settings.
 
 ## Explicit gaps and transport limits
 
-This preview is not represented as complete issue acceptance:
+The accepted implementation retains these explicit limits:
 
 - No invented live screen/camera streaming transport or general event subscription. Existing desktop/call WebRTC sessions have separate authenticated signaling and ownership; their URLs, credentials and raw SDP are not tunneled through Node.
 - The existing broadcast registry action starts context-free asynchronous microphone capture or URL relaying. It is deliberately not exposed pending a cancellable, Node-owned service API. It cannot satisfy revocation cleanup by simply returning an acknowledgement.
@@ -66,4 +68,4 @@ This preview is not represented as complete issue acceptance:
 - Full-device restart and implicit install-selected-version buttons are intentionally replaced by explicit application restart/version-selection commands.
 - Settings tests, real Gateway checks, device installation and visual results must be reported separately. Synthetic tests are not hardware validation.
 
-No merge or issue closure before owner acceptance of an exact tested commit.
+Owner acceptance covers the tested, installed Node command and shared-connection implementation, not unimplemented transports or adapters.

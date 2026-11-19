@@ -91,6 +91,11 @@ func (c *Client) nodeEvent(parent context.Context, r *rpcLink, f frame) {
 		}
 		delivery, done := context.WithTimeout(parent, 10*time.Second)
 		defer done()
-		_ = r.call(delivery, "node.invoke.result", reply, nil)
+		if err := r.nodeResult(delivery, reply); err != nil && err.Error() == "rpc_invalid_params" {
+			// Return a bounded error instead of silently leaving the invoke pending.
+			reply = map[string]any{"id": p.ID, "nodeId": p.NodeID, "ok": false,
+				"error": map[string]string{"code": "UNAVAILABLE", "message": "result_too_large"}}
+			_ = r.nodeResult(delivery, reply)
+		}
 	}()
 }

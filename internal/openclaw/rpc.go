@@ -85,11 +85,20 @@ func (c *Client) CallTalk(ctx context.Context, method string, params any, result
 	return err
 }
 func (r *rpcLink) call(ctx context.Context, method string, params any, result any) error {
+	return r.callBounded(ctx, method, params, result, 128*1024)
+}
+
+// nodeResult has a separate outbound budget for bounded image/video results.
+// It cannot widen any operator/Talk request or inbound command parameter budget.
+func (r *rpcLink) nodeResult(ctx context.Context, reply any) error {
+	return r.callBounded(ctx, "node.invoke.result", reply, nil, 9*1024*1024)
+}
+func (r *rpcLink) callBounded(ctx context.Context, method string, params any, result any, limit int) error {
 	if ctx.Err() != nil {
 		return errors.New("rpc_cancelled")
 	}
 	data, err := json.Marshal(params)
-	if err != nil || len(data) > 128*1024 {
+	if err != nil || len(data) > limit {
 		return errors.New("rpc_invalid_params")
 	}
 	r.mu.Lock()

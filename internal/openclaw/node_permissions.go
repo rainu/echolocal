@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-var PermissionGroups = []string{"screen", "input", "display", "settings", "audio", "alarms", "intercom", "camera", "state", "diagnostics", "maintenance", "tones"}
+var PermissionGroups = []string{"screen", "input", "display", "settings", "audio", "alarms", "intercom", "camera", "state", "diagnostics", "maintenance", "tones", "talk"}
 
 type NodeOperation struct {
 	Command, Group string

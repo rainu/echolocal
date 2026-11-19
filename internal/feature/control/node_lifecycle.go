@@ -28,7 +28,7 @@ func nodeInputAllowed() bool {
 	return true
 }
 func registerNodeLifecycle(a *connection.NodeAccess) {
-	_ = a.Register(connection.NodeOperation{Command: "input.text", Group: "input", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "input.text", Group: "input", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p textentry.Request
 		if decodeNode(raw, &p) != nil || len(p.Text) > textentry.TextMost || !nodeInputAllowed() {
 			return nil, errors.New("invalid_params")
@@ -59,7 +59,7 @@ func registerNodeLifecycle(a *connection.NodeAccess) {
 		// lifecycle metadata is returned. Password fields are not Node-editable.
 		return map[string]any{"target": view.Target, "revision": view.Revision}, nil
 	}})
-	_ = a.Register(connection.NodeOperation{Command: "maintenance.restart", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "maintenance.restart", Group: "maintenance", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p struct {
 			Confirm bool `json:"confirm"`
 		}
@@ -69,7 +69,7 @@ func registerNodeLifecycle(a *connection.NodeAccess) {
 		update.Restart("Node maintenance restart")
 		return map[string]bool{"scheduled": true}, nil
 	}})
-	_ = a.Register(connection.NodeOperation{Command: "diagnostics.status", Group: "diagnostics", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+	_ = nodeRegister(a, connection.NodeOperation{Command: "diagnostics.status", Group: "diagnostics", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}

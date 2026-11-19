@@ -73,7 +73,7 @@ func TestNodeAdaptersDenyEveryAdvertisedCommandAfterAllOff(t *testing.T) {
 		if err := a.SetGrants(map[string]bool{"settings": true}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := a.Execute(context.Background(), "settings.import", []byte(payload)); err == nil {
+		if _, err := a.Execute(context.Background(), "echolocal.settings.import", []byte(payload)); err == nil {
 			t.Fatal("import bypass")
 		}
 	}
