@@ -39,6 +39,7 @@ type Session struct {
 	Client            Control
 	Target            string
 	Provider, Model   string
+	DeviceContext     string
 	Audio             Device
 	Activity          func(State)
 	Caption           func(role, text, id string)
@@ -232,6 +233,13 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 			return errors.New("talk_provider_failed")
 		case <-startup.Done():
 			return errors.New("talk_start_timeout")
+		}
+	}
+	// Append silent device context before opening the room microphone. Do not
+	// replace the Gateway-selected persona/history or create a transcript turn.
+	if s.nativeMedia && s.DeviceContext != "" {
+		if err = link.SendControl(deviceContextAppend(launch.Model, s.DeviceContext)); err != nil {
+			return errors.New("talk_device_context_unavailable")
 		}
 	}
 	s.stage.Store(6)

@@ -181,6 +181,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}
 	b := talk.NewSession(bound, v.Context, a)
 	b.Provider, b.Model = v.Provider, v.Model
+	b.DeviceContext = claw.Get().Node.ConversationDeviceContext()
 	m.mu.Lock()
 	m.lastBackend = b
 	m.lastAudio = a
