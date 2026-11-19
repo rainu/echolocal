@@ -63,13 +63,47 @@ individual availability in the existing statistics presentation:
    series; retain load average as load. Render per-field unavailable state.
 3. Preserve measurement time rather than relabeling cached samples as current;
    suppress current-state presentation when disconnected or stale.
-4. Add explicit snapshot invalidation on diagnostics revocation. The current
-   protocol has no host-stats-clear event; an old server-side snapshot cannot
-   be withdrawn by the device without a protocol change. No zero-valued
-   invalidation is sent.
+The current protocol has no host-stats-clear event. However, the existing
+grant lifecycle reconnects the Node: the real-device test confirmed that
+this removes current hostStats from the Gateway inventory. They remained
+absent for more than one update interval with diagnostics disabled, while
+audio RPCs and connectivity remained functional. Re-enabling diagnostics
+restored collection and publication. Historical/offline UI presentation still
+needs visual verification; no zero-valued invalidation is sent.
 
 No Gateway source, configuration, permissions or UI bundle is modified by
 this EchoLocal branch. Until that coordinated change is implemented and
 visually verified, CPU percentage is available only in diagnostics and the
 complete story must remain open. Hardware/build results belong in the issue
 and PR; parser tests alone are not proof of device UI behavior.
+
+
+## Hardware verification: 2026-11-19
+
+Tested application commit: 04a0e367d474d975d12fc50003549115c509406c.
+Version: 0.0.15-dev.issue18.04a0e36.
+Athena binary SHA-256:
+9f077d604167b09560337095c4381d90d7fe60143e48188a8ae98376fcd42854.
+Build and installed binary hashes matched; service was running and screen ready.
+Installation used the normal installer without reboot; settings were retained.
+
+The health test binary passed all five tests directly on Athena. The installed
+service returned CPU percentage with a 1001 ms sample across 8 CPUs, RAM total
+2021113856 bytes and data filesystem total 3631857664 bytes. Live available/used
+values were plausible. The Gateway inventory contained matching hostStats,
+proving the event was accepted and integrated, not only a raw diagnostic result.
+Diagnostics-off denied the command and removed it from advertised commands.
+After more than 60 seconds, hostStats remained absent; audio status still worked.
+Diagnostics-on restored readings and the original grants.
+
+OpenClaw/Talk tests and vet passed, as did the Athena application build.
+Parser/error/cancellation tests cover unavailable inputs, counter reset,
+normalization, cache/reset and revocation fencing. Full spoken audio interaction,
+physical touch and visual Gateway statistics/offline presentation are not claimed.
+Browser verification was blocked by an existing Chromium profile lock.
+The CPU percentage/availability/timestamp Gateway/UI extension remains outstanding.
+
+The previous binary's verified hash is:
+45edfc3dca0a1777703f1451a57f8a4c77e6241e1093e7e22d8b3020043fe95f.
+A device-local binary rollback was retained; reinstall it through the normal
+installer, preserving settings. Exact private paths are kept in operational notes.
