@@ -11,6 +11,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/frontend"
 	screens "github.com/ygelfand/echolocal/internal/feature/shell"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
+	"github.com/ygelfand/echolocal/internal/openclaw/health"
 	"github.com/ygelfand/echolocal/internal/update"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/input/textentry"
@@ -28,6 +29,8 @@ func nodeInputAllowed() bool {
 	return true
 }
 func registerNodeLifecycle(a *connection.NodeAccess) {
+	collector := &health.Collector{}
+	a.OnCleanup(collector.Reset)
 	_ = nodeRegister(a, connection.NodeOperation{Command: "input.text", Group: "input", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p textentry.Request
 		if decodeNode(raw, &p) != nil || len(p.Text) > textentry.TextMost || !nodeInputAllowed() {
@@ -73,7 +76,15 @@ func registerNodeLifecycle(a *connection.NodeAccess) {
 		if e := nodeEmpty(raw); e != nil {
 			return nil, e
 		}
+		snapshot, err := collector.Collect(ctx)
+		if err != nil {
+			return nil, err
+		}
 		c := featureNodeStatus()
+		c["health"] = snapshot
+		if stats := snapshot.HostStats(); stats != nil {
+			c["hostStats"] = stats
+		}
 		return c, nil
 	}})
 }
