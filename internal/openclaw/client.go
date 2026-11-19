@@ -584,6 +584,9 @@ func (c *Client) attempt(ctx context.Context) bool {
 		}
 		c.mu.Unlock()
 	}()
+	healthCtx, healthCancel := context.WithCancel(ctx)
+	defer healthCancel()
+	go c.nodeHealth(healthCtx, link)
 	c.mark("connected", "", "in", "hello")
 	if upgradeRetry {
 		c.mark("pairing", "approval_required", "local", "scope_upgrade")
