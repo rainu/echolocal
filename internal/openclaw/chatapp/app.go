@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -363,13 +364,21 @@ func (a *App) reload(ctx context.Context, epoch uint64, rpc RPC) {
 }
 func (a *App) history(ctx context.Context, epoch, gen uint64, rpc RPC, s Session, cursor string) {
 	params := map[string]any{"sessionKey": s.Key, "limit": 50, "maxBytes": 128 * 1024}
-	if cursor != "" {
+	if strings.HasPrefix(cursor, "offset:") {
+		offset, err := strconv.Atoi(strings.TrimPrefix(cursor, "offset:"))
+		if err != nil || offset < 0 {
+			return
+		}
+		params["offset"] = offset
+	} else if cursor != "" {
 		params["cursor"] = cursor
 	}
 	var h struct {
 		SessionID   string
 		Messages    []Message
 		OlderCursor string
+		HasMore     bool
+		NextOffset  int
 		InFlightRun json.RawMessage
 	}
 	err := rpc.Call(ctx, "chat.history", params, &h)
@@ -388,6 +397,9 @@ func (a *App) history(ctx context.Context, epoch, gen uint64, rpc RPC, s Session
 		return
 	}
 	a.state.Active = len(h.InFlightRun) > 0 && string(h.InFlightRun) != "null"
+	if h.OlderCursor == "" && h.HasMore && h.NextOffset > 0 {
+		h.OlderCursor = "offset:" + strconv.Itoa(h.NextOffset)
+	}
 	// Keep an explicitly paged-back view stable while live tail updates arrive.
 	if cursor != "" {
 		a.olderMessages = append(h.Messages, a.olderMessages...)
