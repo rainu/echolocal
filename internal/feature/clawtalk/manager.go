@@ -195,6 +195,20 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	a.onPlay = b.Playback
 	b.UserSpeech = func() { m.userSpeechOwned(generation) }
 	b.Caption = func(role, text, id string) { m.captionOwned(generation, role, text, id) }
+	b.PartialCaption = func(role, delta string) {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.active && m.generation == generation {
+			m.captions.Delta(generation, role, delta)
+			m.uiDirty = true
+		}
+	}
+	b.ClearPartial = func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.captions.DropPending(generation)
+		m.uiDirty = true
+	}
 	b.End = cancel
 	b.Failure = func() { m.markOwned(generation, talk.Failed); cancel() }
 	if e = m.Controller.Start(ctx, b, time.Duration(v.Timeout)*time.Second); e != nil {

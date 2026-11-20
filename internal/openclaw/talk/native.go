@@ -133,6 +133,7 @@ func (s *Session) Playback() {
 }
 func (s *Session) nativeLoop(ctx context.Context) {
 	defer close(s.native.done)
+	defer s.clearPartial()
 	active := map[string]bool{}
 	// Only recent IDs are retained for duplicate telemetry; this is not a
 	// lifetime turn limit and does not stop a long-running conversation.
@@ -149,9 +150,10 @@ func (s *Session) nativeLoop(ctx context.Context) {
 			s.native.messages.Add(1)
 			var e struct {
 				Type             string
+				Delta            string
 				DelegationItemID string `json:"delegation_item_id"`
 				DelegationID     string `json:"delegation_id"`
-				Item             struct{ ID, Target string }
+				Item             struct{ ID, Target, Text string }
 				Delegation       struct{ ID, Target string }
 				Turn             struct{ ID, Role, Transcript string }
 			}
@@ -226,10 +228,20 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					s.nativeUserSpeech()
 				}
 			case "session.input_transcript.delta":
+				s.partial("user", e.Delta)
 				if !s.native.legacy.Load() {
 					s.nativeUserSpeech()
 				}
+			case "session.output_transcript.delta":
+				s.partial("assistant", e.Delta)
+			case "input_transcript.added", "output_transcript.added":
+				role := "assistant"
+				if e.Type == "input_transcript.added" {
+					role = "user"
+				}
+				s.partial(role, e.Item.Text)
 			case "output_audio_buffer.cleared":
+				s.clearPartial()
 				if s.Audio.Queued() > 0 {
 					s.native.outputClears.Add(1)
 				}

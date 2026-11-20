@@ -83,7 +83,13 @@ func (m *Manager) HistoryPage() *shell.Page {
 							break
 						}
 					}
-					rows := captionRows(entries)
+					finals := entries[:0]
+					for _, e := range entries {
+						if !e.Provisional {
+							finals = append(finals, e)
+						}
+					}
+					rows := captionRows(finals)
 					return rows, make([]func(int), len(rows))
 				}}
 			}})
