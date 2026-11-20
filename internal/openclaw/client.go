@@ -56,6 +56,7 @@ type Client struct {
 	access               *NodeAccess
 	node                 *NodeMetadata
 	rpc                  *rpcLink
+	publication          NodePublicationStatus
 	op                   sync.Mutex
 	mu                   sync.Mutex
 	path, version        string
@@ -568,6 +569,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 	link.origin = s.URL
 	c.mu.Lock()
 	c.rpc = link
+	c.publication = NodePublicationStatus{Tools: "pending", Skill: "pending"}
 	if c.node == nil {
 		c.granted = append([]string(nil), hello.Auth.Scopes...)
 	}
@@ -580,6 +582,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 		c.mu.Lock()
 		if c.rpc == link {
 			c.rpc = nil
+			c.publication = NodePublicationStatus{Tools: "disconnected", Skill: "disconnected"}
 			c.granted = nil
 		}
 		c.mu.Unlock()
@@ -587,6 +590,7 @@ func (c *Client) attempt(ctx context.Context) bool {
 	healthCtx, healthCancel := context.WithCancel(ctx)
 	defer healthCancel()
 	go c.nodeHealth(healthCtx, link)
+	go c.nodeCatalog(healthCtx, link)
 	c.mark("connected", "", "in", "hello")
 	if upgradeRetry {
 		c.mark("pairing", "approval_required", "local", "scope_upgrade")

@@ -1,5 +1,9 @@
 # OpenClaw Node command contracts
 
+For typed tool/skill publication, schemas, examples and troubleshooting, see
+[Published tools and guidance](openclaw-node-tools.md). This inventory alone is
+not the agent-visible tool catalog.
+
 This change builds on the existing device adapters. It does not add live desktop
 streaming, issue creation, unrestricted shell execution, or arbitrary settings.
 

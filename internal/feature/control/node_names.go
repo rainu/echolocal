@@ -19,6 +19,15 @@ func nodeCommandName(name string) string {
 	return "echolocal." + name
 }
 func nodeRegister(a *connection.NodeAccess, op connection.NodeOperation) error {
+	if op.Parameters == nil {
+		op.Description, op.Parameters = nodeContract(strings.TrimPrefix(op.Command, "echolocal."))
+	}
+	if op.Parameters == nil || op.Description == "" {
+		panic("Node command lacks reviewed metadata: " + op.Command)
+	}
 	op.Command = nodeCommandName(op.Command)
-	return a.Register(op)
+	if err := a.Register(op); err != nil {
+		panic("Node command registration failed: " + op.Command)
+	}
+	return nil
 }

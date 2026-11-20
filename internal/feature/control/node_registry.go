@@ -21,7 +21,8 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 		if group == "" {
 			continue
 		}
-		_ = nodeRegister(a, connection.NodeOperation{Command: "action." + action.Name, Group: group, Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+		description, parameters := nodeActionContract(action)
+		_ = nodeRegister(a, connection.NodeOperation{Command: "action." + action.Name, Description: description, Parameters: parameters, Group: group, Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var p struct {
 				Args map[string]any `json:"args"`
 			}
@@ -97,49 +98,52 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 			if e.OnCommand == nil {
 				continue
 			}
-			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.control." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
-				var p struct {
-					Command      string   `json:"command"`
-					Volume       *float32 `json:"volume"`
-					URL          string   `json:"url"`
-					Announcement bool     `json:"announcement"`
-				}
-				if decodeNode(raw, &p) != nil {
-					return nil, errors.New("invalid_params")
-				}
-				cmd := esphome.MediaCommand{}
-				if p.Command != "" {
-					commands := map[string]esphome.MediaPlayerCommand{"play": esphome.MediaPlayerPlay, "pause": esphome.MediaPlayerPause, "stop": esphome.MediaPlayerStop, "mute": esphome.MediaPlayerMute, "unmute": esphome.MediaPlayerUnmute, "volume_up": esphome.MediaPlayerVolumeUp, "volume_down": esphome.MediaPlayerVolumeDown, "toggle": esphome.MediaPlayerToggle}
-					v, ok := commands[p.Command]
-					if !ok {
+			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.control." + e.ObjectID, Group: "audio",
+				Description: "Control this speaker media-player entity: play/pause/stop/mute/unmute/volume_up/volume_down/toggle, optional HTTP(S) media URL, volume 0..1. announcement applies only with a URL. Speaker mute is not microphone mute.",
+				Parameters:  nodeObject(nodeSchema{"command": nodeEnum("", "play", "pause", "stop", "mute", "unmute", "volume_up", "volume_down", "toggle"), "volume": nodeNumber("number", 0, 1), "url": nodeString(2048, "HTTP(S) URL with a host and no embedded credentials; empty means no media change."), "announcement": nodeBool()}),
+				Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+					var p struct {
+						Command      string   `json:"command"`
+						Volume       *float32 `json:"volume"`
+						URL          string   `json:"url"`
+						Announcement bool     `json:"announcement"`
+					}
+					if decodeNode(raw, &p) != nil {
 						return nil, errors.New("invalid_params")
 					}
-					cmd.HasCommand = true
-					cmd.Command = v
-				}
-				if p.Volume != nil {
-					if *p.Volume < 0 || *p.Volume > 1 {
-						return nil, errors.New("invalid_params")
+					cmd := esphome.MediaCommand{}
+					if p.Command != "" {
+						commands := map[string]esphome.MediaPlayerCommand{"play": esphome.MediaPlayerPlay, "pause": esphome.MediaPlayerPause, "stop": esphome.MediaPlayerStop, "mute": esphome.MediaPlayerMute, "unmute": esphome.MediaPlayerUnmute, "volume_up": esphome.MediaPlayerVolumeUp, "volume_down": esphome.MediaPlayerVolumeDown, "toggle": esphome.MediaPlayerToggle}
+						v, ok := commands[p.Command]
+						if !ok {
+							return nil, errors.New("invalid_params")
+						}
+						cmd.HasCommand = true
+						cmd.Command = v
 					}
-					cmd.HasVolume = true
-					cmd.Volume = *p.Volume
-				}
-				if p.URL != "" {
-					u, err := url.Parse(p.URL)
-					if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || len(p.URL) > 2048 {
-						return nil, errors.New("invalid_params")
+					if p.Volume != nil {
+						if *p.Volume < 0 || *p.Volume > 1 {
+							return nil, errors.New("invalid_params")
+						}
+						cmd.HasVolume = true
+						cmd.Volume = *p.Volume
 					}
-					cmd.HasMediaURL = true
-					cmd.MediaURL = p.URL
-					cmd.HasAnnouncement = true
-					cmd.Announcement = p.Announcement
-				}
-				if ctx.Err() != nil || !a.Granted("audio") {
-					return nil, errors.New("cancelled")
-				}
-				e.OnCommand(cmd)
-				return map[string]bool{"done": true}, nil
-			}})
+					if p.URL != "" {
+						u, err := url.Parse(p.URL)
+						if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || len(p.URL) > 2048 {
+							return nil, errors.New("invalid_params")
+						}
+						cmd.HasMediaURL = true
+						cmd.MediaURL = p.URL
+						cmd.HasAnnouncement = true
+						cmd.Announcement = p.Announcement
+					}
+					if ctx.Err() != nil || !a.Granted("audio") {
+						return nil, errors.New("cancelled")
+					}
+					e.OnCommand(cmd)
+					return map[string]bool{"done": true}, nil
+				}})
 		case *esphome.Button:
 			if e.ObjectID != "test_playback" || e.OnPress == nil {
 				continue

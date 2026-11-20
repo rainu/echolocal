@@ -16,7 +16,7 @@ func TestNodeAccessEveryGroup(t *testing.T) {
 			t.Fatal("default", g)
 		}
 		calls := 0
-		if err := a.Register(NodeOperation{g, g, func(context.Context, json.RawMessage) (any, error) { calls++; return true, nil }}); err != nil {
+		if err := a.Register(NodeOperation{Command: g, Group: g, Run: func(context.Context, json.RawMessage) (any, error) { calls++; return true, nil }}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := a.Execute(context.Background(), g, nil); err != nil {
@@ -53,7 +53,7 @@ func TestNodeAccessCancel(t *testing.T) {
 		a := NewNodeAccess(filepath.Join(t.TempDir(), "permissions.json"))
 		started := make(chan struct{})
 		done := make(chan error)
-		a.Register(NodeOperation{"input.tap", "input", func(ctx context.Context, _ json.RawMessage) (any, error) {
+		a.Register(NodeOperation{Command: "input.tap", Group: "input", Run: func(ctx context.Context, _ json.RawMessage) (any, error) {
 			close(started)
 			<-ctx.Done()
 			return "stale", nil

@@ -38,13 +38,13 @@ func TestNodePublicCommandNamespaces(t *testing.T) {
 	if _, err := a.Execute(context.Background(), "audio.volume.set", nil); err == nil {
 		t.Fatal("legacy unnamespaced command still executable")
 	}
-	if _, err := a.Execute(context.Background(), "echolocal.audio.volume.set", nil); err != nil {
+	if _, err := a.Execute(context.Background(), "echolocal.audio.volume.set", []byte(`{"volume":50}`)); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.SetGrants(map[string]bool{"audio": false}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Execute(context.Background(), "echolocal.audio.volume.set", nil); err == nil || err.Error() != "permission_denied" {
+	if _, err := a.Execute(context.Background(), "echolocal.audio.volume.set", []byte(`{"volume":50}`)); err == nil || err.Error() != "permission_denied" {
 		t.Fatal("grant bypass", err)
 	}
 }

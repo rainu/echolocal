@@ -79,7 +79,12 @@ func (c *Client) nodeEvent(parent context.Context, r *rpcLink, f frame) {
 		result, err := c.access.Execute(ctx, p.Command, json.RawMessage(p.ParamsJSON))
 		reply := map[string]any{"id": p.ID, "nodeId": p.NodeID, "ok": err == nil}
 		if err != nil {
-			reply["error"] = map[string]string{"code": "UNAVAILABLE", "message": err.Error()}
+			code := "UNAVAILABLE"
+			var parameterError *ParameterError
+			if errors.As(err, &parameterError) {
+				code = "INVALID_PARAMS"
+			}
+			reply["error"] = map[string]string{"code": code, "message": err.Error()}
 		} else {
 			raw, e := json.Marshal(result)
 			if e != nil || len(raw) > 8*1024*1024 {
