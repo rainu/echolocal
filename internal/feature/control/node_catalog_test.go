@@ -116,3 +116,29 @@ func catalogIsolated(t *testing.T) bool {
 	}
 	return false
 }
+
+func TestNodeActionAlarmBoundsWithoutEffects(t *testing.T) {
+	a := connection.NewNodeAccess(filepath.Join(t.TempDir(), "permissions"))
+	action := &esphome.Action{Name: "alarm_set", Args: []esphome.Arg{
+		{Name: "time", Type: esphome.ArgString}, {Name: "snooze_minutes", Type: esphome.ArgInt},
+		{Name: "light_minutes", Type: esphome.ArgInt}, {Name: "ramp_seconds", Type: esphome.ArgInt},
+		{Name: "volume", Type: esphome.ArgString},
+	}}
+	description, parameters := nodeActionContract(action)
+	calls := 0
+	_ = nodeRegister(a, connection.NodeOperation{Command: "action.alarm_set", Group: "alarms", Description: description, Parameters: parameters, Run: func(context.Context, json.RawMessage) (any, error) { calls++; return nil, nil }})
+	for _, raw := range []string{
+		`{"args":{}}`, `{"args":{"time":"06:30","snooze_minutes":61}}`,
+		`{"args":{"time":"06:30","light_minutes":31}}`, `{"args":{"time":"06:30","volume":"loud"}}`,
+	} {
+		if _, err := a.Execute(context.Background(), "echolocal.action.alarm_set", []byte(raw)); err == nil {
+			t.Fatal("invalid alarm accepted")
+		}
+	}
+	if calls != 0 {
+		t.Fatal("validation executed an alarm")
+	}
+	if _, err := a.Execute(context.Background(), "echolocal.action.alarm_set", []byte(`{"args":{"time":"06:30","volume":"static"}}`)); err != nil {
+		t.Fatal(err)
+	}
+}

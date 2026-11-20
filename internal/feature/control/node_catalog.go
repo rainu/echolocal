@@ -5,7 +5,9 @@ package control
 import (
 	"fmt"
 	esphome "github.com/ygelfand/go-esphome-device"
+	libalarm "github.com/ygelfand/libcountertop/pkg/assistant/alarm"
 	"strings"
+	"time"
 )
 
 type nodeSchema = map[string]any
@@ -207,11 +209,43 @@ func nodeActionContract(action *esphome.Action) (string, nodeSchema) {
 		props["operation"] = nodeEnum("", "watch", "whats_on")
 		props["operation"].(nodeSchema)["default"] = "watch"
 	}
+
+	if action.Name == "alarm_set" {
+		props["snooze_minutes"] = nodeNumber("integer", 0, float64(libalarm.MaxSnooze/time.Minute))
+		props["light_minutes"] = nodeNumber("integer", 0, float64(libalarm.MaxLight/time.Minute))
+		volumes := []string{""}
+		for _, volume := range libalarm.Volumes() {
+			volumes = append(volumes, string(volume))
+		}
+		props["volume"] = nodeEnum(volumes...)
+		props["volume"].(nodeSchema)["default"] = "static"
+		props["ramp_seconds"].(nodeSchema)["description"] = "For gentle volume only: 15..300 seconds. Ignored by static/silent volume."
+		return description + " Requires time in 24-hour HH:MM format; replaces rather than patches an existing id. Omitted enabled is false. Static volume is the default.", nodeObject(nodeSchema{"args": nodeObject(props, "time")}, "args")
+	}
+	if action.Name == "show_message" {
+		props["body"].(nodeSchema)["minLength"] = 1
+		props["seconds"].(nodeSchema)["description"] = "Omitted/zero/negative uses 15 seconds; greater than 3600 is clamped to 3600."
+		props["tone"].(nodeSchema)["description"] = "info, success, warning or alert; empty/unrecognized uses info."
+		return description, nodeObject(nodeSchema{"args": nodeObject(props, "body")}, "args")
+	}
+	if action.Name == "alarm" {
+		description = "Spoken alarm action: operation set/list/next/enable/disable/delete/stop/snooze. Set accepts spoken time and optional weekdays/name; target identifies an existing alarm for enable/disable/delete. Missing/unknown operations or targets may return explanatory text without an action."
+	}
+	if action.Name == "tone_write" || action.Name == "tone_remove" {
+		props["key"].(nodeSchema)["pattern"] = `^[a-z0-9][a-z0-9_-]{0,63}$`
+	}
+	if action.Name == "tone_remove" || action.Name == "tone_rename" || action.Name == "alarm_enable" || action.Name == "alarm_delete" {
+		key := "key"
+		if strings.HasPrefix(action.Name, "alarm_") {
+			key = "id"
+		}
+		return description, nodeObject(nodeSchema{"args": nodeObject(props, key)}, "args")
+	}
 	if action.Name == "tone_write" {
 		props["page"] = nodeNumber("integer", 0, 0)
 		props["pages"] = nodeNumber("integer", 1, 1)
 		description += " Node uploads must be complete: page=0 and pages=1, no partial transfers."
-		return description, nodeObject(nodeSchema{"args": nodeObject(props, "page", "pages")}, "args")
+		return description, nodeObject(nodeSchema{"args": nodeObject(props, "key", "page", "pages", "data")}, "args")
 	}
 	return description, nodeObject(nodeSchema{"args": nodeObject(props)})
 }
