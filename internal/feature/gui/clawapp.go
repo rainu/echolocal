@@ -240,7 +240,11 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		body = append(body, gogui.Column(gogui.ContainerCfg{ID: "claw-sidebar", Sizing: gogui.FixedFill, Width: width, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: side}))
 	}
 	body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: main}))
-	return gogui.Column(gogui.ContainerCfg{ID: "claw-app", Height: height, Padding: gogui.PaddingSmall, Sizing: gogui.FillFixed, Spacing: gogui.SpacingSmall, Content: []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: controls}), gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: body})}})
+	return gogui.Column(gogui.ContainerCfg{ID: "claw-app", Height: height, AmendLayout: func(e gogui.EventCtx) {
+		if v.look.Editor.Typing(e.Window) && v.look.Editor.Top > 0 && height > v.look.Editor.Top {
+			e.Window.QueueCommand(func(w *gogui.Window) { w.InvalidateLayout() })
+		}
+	}, Padding: gogui.PaddingSmall, Sizing: gogui.FillFixed, Spacing: gogui.SpacingSmall, Content: []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: controls}), gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: body})}})
 }
 
 // The embedded device theme predates go-gui's document-role ladder. Do not
