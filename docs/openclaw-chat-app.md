@@ -126,3 +126,5 @@ existing charcoal/slate panels, even when that history originated from speech.
 Provenance is carried explicitly by the history/caption adapter rather than
 inferred from role, message text or provisional/final status. Role alignment,
 timestamps, typography and message padding remain unchanged.
+
+The top toolbar starts with Home at the far left, then Sessions, Refresh and Model.

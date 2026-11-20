@@ -104,8 +104,8 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 	v.historyHeight = height
 	locked := s.Busy || s.Talk
 	controls := []gogui.View{
-		v.button("claw-sessions", appText("sessions"), false, func() { v.sidebar = !v.sidebar }),
 		v.button("claw-home", appText("home"), false, func() { v.app.Close(); featureshell.Get().Close() }),
+		v.button("claw-sessions", appText("sessions"), false, func() { v.sidebar = !v.sidebar }),
 		v.button("claw-refresh", appText("refresh"), s.Busy, v.app.Refresh),
 	}
 	talkLabel := appText("talk")
