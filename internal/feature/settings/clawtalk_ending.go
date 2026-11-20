@@ -13,10 +13,10 @@ import (
 
 func endText(key string) string {
 	messages := map[string]map[string]string{
-		"en": {"title": "End conversation", "phrase": "End phrase", "position": "Match position", "timing": "Evaluate", "exact": "Contains", "start": "Start", "end": "End", "turn_end": "End of turn", "immediate": "Immediately", "transport": "Immediate mode requires interim user transcripts. A final-only transport cannot close early.", "invalid": "Enter a phrase of 1–256 characters containing a word (one line).", "next": "Applies to the next conversation"},
-		"de": {"title": "Gespräch beenden", "phrase": "Abschlussphrase", "position": "Trefferposition", "timing": "Auswertung", "exact": "Enthält", "start": "Am Anfang", "end": "Am Ende", "turn_end": "Am Turn-Ende", "immediate": "Sofort", "transport": "Sofort benötigt vorläufige Nutzertranskripte. Ein Transport nur mit Endergebnissen kann nicht früh schließen.", "invalid": "Phrase mit 1–256 Zeichen und mindestens einem Wort eingeben (eine Zeile).", "next": "Gilt ab dem nächsten Gespräch"},
-		"it": {"title": "Termina conversazione", "phrase": "Frase di chiusura", "position": "Posizione", "timing": "Valutazione", "exact": "Contiene", "start": "Inizio", "end": "Fine", "turn_end": "Fine turno", "immediate": "Subito", "transport": "La modalità immediata richiede trascrizioni utente provvisorie. Un trasporto solo finale non può chiudere prima.", "invalid": "Inserire una frase di 1–256 caratteri con almeno una parola (una riga).", "next": "Dalla prossima conversazione"},
-		"vi": {"title": "Kết thúc cuộc trò chuyện", "phrase": "Cụm từ kết thúc", "position": "Vị trí khớp", "timing": "Thời điểm kiểm tra", "exact": "Có chứa", "start": "Đầu câu", "end": "Cuối câu", "turn_end": "Cuối lượt", "immediate": "Ngay lập tức", "transport": "Chế độ ngay cần bản chép lời người dùng tạm thời. Kênh chỉ có kết quả cuối không thể đóng sớm.", "invalid": "Nhập cụm từ 1–256 ký tự có ít nhất một từ (một dòng).", "next": "Áp dụng cho cuộc trò chuyện tiếp theo"},
+		"en": {"title": "End conversation", "phrase": "End phrase", "position": "Match position", "timing": "Evaluate", "exact": "Contains", "start": "Start", "end": "End", "turn_end": "End of turn", "immediate": "Immediately", "invalid": "Enter a phrase of 1–256 characters containing a word (one line)."},
+		"de": {"title": "Gespräch beenden", "phrase": "Abschlussphrase", "position": "Trefferposition", "timing": "Auswertung", "exact": "Enthält", "start": "Am Anfang", "end": "Am Ende", "turn_end": "Am Turn-Ende", "immediate": "Sofort", "invalid": "Phrase mit 1–256 Zeichen und mindestens einem Wort eingeben (eine Zeile)."},
+		"it": {"title": "Termina conversazione", "phrase": "Frase di chiusura", "position": "Posizione", "timing": "Valutazione", "exact": "Contiene", "start": "Inizio", "end": "Fine", "turn_end": "Fine turno", "immediate": "Subito", "invalid": "Inserire una frase di 1–256 caratteri con almeno una parola (una riga)."},
+		"vi": {"title": "Kết thúc cuộc trò chuyện", "phrase": "Cụm từ kết thúc", "position": "Vị trí khớp", "timing": "Thời điểm kiểm tra", "exact": "Có chứa", "start": "Đầu câu", "end": "Cuối câu", "turn_end": "Cuối lượt", "immediate": "Ngay lập tức", "invalid": "Nhập cụm từ 1–256 ký tự có ít nhất một từ (một dòng)."},
 	}
 	lang := say.Chosen()
 	if messages[lang] == nil {
@@ -59,8 +59,6 @@ func talkEndPageFor(read func() clawtalk.Slot, save func(func(*clawtalk.Slot)) e
 			{Label: endText("timing"), Value: endText(s.Timing), Kind: menu.Chevron, Open: func() menu.View {
 				return endChoicePage("timing", []string{"turn_end", "immediate"}, func() string { return read().Ending.Defaults(say.Chosen()).Timing }, func(value string) { commit(func(v *clawtalk.Slot) { v.Ending.Timing = value }) })
 			}},
-			{Label: endText("transport"), Kind: menu.Plain},
-			{Label: endText("next"), Kind: menu.Plain},
 		}
 		noticeMu.Lock()
 		defer noticeMu.Unlock()

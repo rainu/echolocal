@@ -33,7 +33,7 @@ intent classifiers. Synonyms and translations are not additional hidden phrases.
 Immediately evaluates the accumulated user utterance on every available interim
 update, with no turn-end gate for any position. Recognition may revise itself;
 an early match cannot be undone after closing. In End mode the current interim
-end is provisional. This behavior is documented here; the interim-risk helper was removed from
+end is provisional. This behavior is documented here; all helper text below the timing selector was removed from
 settings at the owner's request.
 
 Native `session.input_transcript.delta` events and alternative Gateway
@@ -46,7 +46,7 @@ On native-media sessions, Gateway interim copies are ignored; public Gateway
 user finals remain authoritative as before. The cache is bounded and volatile.
 
 Final-only transports cannot close before recognition publishes its final text.
-The settings explicitly state this limitation; choosing Immediately does not
+This limitation is documented here; choosing Immediately does not
 manufacture interim updates or silently change the selected policy. Existing
 input-delta diagnostics indicate whether a transport is supplying partials.
 End-of-turn never closes because of an interim-only match, including a match

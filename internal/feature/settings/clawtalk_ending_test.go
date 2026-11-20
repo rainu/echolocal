@@ -41,7 +41,7 @@ func TestEndSettingsUIIsLocalizedSingleInputAndIndependentChoices(t *testing.T) 
 				t.Fatal("missing translation", lang)
 			}
 		}
-		if len(rows) != 5 {
+		if len(rows) != 3 {
 			t.Fatal("unexpected help text rows", len(rows))
 		}
 		if fields != 1 || len(rows) != len(acts) || rows[0].Value == "" {
