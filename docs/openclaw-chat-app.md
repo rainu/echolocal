@@ -72,7 +72,8 @@ The session sidebar uses compact text rows, and can still be hidden or folded.
 A single-line session/model title leaves the remaining height for the vertically
 scrollable conversation. User text is right-aligned on blue panels; assistant
 Markdown is left-aligned on contrasting dark panels, with explicit role labels.
-The fixed-height composer and Send control share a baseline. Clipboard controls
+The fixed-height composer and Send control share a baseline. The app contracts
+above the on-screen keyboard while editing, keeping the composer visible. Clipboard controls
 and oldest/latest navigation buttons are omitted; drag the history itself to
 scroll, reaching the top fetches older messages. New messages follow the tail
 only while the reader is already there; changing sessions opens its latest page.

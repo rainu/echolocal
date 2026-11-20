@@ -31,6 +31,7 @@ type clawAppView struct {
 	models            bool
 	historyGeneration uint64
 	historyCount      int
+	historyHeight     float32
 	followTail        bool
 }
 
@@ -75,6 +76,13 @@ func (v *clawAppView) text(text string) gogui.View {
 }
 func (v *clawAppView) build(w *gogui.Window) gogui.View {
 	s := v.app.Snapshot()
+	_, vh := w.WindowSize()
+	height := float32(vh)
+	if v.look.Editor.Typing(w) && v.look.Editor.Top > 0 {
+		height = v.look.Editor.Top
+	}
+	resized := v.historyHeight != height
+	v.historyHeight = height
 	locked := s.Busy || s.Talk
 	controls := []gogui.View{
 		v.button("claw-sessions", appText("sessions"), false, func() { v.sidebar = !v.sidebar }),
@@ -146,7 +154,7 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		}
 		historyID := fmt.Sprintf("claw-history-%d", s.Generation)
 		changed := v.historyGeneration != s.Generation
-		tail := changed || (v.followTail && v.historyCount != len(s.Messages))
+		tail := changed || (v.followTail && (resized || v.historyCount != len(s.Messages)))
 		v.historyGeneration = s.Generation
 		v.historyCount = len(s.Messages)
 		main = append(main, gogui.Column(gogui.ContainerCfg{ID: historyID, Sizing: gogui.FillFill, Padding: gogui.PaddingSmall, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: messages,
@@ -232,7 +240,7 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		body = append(body, gogui.Column(gogui.ContainerCfg{ID: "claw-sidebar", Sizing: gogui.FixedFill, Width: width, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: side}))
 	}
 	body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: main}))
-	return gogui.Column(gogui.ContainerCfg{ID: "claw-app", Padding: gogui.PaddingSmall, Sizing: gogui.FillFill, Spacing: gogui.SpacingSmall, Content: []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: controls}), gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: body})}})
+	return gogui.Column(gogui.ContainerCfg{ID: "claw-app", Height: height, Padding: gogui.PaddingSmall, Sizing: gogui.FillFixed, Spacing: gogui.SpacingSmall, Content: []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: controls}), gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: body})}})
 }
 
 // The embedded device theme predates go-gui's document-role ladder. Do not
