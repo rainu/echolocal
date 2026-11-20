@@ -146,3 +146,7 @@ schemas, then inspect normal agent discovery **and actual Talk tool delivery**
 separately. Report schema validation, command acceptance and observed device
 behavior independently; do not substitute a local test double for a live model
 or a publication response for delivered tools.
+
+## Settings contract
+
+See [safe settings discovery, validation and grants](openclaw-node-settings.md).

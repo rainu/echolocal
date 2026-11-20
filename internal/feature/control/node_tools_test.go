@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
-	setting "github.com/ygelfand/libcountertop/pkg/settings"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,15 +24,13 @@ func TestNodePayloadAndAuthorityBoundaries(t *testing.T) {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
-	for _, d := range []string{"openclaw", "openclaw-node", "frontend", "network", "certs", "cast"} {
-		if nodeDomain(d) {
-			t.Fatal("authority domain admitted", d)
+	for _, d := range []string{"openclaw", "openclaw-node", "frontend", "network", "certs"} {
+		if nodeReviewedSetting(d, "enabled") {
+			t.Fatal("authority admitted")
 		}
 	}
-	for _, k := range []string{"secret", "credential", "text", "list"} {
-		if nodeField(setting.Field{Kind: k}) {
-			t.Fatal("unreviewed field admitted", k)
-		}
+	if !nodeReviewedSetting("cast", "receiver") || nodeReviewedSetting("cast", "unreviewed") {
+		t.Fatal("cast policy mismatch")
 	}
 	if nodeActionGroup("call_offer") != "" || nodeActionGroup("logs") != "" || nodeActionGroup("arbitrary_new_action") != "" {
 		t.Fatal("unreviewed action admitted")

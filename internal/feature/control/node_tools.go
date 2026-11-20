@@ -19,7 +19,6 @@ import (
 	"github.com/ygelfand/echolocal/internal/layout"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	harness "github.com/ygelfand/libcountertop/pkg/runtime/control"
-	setting "github.com/ygelfand/libcountertop/pkg/settings"
 )
 
 func init() { featureclaw.NodeSetup = registerNodeTools }
@@ -53,6 +52,7 @@ func registerNodeTools(a *connection.NodeAccess) {
 	}
 	registerNodeScreen(a)
 	registerNodeConvenience(a)
+	registerNodeSettings(a)
 	registerNodeDevice(a)
 	if component.Board().CameraWidth > 0 {
 		add("camera.snap", "camera", func(ctx context.Context, raw json.RawMessage) (any, error) {
@@ -167,123 +167,6 @@ func registerNodeTools(a *connection.NodeAccess) {
 			return map[string]bool{"done": true}, nil
 		})
 	}
-	add("settings.export", "settings", func(ctx context.Context, raw json.RawMessage) (any, error) {
-		if e := nodeEmpty(raw); e != nil {
-			return nil, e
-		}
-		out := map[string]map[string]string{}
-		for _, b := range component.Settings.All() {
-			if !nodeDomain(b.Domain()) {
-				continue
-			}
-			d, ok := b.(setting.Described)
-			if !ok {
-				continue
-			}
-			for _, f := range d.Fields() {
-				g := nodeSettingGroup(b.Domain())
-				if !nodeField(f) || !a.Granted(g) {
-					continue
-				}
-				if out[b.Domain()] == nil {
-					out[b.Domain()] = map[string]string{}
-				}
-				out[b.Domain()][f.Name] = f.Value
-			}
-		}
-		return out, nil
-	})
-	add("settings.import", "settings", func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var p struct {
-			Values map[string]map[string]string `json:"values"`
-		}
-		if decodeNode(raw, &p) != nil || len(p.Values) == 0 {
-			return nil, errors.New("invalid_params")
-		}
-		type change struct {
-			b                  setting.Bound
-			name, value, group string
-		}
-		var changes []change
-		for domain, fields := range p.Values {
-			var found setting.Bound
-			for _, b := range component.Settings.All() {
-				if b.Domain() == domain {
-					found = b
-					break
-				}
-			}
-			if found == nil || !nodeDomain(domain) {
-				return nil, errors.New("permission_denied")
-			}
-			d, ok := found.(setting.Described)
-			if !ok {
-				return nil, errors.New("permission_denied")
-			}
-			for name, value := range fields {
-				valid := false
-				for _, f := range d.Fields() {
-					if f.Name == name && nodeField(f) {
-						valid = true
-						break
-					}
-				}
-				g := nodeSettingGroup(domain)
-				if !valid || !a.Granted(g) {
-					return nil, errors.New("permission_denied")
-				}
-				if len(value) > 4096 {
-					return nil, errors.New("invalid_params")
-				}
-				changes = append(changes, change{found, name, value, g})
-			}
-		}
-		for _, v := range changes {
-			if ctx.Err() != nil || !a.Granted(v.group) {
-				return nil, errors.New("cancelled")
-			}
-			if v.b.Change(v.name, v.value) != nil {
-				return nil, errors.New("invalid_setting")
-			}
-		}
-		return map[string]int{"applied": len(changes)}, nil
-	})
-}
-func nodeDomain(d string) bool {
-	switch d {
-	case "screen", "clock", "appearance", "audio", "volume", "microphone", "camera", "assistant", "alarm", "timer", "background", "visual", "alerts", "assistants", "speaker", "media", "feedback", "idle", "call", "voice", "ring", "apps", "home", "weather", "cameras", "calendar", "doorbell", "homealarm", "lovelace", "photos", "poster", "thermostat", "todo", "tv":
-		return true
-	}
-	return false
-}
-func nodeSettingGroup(d string) string {
-	switch d {
-	case "screen":
-		return "display"
-	case "audio", "volume", "background", "microphone", "speaker", "media", "alerts", "feedback":
-		return "audio"
-	case "call":
-		return "intercom"
-	case "camera", "cameras":
-		return "camera"
-	case "alarm", "timer":
-		return "alarms"
-	}
-	return "settings"
-}
-func nodeField(f setting.Field) bool {
-	// Free text/list fields can contain URLs, credentials, private endpoints or exports.
-	if f.Kind == "text" {
-		switch f.ID {
-		case "clock_date_pattern", "visual_label", "apps_order", "apps_dock", "screen_custom_background", "screen_custom_surface", "screen_custom_text", "screen_custom_muted", "screen_custom_accent", "screen_custom_accent2":
-			return true
-		}
-	}
-	switch f.Kind {
-	case "toggle", "number", "choice", "pair", "triple":
-		return true
-	}
-	return false
 }
 func nodePage(s string) bool {
 	switch s {

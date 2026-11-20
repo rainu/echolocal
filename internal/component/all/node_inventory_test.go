@@ -30,8 +30,12 @@ func TestNodeRegistryInventory(t *testing.T) {
 	}
 	b.WriteString("\n## Settings\n\n|Domain|Field|Kind|\n|---|---|---|\n")
 	for _, v := range component.Settings.All() {
-		if d, ok := v.(setting.Described); ok {
-			for _, f := range d.Fields() {
+		if d, ok := v.(setting.Inspectable); ok {
+			for _, name := range v.Names() {
+				f, ok := d.Metadata(name)
+				if !ok {
+					t.Fatal("missing metadata")
+				}
 				fmt.Fprintf(&b, "|%s|%s|%s|\n", v.Domain(), f.Name, f.Kind)
 			}
 		}
