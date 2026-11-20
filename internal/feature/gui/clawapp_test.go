@@ -10,7 +10,7 @@ import (
 func TestChatAppHasNoSettingsTimeoutAndClosesItsController(t *testing.T) {
 	a := chatapp.New(nil, func() {}, nil, nil, nil)
 	v := &clawAppView{app: a}
-	if !v.Covers() || v.Timeout() != 0 {
+	if !v.Covers() || v.Timeout() <= 0 {
 		t.Fatal("not a dedicated application")
 	}
 	// Closing a view which never started capture must be harmless.

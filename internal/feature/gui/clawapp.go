@@ -31,7 +31,7 @@ type clawAppView struct {
 }
 
 func (*clawAppView) Covers() bool           { return true }
-func (*clawAppView) Timeout() time.Duration { return 0 }
+func (*clawAppView) Timeout() time.Duration { return 30 * time.Minute }
 func (v *clawAppView) Close()               { v.app.Close() }
 
 func extendClawApp(look *widgets.UI, o *screens.Options, _ func() *screens.App) {
