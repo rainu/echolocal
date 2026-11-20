@@ -105,7 +105,7 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 	if s.Stopping {
 		talkLabel = appText("stopping")
 	}
-	controls = append(controls, v.button("claw-talk", talkLabel, s.Stopping || s.Busy || !s.Connected || s.Selected.Key == "", func() { v.app.Talk(s.Generation) }))
+	talkButton := v.button("claw-talk", talkLabel, s.Stopping || s.Busy || !s.Connected || s.Selected.Key == "", func() { v.app.Talk(s.Generation) })
 	controls = append(controls, v.button("claw-model", appText("model"), locked || !s.Connected || s.Selected.Key == "", func() {
 		v.models = !v.models
 		if v.models {
@@ -201,7 +201,7 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		}))
 	}
 	input := v.look.Input(gogui.InputCfg{ID: fmt.Sprintf("claw-compose-%d", s.Generation), Text: s.Draft, Placeholder: appText("compose"), Sizing: gogui.FillFit, Height: 44, MinHeight: 44, MaxHeight: 44, Padding: gogui.PaddingSmall, Disabled: locked || !s.Connected || s.Selected.Key == "", OnTextChanged: func(text string, e gogui.EventCtx) { v.app.Draft(text, s.Generation); e.Window.InvalidateLayout() }}, func() {})
-	main = append(main, gogui.Row(gogui.ContainerCfg{ID: "claw-composer", Sizing: gogui.FillFit, VAlign: gogui.VAlignMiddle, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: []gogui.View{input, v.button("claw-send", appText("send"), locked || !s.Connected || s.Selected.Key == "" || s.Draft == "", func() { v.app.Send(s.Generation) })}}))
+	main = append(main, gogui.Row(gogui.ContainerCfg{ID: "claw-composer", Sizing: gogui.FillFit, VAlign: gogui.VAlignMiddle, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: []gogui.View{input, v.button("claw-send", appText("send"), locked || !s.Connected || s.Selected.Key == "" || s.Draft == "", func() { v.app.Send(s.Generation) }), talkButton}}))
 	body := []gogui.View{}
 	if v.sidebar {
 		groups := append([]string(nil), s.Groups...)

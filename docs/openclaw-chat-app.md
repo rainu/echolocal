@@ -105,3 +105,10 @@ display callbacks; each revision is attempted only once. Flags remain server
 authoritative after ack; failures remain visible and never optimistically clear
 unread. No read acknowledgement is sent for another selected session or while
 the reader remains above the newest loaded messages.
+
+## Talk control placement
+
+The session-bound Talk start/stop control lives at the bottom right, immediately
+after Send in the composer row. It remains there for start, active and stopping
+states, including when the keyboard raises the composer. Existing callbacks,
+labels and availability/teardown fences are unchanged.
