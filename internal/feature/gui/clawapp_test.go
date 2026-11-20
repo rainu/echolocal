@@ -57,3 +57,37 @@ func TestChatNativeMarkdownHasContentWithoutClipboardControls(t *testing.T) {
 		}
 	}
 }
+
+func TestChatSessionEllipsisFitsMeasuredWidth(t *testing.T) {
+	measure := func(s string) float32 {
+		width := float32(0)
+		for _, r := range s {
+			switch {
+			case r == '.':
+				width += 2
+			case r > 127:
+				width += 14
+			default:
+				width += 7
+			}
+		}
+		return width
+	}
+	for _, tt := range []struct {
+		text  string
+		width float32
+		want  string
+	}{
+		{"Short", 35, "Short"},
+		{"A very long session title", 55, "A very..."},
+		{"日本語の長い題名", 48, "日本語..."},
+		{"Title", 5, ""},
+		{"Title", 6, "..."},
+		{"one\ntwo", 100, "one two"},
+	} {
+		got := appEllipsize(tt.text, tt.width, measure)
+		if got != tt.want || measure(got) > tt.width {
+			t.Errorf("%q width %v: got %q, want %q", tt.text, tt.width, got, tt.want)
+		}
+	}
+}

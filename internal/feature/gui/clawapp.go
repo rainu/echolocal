@@ -224,7 +224,7 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 			if v.folded[group] {
 				arrow = "▸ "
 			}
-			side = append(side, v.listButton(fmt.Sprintf("claw-group-%d", gi), arrow+name, false, func() { v.folded[group] = !v.folded[group] }))
+			side = append(side, v.listButton(w, fmt.Sprintf("claw-group-%d", gi), arrow+name, false, func() { v.folded[group] = !v.folded[group] }))
 			if !v.folded[group] {
 				for si, session := range groupRows {
 					key := session.Key
@@ -232,14 +232,14 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 					if s.Selected.Key == key {
 						label = "● " + label
 					}
-					side = append(side, v.listButton(fmt.Sprintf("claw-session-%d-%d", gi, si), label, locked, func() { v.app.Select(key); v.models = false }))
+					side = append(side, v.listButton(w, fmt.Sprintf("claw-session-%d-%d", gi, si), label, locked, func() { v.app.Select(key); v.models = false }))
 				}
 			}
 		}
-		width := float32(220)
+		width := float32(280)
 		vw, _ := w.WindowSize()
 		if vw < 900 {
-			width = 180
+			width = 220
 		}
 		body = append(body, gogui.Column(gogui.ContainerCfg{ID: "claw-sidebar", Sizing: gogui.FixedFill, Width: width, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: side}))
 	}
@@ -385,7 +385,7 @@ func appSmallStyle(v *clawAppView) gogui.TextStyle {
 	st.Size = 18
 	return st
 }
-func (v *clawAppView) listButton(id, label string, disabled bool, do func()) gogui.View {
+func (v *clawAppView) listButton(w *gogui.Window, id, label string, disabled bool, do func()) gogui.View {
 	style := appSmallStyle(v)
 	style.Align = gogui.TextAlignLeft
 	align := gogui.HAlignStart
@@ -394,7 +394,38 @@ func (v *clawAppView) listButton(id, label string, disabled bool, do func()) gog
 		style = style.Bold()
 		padding = gogui.NewPadding(4, 8, 4, 4)
 	}
+	width := float32(280)
+	vw, _ := w.WindowSize()
+	if vw < 900 {
+		width = 220
+	}
+	// Reserve the row padding and scroll gutter before measuring the label.
+	label = appEllipsize(label, width-padding.Width()-16, func(text string) float32 { return w.TextWidth(text, style) })
 	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, HAlign: gogui.Some(align), Sizing: gogui.FillFit, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: label, TextStyle: style, Mode: gogui.TextModeSingleLine, Clip: true})}, MinHeight: 40, Height: 40, Padding: padding, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+}
+
+// appEllipsize fits labels using the active renderer's font metrics, not a
+// character-count estimate. Rune slicing keeps UTF-8 titles intact.
+func appEllipsize(text string, width float32, measure func(string) float32) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if measure(text) <= width {
+		return text
+	}
+	const suffix = "..."
+	if measure(suffix) > width {
+		return ""
+	}
+	runes := []rune(text)
+	lo, hi := 0, len(runes)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if measure(string(runes[:mid])+suffix) <= width {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return strings.TrimRight(string(runes[:lo]), " ") + suffix
 }
 func (v *clawAppView) message(w *gogui.Window, id, role, text string) gogui.View {
 	user := role == "user"
