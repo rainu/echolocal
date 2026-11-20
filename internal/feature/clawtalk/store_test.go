@@ -148,3 +148,31 @@ func TestEndDefaultIsPinnedAfterFirstSave(t *testing.T) {
 		t.Fatal("saved default followed later language change")
 	}
 }
+
+func TestGreetingPromptIsPersistentPerSlotAndInvalidUpdateIsAtomic(t *testing.T) {
+	path := t.TempDir() + "/routing.json"
+	s := load(path)
+	if s.Get(0).GreetingText("de") == "" {
+		t.Fatal("missing migrated default")
+	}
+	custom := "Sage kurz guten Abend.\nDann warte."
+	if err := s.Update(0, func(v *Slot) { v.GreetingPrompt = custom }); err != nil {
+		t.Fatal(err)
+	}
+	again := load(path)
+	if again.Get(0).GreetingText("en") != custom || again.Get(1).GreetingPrompt != "" {
+		t.Fatal("custom prompt lost, translated or shared")
+	}
+	if err := again.Update(0, func(v *Slot) { v.GreetingPrompt = string([]byte{0}) }); err == nil {
+		t.Fatal("invalid prompt saved")
+	}
+	if load(path).Get(0).GreetingPrompt != custom {
+		t.Fatal("invalid save overwrote previous prompt")
+	}
+	if err := again.Update(0, func(v *Slot) { v.GreetingPrompt = "" }); err != nil {
+		t.Fatal(err)
+	}
+	if load(path).Get(0).GreetingText("de") != s.Get(1).GreetingText("de") {
+		t.Fatal("default not restored")
+	}
+}

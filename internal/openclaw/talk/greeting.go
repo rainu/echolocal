@@ -1,6 +1,25 @@
 package talk
 
-import "strings"
+import (
+	"errors"
+	"strings"
+	"unicode/utf8"
+)
+
+const GreetingMaxBytes = 1536
+
+func ValidateGreetingPrompt(text string) error {
+	if text == "" {
+		return nil
+	}
+	if !utf8.ValidString(text) || strings.TrimSpace(text) == "" || strings.ContainsRune(text, 0) {
+		return errors.New("talk_greeting_invalid")
+	}
+	if len(text) > GreetingMaxBytes {
+		return errors.New("talk_greeting_too_long")
+	}
+	return nil
+}
 
 // Same provider contract as OpenClaw's triggerGreeting: an explicit speakable
 // update. Device identity stays on its separate silent first-speech path.

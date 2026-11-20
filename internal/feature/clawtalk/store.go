@@ -17,6 +17,7 @@ import (
 type Slot struct {
 	Ending                talk.EndSettings `json:"ending,omitempty"`
 	DeviceContextTemplate string           `json:"deviceContextTemplate,omitempty"`
+	GreetingPrompt        string           `json:"greetingPrompt,omitempty"`
 	ProgressTone          string           `json:"progressTone,omitempty"`
 	StartTone             string           `json:"startTone,omitempty"`
 	EndTone               string           `json:"endTone,omitempty"`
@@ -30,6 +31,15 @@ type Slot struct {
 	Resume                bool             `json:"resume"`
 	Timeout               int              `json:"timeout"`
 }
+
+// GreetingText resolves only the empty default sentinel; custom text is verbatim.
+func (s Slot) GreetingText(language string) string {
+	if s.GreetingPrompt != "" {
+		return s.GreetingPrompt
+	}
+	return talk.GreetingForLanguage(language)
+}
+
 type Store struct {
 	mu      sync.Mutex
 	path    string
@@ -79,6 +89,9 @@ func (s *Store) Update(slot int, change func(*Slot)) error {
 	}
 	next[slot].Ending.Phrase = strings.TrimSpace(next[slot].Ending.Phrase)
 	if err := openclaw.ValidateDeviceContextTemplate(next[slot].DeviceContextTemplate); err != nil {
+		return err
+	}
+	if err := talk.ValidateGreetingPrompt(next[slot].GreetingPrompt); err != nil {
 		return err
 	}
 	if next[slot].Timeout < 15 {

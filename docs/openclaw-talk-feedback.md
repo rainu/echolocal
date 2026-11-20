@@ -5,7 +5,7 @@ Refs #26.
 Every accepted OpenClaw activation owns a single feedback sequence:
 a 45 ms high acknowledgment is queued before UI/network setup; after 900 ms,
 a repeating low double ring indicates pending setup. The connection tone is
-selectable per assistant using the same built-in/custom catalogue, preview and
+selectable per assistant (directly after Start tone) using the same built-in/custom catalogue, preview and
 explicit Use action as ready/end tones; None disables it. Custom clips drain
 before the repeat delay starts, so long clips cannot accumulate in a backlog. Existing configured ready
 and end tones are retained. The default ready cue rises; setup failure uses a
@@ -26,8 +26,13 @@ closed. Wake detection is paused while feedback is being rendered and during
 the same tail. Provider playout also waits for the ready cue. The existing
 45-second setup deadline now covers microphone startup and readiness feedback.
 After successful readiness playback the native provider receives one explicit
-greeting request, localized to the app language, using the same speakable wire
-contract as OpenClaw's triggerGreeting. It asks for a brief greeting and then
+greeting request using the same speakable wire
+contract as OpenClaw's triggerGreeting. A per-assistant multiline Greeting prompt
+editor controls the complete request text, with explicit Save and Restore default.
+Custom text is preserved verbatim across language changes and is limited to 1536
+UTF-8 bytes; device placeholders are not expanded. An empty stored value follows
+the localized default. Opening/editing/resetting the draft neither starts Talk nor
+persists without Save. The default asks for a brief greeting and then
 silence, never continuation of a historical turn. It sends neither a synthetic
 user message nor replacement session instructions. The existing configurable
 device prompt stays separate and silent, sent once on first user speech.

@@ -18,9 +18,12 @@ func TestConnectionToneHasIndependentLocalizedSelection(t *testing.T) {
 		if len(rows) != len(acts) {
 			t.Fatal("row/action mismatch")
 		}
-		for _, row := range rows {
+		for i, row := range rows {
 			if row.Label == progressToneTitle() {
 				found = true
+				if i == 0 || rows[i-1].Label != say.T("clawtalk.start_tone") {
+					t.Fatal("connection tone must immediately follow start tone")
+				}
 				if row.Open == nil || row.Value != talkToneLabel("none") {
 					t.Fatal("connection setting not independent")
 				}
