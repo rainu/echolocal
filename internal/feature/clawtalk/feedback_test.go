@@ -112,3 +112,78 @@ func TestRepeatedPendingWakeDoesNotStartAnotherActivation(t *testing.T) {
 		t.Fatal("duplicate owned activation")
 	}
 }
+
+func TestSetupDeadlineStopsProgressAndEmitsFailure(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+	sink := &testFeedback{}
+	f := beginFeedback(ctx, sink, time.Millisecond)
+	<-ctx.Done()
+	f.Finish(true)
+	events := sink.snapshot()
+	if len(events) < 4 || events[0] != "ack" || events[len(events)-2] != "clear" || events[len(events)-1] != "failure" {
+		t.Fatal("timeout ordering", events)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if len(sink.snapshot()) != len(events) {
+		t.Fatal("progress survived timeout")
+	}
+	for _, event := range events {
+		if event == "ready" {
+			t.Fatal("timeout became ready")
+		}
+	}
+}
+
+func TestSlowSuccessClearsProgressBeforeReady(t *testing.T) {
+	sink := &testFeedback{}
+	f := beginFeedback(context.Background(), sink, time.Millisecond)
+	deadline := time.Now().Add(time.Second)
+	for len(sink.snapshot()) < 3 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(sink.snapshot()) < 3 {
+		t.Fatal("no progress")
+	}
+	if !f.Ready(context.Background()) {
+		t.Fatal("not ready")
+	}
+	f.Finish(false)
+	events := sink.snapshot()
+	if events[len(events)-2] != "clear" || events[len(events)-1] != "ready" {
+		t.Fatal(events)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if len(sink.snapshot()) != len(events) {
+		t.Fatal("progress resumed after readiness")
+	}
+}
+
+type drainingFeedback struct {
+	testFeedback
+	entered chan struct{}
+}
+
+func (s *drainingFeedback) Wait(ctx context.Context) bool {
+	close(s.entered)
+	<-ctx.Done()
+	return false
+}
+func TestCancellationDuringProgressDrainDoesNotEmitReady(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sink := &drainingFeedback{entered: make(chan struct{})}
+	f := beginFeedback(ctx, sink, time.Hour)
+	done := make(chan bool, 1)
+	go func() { done <- f.Ready(ctx) }()
+	<-sink.entered
+	cancel()
+	if <-done {
+		t.Fatal("cancelled drain became ready")
+	}
+	f.Finish(false)
+	for _, event := range sink.snapshot() {
+		if event == "ready" {
+			t.Fatal("ready after cancellation")
+		}
+	}
+}
