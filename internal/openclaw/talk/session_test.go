@@ -198,29 +198,6 @@ func TestModelSelectionUsesGatewayDefaultOrExplicitCatalogueChoice(t *testing.T)
 	}
 }
 
-func TestEndCommandsAllowNaturalLeadInButNotNegationOrExplanation(t *testing.T) {
-	for _, text := range []string{
-		"Gespräch beenden", "Danke. Gespräch beenden",
-		"Prima. Das reicht. Gespräch beenden",
-		"Okay bitte das Gespräch beenden jetzt", "Kannst du bitte das Gespräch beenden?",
-		"Bitte Unterhaltung beenden!", "Please end conversation now.",
-		"Per favore termina conversazione.", "Xin kết thúc cuộc trò chuyện.",
-	} {
-		if !EndPhrase(text) {
-			t.Errorf("explicit end command missed: %q", text)
-		}
-	}
-	for _, text := range []string{
-		"Gespräch nicht beenden", "Bitte das Gespräch nicht beenden",
-		"Was bedeutet Gespräch beenden?", "Erkläre mir das Wort Gespräch beenden.",
-		"Please do not end conversation", "Ich möchte noch weiterreden",
-		"Ich sage gerade nicht auf Wiedersehen", "Wie kann ich das Gespräch beenden?",
-	} {
-		if EndPhrase(text) {
-			t.Errorf("ordinary/negated text ended conversation: %q", text)
-		}
-	}
-}
 func TestQueuedOldCancellationCannotStopNextActivation(t *testing.T) {
 	c := New()
 	oldCtx, oldCancel := context.WithCancel(context.Background())

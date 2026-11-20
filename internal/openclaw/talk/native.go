@@ -225,10 +225,14 @@ func (s *Session) nativeLoop(ctx context.Context) {
 			case "turn.created":
 				s.native.legacy.Store(true)
 				if e.Turn.Role == "user" {
+					s.endTranscript.reset(e.Turn.ID)
 					s.nativeUserSpeech()
 				}
 			case "session.input_transcript.delta":
 				s.partial("user", e.Delta)
+				if s.userTranscript("user", e.Delta, "", false, false) {
+					return
+				}
 				if !s.native.legacy.Load() {
 					s.nativeUserSpeech()
 				}
@@ -240,6 +244,9 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					role = "user"
 				}
 				s.partial(role, e.Item.Text)
+				if s.userTranscript(role, e.Item.Text, e.Item.ID, true, false) {
+					return
+				}
 			case "output_audio_buffer.cleared":
 				s.clearPartial()
 				if s.Audio.Queued() > 0 {
@@ -252,6 +259,7 @@ func (s *Session) nativeLoop(ctx context.Context) {
 				case "user":
 					s.native.inputActive.Store(false)
 					if strings.TrimSpace(e.Turn.Transcript) == "" {
+						s.endTranscript.reset("")
 						if s.Activity != nil {
 							s.Activity(Listening)
 						}
@@ -260,10 +268,7 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					s.nativeUserFinal()
 					s.utterances.Add(1)
 					s.appendTranscript(ctx, "user", e.Turn.Transcript, e.Turn.ID)
-					if EndPhrase(e.Turn.Transcript) {
-						if s.End != nil {
-							go s.End()
-						}
+					if s.userTranscript("user", e.Turn.Transcript, e.Turn.ID, true, true) {
 						return
 					}
 					s.activity(Thinking)
@@ -273,9 +278,7 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					go s.afterPlayback(ctx, s.responseEpoch.Load())
 				}
 			case "session.closed":
-				if s.End != nil {
-					go s.End()
-				}
+				s.requestEnd()
 				return
 			}
 		}

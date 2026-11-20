@@ -15,6 +15,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/layout"
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
 	sharedcomponent "github.com/ygelfand/libcountertop/pkg/runtime/component"
+	"github.com/ygelfand/libcountertop/pkg/say"
 	"sync"
 	"time"
 )
@@ -181,6 +182,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}
 	b := talk.NewSession(bound, v.Context, a)
 	b.Provider, b.Model = v.Provider, v.Model
+	b.Ending = v.Ending.Defaults(say.Chosen())
 	b.DeviceContext, e = claw.Get().Node.ConversationDeviceContextWithTemplate(v.DeviceContextTemplate)
 	if e != nil {
 		a.Close()

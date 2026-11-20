@@ -7,11 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode"
 
 	"github.com/pion/webrtc/v4"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
@@ -32,6 +30,9 @@ type Control interface {
 	ExchangeOffer(context.Context, connection.TalkLaunch, string) (string, error)
 }
 type Session struct {
+	Ending                    EndSettings
+	endTranscript             endTranscript
+	endOnce                   sync.Once
 	inputDeltas, outputDeltas atomic.Uint64
 	native                    *nativeState
 	nativeEnabled             atomic.Bool
@@ -83,6 +84,10 @@ func (s *Session) fail() {
 	})
 }
 func (s *Session) Open(parent context.Context) (openErr error) {
+	s.Ending = s.Ending.Defaults("en")
+	if err := s.Ending.Validate(); err != nil {
+		return err
+	}
 	began := time.Now()
 	slog.Info("talk setup started", "provider", s.Provider, "model", s.Model, "native_media", s.nativeMedia, "device_context_present", s.DeviceContext != "")
 	defer func() {
@@ -335,8 +340,8 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				s.fail()
 			case "session.closed":
 				slog.Info("talk provider event", "type", e.Event.Type)
-				if ctx.Err() == nil && s.End != nil {
-					go s.End()
+				if ctx.Err() == nil {
+					s.requestEnd()
 				}
 				return
 			case "transcript.delta", "output.text.delta":
@@ -345,7 +350,7 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				if s.nativeEnabled.Load() {
 					continue
 				}
-				var p struct{ Role, Text, Delta string }
+				var p struct{ Role, Text, Delta, ID string }
 				if json.Unmarshal(e.Event.Payload, &p) != nil {
 					continue
 				}
@@ -356,8 +361,19 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 					p.Text = p.Delta
 				}
 				s.partial(p.Role, p.Text)
+				if s.userTranscript(p.Role, p.Text, p.ID, false, false) {
+					return
+				}
+			case "transcript.updated":
+				// A complete interim revision is authoritative, never another delta.
+				var p struct{ Role, Text, ID string }
+				if !s.nativeEnabled.Load() && json.Unmarshal(e.Event.Payload, &p) == nil {
+					if s.userTranscript(p.Role, p.Text, p.ID, true, false) {
+						return
+					}
+				}
 			case "transcript.done", "output.text.done":
-				var p struct{ Role, Text string }
+				var p struct{ Role, Text, ID string }
 				if json.Unmarshal(e.Event.Payload, &p) != nil {
 					slog.Warn("talk transcript event malformed")
 					continue
@@ -385,10 +401,7 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				if !s.nativeEnabled.Load() {
 					s.Audio.StopOutput()
 				}
-				if EndPhrase(p.Text) {
-					if s.End != nil {
-						go s.End()
-					}
+				if s.userTranscript(p.Role, p.Text, p.ID, true, true) {
 					return
 				}
 				if s.nativeEnabled.Load() {
@@ -460,56 +473,6 @@ func (s *Session) afterPlayback(ctx context.Context, epoch uint64) {
 			}
 		}
 	}
-}
-
-// EndPhrase accepts an explicit final command clause, including courteous
-// prefixes. It does not substring-match negations, explanations or quotations.
-func EndPhrase(text string) bool {
-	clauses := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return strings.ContainsRune(".,!?;:\n", r) })
-	if len(clauses) == 0 {
-		return false
-	}
-	// ASR may punctuate a courtesy suffix as a separate clause. Skip only
-	// complete courtesy clauses, never arbitrary words or negations.
-	for len(clauses) > 1 {
-		tail := strings.TrimSpace(clauses[len(clauses)-1])
-		switch tail {
-		case "danke", "vielen dank", "bitte", "thanks", "thank you", "please", "grazie", "cảm ơn":
-			clauses = clauses[:len(clauses)-1]
-		default:
-			goto commandClause
-		}
-	}
-commandClause:
-	text = strings.TrimSpace(clauses[len(clauses)-1])
-	text = strings.Join(strings.FieldsFunc(text, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) }), " ")
-	commands := []string{"end conversation", "stop conversation", "goodbye", "gespräch beenden", "gesprach beenden", "unterhaltung beenden", "auf wiedersehen", "termina conversazione", "fine conversazione", "arrivederci", "kết thúc cuộc trò chuyện", "tạm biệt"}
-	// Remove a finite courtesy grammar, not arbitrary text before a keyword.
-	prefixes := []string{"okay ", "ok ", "alles klar ", "gut ", "danke ", "hallo ", "bitte ", "jetzt ", "dann ", "also ", "ja ", "und ", "das ", "die ", "ich möchte ", "ich will ", "ich würde gern ", "kannst du ", "könntest du ", "please ", "now ", "thanks ", "per favore ", "ora ", "xin ", "làm ơn "}
-	suffixes := []string{" bitte", " jetzt", " danke", " please", " now", " thanks", " ora", " per favore"}
-	for changed := true; changed; {
-		changed = false
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(text, prefix) {
-				text = strings.TrimSpace(strings.TrimPrefix(text, prefix))
-				changed = true
-				break
-			}
-		}
-		for _, suffix := range suffixes {
-			if strings.HasSuffix(text, suffix) {
-				text = strings.TrimSpace(strings.TrimSuffix(text, suffix))
-				changed = true
-				break
-			}
-		}
-	}
-	for _, command := range commands {
-		if text == command {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *Session) activity(state State) {
