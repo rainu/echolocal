@@ -19,7 +19,7 @@ func TestGreetingEditorDraftExplicitSaveAndRestoreDefault(t *testing.T) {
 	saved := []string{}
 	p := greetingPromptPageFor("", func(s string) error { saved = append(saved, s); return nil }, func() {})
 	rows, _ := p.Build()
-	if p.Title != "Begrüßungsprompt" || rows[0].Value != talk.GreetingForLanguage("de") || len(rows) != 2 || len(saved) != 0 {
+	if p.Title != "Begrüßungsprompt" || rows[0].Value != talk.GreetingForLanguage("de") || len(rows) != 1 || len(saved) != 0 {
 		t.Fatal("default editor includes device placeholders or persisted on open")
 	}
 	custom := "Sage nur guten Abend.\nDann höre zu."
@@ -66,6 +66,11 @@ func TestConversationContextHasTwoInlinePromptsAndAtomicSave(t *testing.T) {
 	}, func() {})
 	fields := func() []menu.Row {
 		rows, _ := p.Build()
+		for _, row := range rows {
+			if row.Label == promptText("next") {
+				t.Fatal("redundant next-conversation hint remains")
+			}
+		}
 		result := []menu.Row{}
 		for _, r := range rows {
 			if r.Kind == menu.Field {
@@ -75,11 +80,11 @@ func TestConversationContextHasTwoInlinePromptsAndAtomicSave(t *testing.T) {
 		return result
 	}
 	f := fields()
-	if len(f) != 2 || f[0].Label != promptText("title") || f[1].Label != greetingPromptTitle() || f[1].Open != nil {
+	if len(f) != 2 || f[0].Label != greetingPromptTitle() || f[1].Label != promptText("title") || f[1].Open != nil {
 		t.Fatal("prompts not separate inline fields")
 	}
-	f[0].Save("New node")
-	f[1].Save("New greeting")
+	f[0].Save("New greeting")
+	f[1].Save("New node")
 	if writes != 0 {
 		t.Fatal("draft writes immediately")
 	}
@@ -88,8 +93,8 @@ func TestConversationContextHasTwoInlinePromptsAndAtomicSave(t *testing.T) {
 		t.Fatal("save not one combined transaction")
 	}
 	f = fields()
-	f[0].Save("Next node")
-	f[1].Save(strings.Repeat("x", talk.GreetingMaxBytes+1))
+	f[1].Save("Next node")
+	f[0].Save(strings.Repeat("x", talk.GreetingMaxBytes+1))
 	p.Actions[1].Do()
 	if writes != 1 || saved.DeviceContextTemplate != "New node" {
 		t.Fatal("invalid greeting partially committed device prompt")

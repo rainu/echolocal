@@ -113,7 +113,6 @@ func talkPromptPageWithDefault(initial string, render func(string) (string, erro
 					return rows, acts
 				}}
 			}},
-			{Label: promptText("next"), Kind: menu.Plain},
 		}
 		// The greeting is plain provider text, not a device template.
 		if !placeholders {

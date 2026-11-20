@@ -33,12 +33,12 @@ func greetingAppend(model, text string) map[string]any {
 func GreetingForLanguage(language string) string {
 	switch strings.ToLower(strings.Split(strings.ReplaceAll(language, "_", "-"), "-")[0]) {
 	case "de":
-		return "Begrüße mich jetzt einmal kurz auf Deutsch, etwa mit Hallo. Warte dann auf meine Eingabe. Keine frühere Unterhaltung fortsetzen und keine Gerätehinweise vorlesen."
+		return "Grüß mich kurz auf Deutsch."
 	case "it":
-		return "Salutami ora brevemente una sola volta in italiano, per esempio Ciao. Poi attendi il mio intervento. Non riprendere conversazioni precedenti e non leggere metadati del dispositivo."
+		return "Salutami brevemente in italiano."
 	case "vi":
-		return "Hãy chào tôi ngắn gọn một lần bằng tiếng Việt, chẳng hạn Xin chào. Sau đó chờ tôi nói. Không tiếp tục cuộc trò chuyện cũ hoặc đọc thông tin thiết bị."
+		return "Chào tôi ngắn gọn bằng tiếng Việt."
 	default:
-		return "Greet me briefly once in English now, for example Hello. Then wait for my input. Do not resume an earlier conversation or read device metadata aloud."
+		return "Greet me briefly in English."
 	}
 }

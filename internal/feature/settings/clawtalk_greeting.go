@@ -41,7 +41,7 @@ func talkConversationPromptPageFor(initial clawtalk.Slot, render func(string) (s
 		rows[0].Label = promptText("title")
 		more, moreActs := greeting.Build()
 		more[0].Label = greetingPromptTitle()
-		return append(rows, more...), append(acts, moreActs...)
+		return append(more, rows...), append(moreActs, acts...)
 	}
 	page.Actions = []sharedshell.Action{
 		{Label: promptText("reset"), MinHeight: 64, Do: func() { device.Actions[0].Do(); greeting.Actions[0].Do() }},

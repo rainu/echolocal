@@ -29,13 +29,14 @@ After successful readiness playback the native provider receives one explicit
 greeting request using the same speakable wire
 contract as OpenClaw's triggerGreeting. A per-assistant multiline Greeting prompt
 field inside Conversation context controls the complete request text, alongside
-the separate device-context field. There is no greeting submenu. Both drafts
+the separate device-context field, with Greeting first and no next-conversation
+helper texts. There is no greeting submenu. Both drafts
 share one atomic Save and Restore default action; provider delivery stays separate.
 Custom text is preserved verbatim across language changes and is limited to 1536
 UTF-8 bytes; device placeholders are not expanded. An empty stored value follows
 the localized default. Opening/editing/resetting the draft neither starts Talk nor
-persists without Save. The default asks for a brief greeting and then
-silence, never continuation of a historical turn. It sends neither a synthetic
+persists without Save. The default is a short greeting request in the selected language (German:
+“Grüß mich kurz auf Deutsch.”). It sends neither a synthetic
 user message nor replacement session instructions. The existing configurable
 device prompt stays separate and silent, sent once on first user speech.
 No greeting is sent on setup failure/cancellation. Actual words and response
