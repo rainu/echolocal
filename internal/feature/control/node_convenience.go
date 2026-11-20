@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/alarm"
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
@@ -29,7 +28,6 @@ import (
 	esphome "github.com/ygelfand/go-esphome-device"
 	"github.com/ygelfand/go-esphome-device/api"
 	libalarm "github.com/ygelfand/libcountertop/pkg/assistant/alarm"
-	setting "github.com/ygelfand/libcountertop/pkg/settings"
 	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 )
 
@@ -51,65 +49,10 @@ func nodeStream(s string) (config.Stream, bool) {
 	}
 	return "", false
 }
-func nodeSetting(a *connection.NodeAccess, domain, name string) (setting.Bound, setting.Field, error) {
-	if !nodeDomain(domain) || !a.Granted("settings") || !a.Granted(nodeSettingGroup(domain)) {
-		return nil, setting.Field{}, errors.New("permission_denied")
-	}
-	for _, b := range component.Settings.All() {
-		if b.Domain() != domain {
-			continue
-		}
-		d, ok := b.(setting.Described)
-		if !ok {
-			break
-		}
-		for _, f := range d.Fields() {
-			if f.Name == name && nodeField(f) {
-				return b, f, nil
-			}
-		}
-	}
-	return nil, setting.Field{}, errors.New("invalid_setting")
-}
 func registerNodeConvenience(a *connection.NodeAccess) {
 	add := func(name, group string, run func(context.Context, json.RawMessage) (any, error)) {
 		_ = nodeRegister(a, connection.NodeOperation{Command: name, Group: group, Run: run})
 	}
-	add("settings.get", "settings", func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var p struct {
-			Domain string `json:"domain"`
-			Name   string `json:"name"`
-		}
-		if decodeNode(raw, &p) != nil {
-			return nil, errors.New("invalid_params")
-		}
-		_, f, err := nodeSetting(a, p.Domain, p.Name)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"domain": p.Domain, "name": p.Name, "value": f.Value, "kind": f.Kind}, nil
-	})
-	add("settings.set", "settings", func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var p struct {
-			Domain string  `json:"domain"`
-			Name   string  `json:"name"`
-			Value  *string `json:"value"`
-		}
-		if decodeNode(raw, &p) != nil || p.Value == nil || len(*p.Value) > 4096 {
-			return nil, errors.New("invalid_params")
-		}
-		b, _, err := nodeSetting(a, p.Domain, p.Name)
-		if err != nil {
-			return nil, err
-		}
-		if ctx.Err() != nil {
-			return nil, errors.New("cancelled")
-		}
-		if b.Change(p.Name, *p.Value) != nil {
-			return nil, errors.New("invalid_setting")
-		}
-		return map[string]bool{"done": true}, nil
-	})
 	add("audio.status", "audio", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if nodeEmpty(raw) != nil {
 			return nil, errors.New("invalid_params")

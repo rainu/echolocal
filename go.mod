@@ -13,6 +13,7 @@ require (
 	github.com/ygelfand/go-esphome-device v0.0.20
 	github.com/ygelfand/libcountertop v0.1.1-0.20261116235953-38d829964ed2
 	github.com/zserge/microwakeword v0.0.0-20260330234603-bfaf3840114e
+	golang.org/x/text v0.43.0
 )
 
 require (
@@ -135,7 +136,6 @@ require (
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
@@ -143,4 +143,4 @@ require (
 	rsc.io/qr v0.2.0 // indirect
 )
 
-replace github.com/ygelfand/libcountertop => github.com/rainu/libcountertop v0.0.0-20261118211124-0f32d97d643f
+replace github.com/ygelfand/libcountertop => github.com/rainu/libcountertop v0.0.0-20261120171450-e3fd8ed21859

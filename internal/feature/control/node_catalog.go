@@ -108,10 +108,12 @@ func nodeContract(name string) (string, nodeSchema) {
 		return "Read intercom activity, state, video and mute flags without peer addresses.", empty
 	case "settings.export":
 		return "Export only vetted settings fields in permitted domains, filtered by local group grants. Treat results as private.", empty
+	case "settings.discover":
+		return "Discover a compact safe domain/name/grant index; select a domain for full kinds, formats, ranges and choices. No values; filtered by hardware/build and local grants. Start here before settings.get/set.", nodeObject(nodeSchema{"domain": nodeString(128, "Optional exact domain; omit to list all available safe settings.")})
 	case "settings.get":
-		return "Read one vetted setting by domain and name; authority/credential domains are excluded.", nodeObject(nodeSchema{"domain": str(0), "name": str(0)}, "domain", "name")
+		return "START with empty domain/name for a compact safe identifier/grant index; repeat with a selected domain and empty name for kinds/formats/ranges/choices. Both nonempty read one raw value, not a translated label. No credentials/authority.", nodeObject(nodeSchema{"domain": str(0), "name": str(0)}, "domain", "name")
 	case "settings.set":
-		return "Change one vetted setting using its string representation; requires settings and domain-specific grants. No credential/authority edits.", nodeObject(nodeSchema{"domain": str(0), "name": str(0), "value": str(4096)}, "domain", "name", "value")
+		return "Change a safe setting from settings.discover using its documented JSON string value (toggle: on or off). Requires listed grants. For Cast use domain cast, name receiver, value on. No authority/credential edits.", nodeObject(nodeSchema{"domain": str(0), "name": str(0), "value": str(4096)}, "domain", "name", "value")
 	case "settings.import":
 		fields := nodeSchema{"type": "object", "additionalProperties": str(4096)}
 		values := nodeSchema{"type": "object", "additionalProperties": fields, "minProperties": 1}
