@@ -106,6 +106,10 @@ func TestChatHistoryBeforeLiveCaptionsAndTimestampLabels(t *testing.T) {
 		if entries[i].text != want {
 			t.Fatalf("entry %d: %q", i, entries[i].text)
 		}
+		if entries[i].live != (i >= 2) {
+			t.Fatalf("lost live/history provenance at %d", i)
+		}
+
 	}
 	loc := time.FixedZone("device", 3600)
 	if got := appMessageLabel("user", stamp, loc); !strings.HasSuffix(got, "20.11.2026 13:34") {

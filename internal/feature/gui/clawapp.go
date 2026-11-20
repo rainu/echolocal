@@ -78,7 +78,17 @@ func (v *clawAppView) button(id, label string, disabled bool, do func()) gogui.V
 	color := gogui.Hex(0x2D4546)
 	style := appSmallStyle(v)
 	style.Color = gogui.Hex(0xE0E3E6)
-	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: style})}, MinHeight: 44, Height: 44, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	height := float32(44)
+	minWidth := float32(0)
+	padding := gogui.PaddingSmall
+	if id == "claw-send" || id == "claw-talk" {
+		height = 72
+		minWidth = 112
+		padding = gogui.NewPadding(16, 20, 16, 20)
+		style.Size = 22
+		style = style.Bold()
+	}
+	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: style})}, MinHeight: height, Height: height, MinWidth: minWidth, Padding: padding, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
 }
 func (v *clawAppView) text(text string) gogui.View {
 	return gogui.Text(gogui.TextCfg{Text: text, Mode: gogui.TextModeWrap})
@@ -157,7 +167,7 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		}
 		for i, m := range entries {
 			size += len(m.text)
-			messages = append(messages, v.message(w, fmt.Sprintf("claw-message-%d", i), m.role, m.text, appMessageLabel(m.role, m.timestamp, loc)))
+			messages = append(messages, v.message(w, fmt.Sprintf("claw-message-%d", i), m.role, m.text, appMessageLabel(m.role, m.timestamp, loc), m.live))
 		}
 
 		historyID := fmt.Sprintf("claw-history-%d", s.Generation)
@@ -200,7 +210,11 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 			},
 		}))
 	}
-	input := v.look.Input(gogui.InputCfg{ID: fmt.Sprintf("claw-compose-%d", s.Generation), Text: s.Draft, Placeholder: appText("compose"), Sizing: gogui.FillFit, Height: 44, MinHeight: 44, MaxHeight: 44, Padding: gogui.PaddingSmall, Disabled: locked || !s.Connected || s.Selected.Key == "", OnTextChanged: func(text string, e gogui.EventCtx) { v.app.Draft(text, s.Generation); e.Window.InvalidateLayout() }}, func() {})
+	composerStyle := appSmallStyle(v)
+	composerStyle.Size = 22
+	placeholderStyle := composerStyle
+	placeholderStyle.Color = gogui.Hex(0xAAB4B6)
+	input := v.look.Input(gogui.InputCfg{TextStyle: composerStyle, PlaceholderStyle: placeholderStyle, ID: fmt.Sprintf("claw-compose-%d", s.Generation), Text: s.Draft, Placeholder: appText("compose"), Sizing: gogui.FillFit, Height: 72, MinHeight: 72, MaxHeight: 72, Padding: gogui.NewPadding(16, 20, 16, 20), Disabled: locked || !s.Connected || s.Selected.Key == "", OnTextChanged: func(text string, e gogui.EventCtx) { v.app.Draft(text, s.Generation); e.Window.InvalidateLayout() }}, func() {})
 	main = append(main, gogui.Row(gogui.ContainerCfg{ID: "claw-composer", Sizing: gogui.FillFit, VAlign: gogui.VAlignMiddle, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: []gogui.View{input, v.button("claw-send", appText("send"), locked || !s.Connected || s.Selected.Key == "" || s.Draft == "", func() { v.app.Send(s.Generation) }), talkButton}}))
 	body := []gogui.View{}
 	if v.sidebar {
@@ -444,12 +458,11 @@ func appEllipsize(text string, width float32, measure func(string) float32) stri
 	}
 	return strings.TrimRight(string(runes[:lo]), " ") + suffix
 }
-func (v *clawAppView) message(w *gogui.Window, id, role, text, heading string) gogui.View {
+func (v *clawAppView) message(w *gogui.Window, id, role, text, heading string, live bool) gogui.View {
 	user := role == "user"
-	color := gogui.Hex(0x232526)
+	color := appMessageColor(role, live)
 	align := gogui.HAlignStart
 	if user {
-		color = gogui.Hex(0x2B3033)
 		align = gogui.HAlignEnd
 	}
 	label := appSmallStyle(v)
@@ -475,18 +488,19 @@ func (v *clawAppView) message(w *gogui.Window, id, role, text, heading string) g
 type appMessageEntry struct {
 	role, text string
 	timestamp  time.Time
+	live       bool
 }
 
 func appMessageEntries(history []chatapp.Message, captions []talk.Caption) []appMessageEntry {
 	out := make([]appMessageEntry, 0, len(history)+len(captions))
 	for _, m := range history {
 		if (m.Role == "user" || m.Role == "assistant") && m.Text() != "" {
-			out = append(out, appMessageEntry{m.Role, m.Text(), m.Time()})
+			out = append(out, appMessageEntry{role: m.Role, text: m.Text(), timestamp: m.Time()})
 		}
 	}
 	for _, c := range captions {
 		if (c.Role == "user" || c.Role == "assistant") && c.Text != "" {
-			out = append(out, appMessageEntry{c.Role, c.Text, c.Timestamp})
+			out = append(out, appMessageEntry{role: c.Role, text: c.Text, timestamp: c.Timestamp, live: true})
 		}
 	}
 	return out
@@ -509,4 +523,19 @@ func appSessionColor(s chatapp.Session, active bool, normal gogui.Color) gogui.C
 		return gogui.Hex(0x6ED4CB)
 	}
 	return normal
+}
+
+// Provenance, not role or matching text, distinguishes volatile Talk captions
+// from durable history. Saved voice transcripts use the normal history palette.
+func appMessageColor(role string, live bool) gogui.Color {
+	if live {
+		if role == "user" {
+			return gogui.Hex(0x283B4B)
+		}
+		return gogui.Hex(0x203A3D)
+	}
+	if role == "user" {
+		return gogui.Hex(0x2B3033)
+	}
+	return gogui.Hex(0x232526)
 }

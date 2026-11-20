@@ -112,3 +112,17 @@ The session-bound Talk start/stop control lives at the bottom right, immediately
 after Send in the composer row. It remains there for start, active and stopping
 states, including when the keyboard raises the composer. Existing callbacks,
 labels and availability/teardown fences are unchanged.
+
+The composer input and its Send/Talk actions are 72px high (previously 44px).
+Input/placeholder use 22px type; action labels are 22px bold, with 20px
+horizontal padding and a 112px minimum target width. The existing shared muted
+teal action color is retained; compact top-toolbar controls remain unchanged.
+
+## Live Talk message backgrounds
+
+Only transient Talk captions use the live palette (assistant: muted deep teal
+#203A3D, user: muted blue #283B4B). Authoritative persisted history retains the
+existing charcoal/slate panels, even when that history originated from speech.
+Provenance is carried explicitly by the history/caption adapter rather than
+inferred from role, message text or provisional/final status. Role alignment,
+timestamps, typography and message padding remain unchanged.
