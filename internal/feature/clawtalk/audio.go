@@ -11,8 +11,10 @@ import (
 	"github.com/ygelfand/echolocal/internal/hardware/mic"
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
+	"github.com/ygelfand/libcountertop/pkg/audio/mix"
 	"github.com/ygelfand/libcountertop/pkg/audio/tone"
 	"github.com/ygelfand/libcountertop/pkg/settings/schema"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +22,7 @@ import (
 
 type deviceAudio struct {
 	startTone, endTone               string
+	feedback                         *setupFeedback
 	ready                            atomic.Bool
 	lastCaptureMS                    atomic.Int64
 	playMu                           sync.Mutex
@@ -97,6 +100,10 @@ func (a *deviceAudio) pump() {
 				}
 				return
 			}
+			// Discard feedback and its acoustic tail instead of buffering user input.
+			if !a.ready.Load() || speaker.Get().Heard(config.StreamFeedback, 250*time.Millisecond) {
+				continue
+			}
 			a.captured.Add(1)
 			a.lastCaptureMS.Store(time.Now().UnixMilli())
 			select {
@@ -157,6 +164,9 @@ func (a *deviceAudio) playoutPump() {
 		case <-a.ctx.Done():
 			return
 		case <-ticker.C:
+			if !a.ready.Load() {
+				continue
+			}
 			now := time.Now()
 			recordMax(&a.maxPlayoutGapMS, now.Sub(previous).Milliseconds())
 			previous = now
@@ -198,10 +208,28 @@ func playTalkTone(choice string, end bool) {
 	}
 	speaker.Sound().Sound(config.StreamFeedback, tone.Level, tones.Get().Sound(schema.Chime(choice), schema.ChimeChirp))
 }
-func (a *deviceAudio) ReadyTone() { a.ready.Store(true); playTalkTone(a.startTone, false) }
+func (a *deviceAudio) ReadyTone(ctx context.Context) error {
+	if a.feedback != nil {
+		if a.feedback.Ready(ctx) {
+			a.ready.Store(true)
+			slog.Info("talk feedback capture gate opened")
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("talk_feedback_unavailable")
+	}
+	playTalkTone(a.startTone, false)
+	a.ready.Store(true)
+	return nil
+}
 func (a *deviceAudio) Close() error {
 	a.once.Do(func() {
 		a.cancel()
+		if a.feedback != nil {
+			a.feedback.Stop()
+		}
 		select {
 		case <-a.done:
 		case <-time.After(time.Second):
@@ -228,4 +256,62 @@ func (m *Manager) PreviewTone(choice string, end bool) {
 		return
 	}
 	playTalkTone(choice, end)
+}
+
+// Queued PCM is used for setup cues so cancellation can remove pending samples.
+// Append rather than overlay: separate cues must not be mixed together.
+type deviceFeedback struct{ readyChoice, progressChoice string }
+
+func (d *deviceFeedback) Cue(cue string) {
+	slog.Info("talk feedback cue", "cue", cue)
+	choice := ""
+	if cue == "ready" {
+		choice = d.readyChoice
+	}
+	if cue == "progress" {
+		choice = d.progressChoice
+	}
+	var pcm []int16
+	if choice != "" {
+		sound := tones.Get().Sound(schema.Chime(choice), schema.ChimeChirp)
+		if len(sound.Clip) > 0 {
+			pcm = mix.Scale(sound.Clip, tone.Level)
+		} else {
+			pcm = mix.Chime(speaker.Rate, speaker.Channels, tone.Level, sound.Notes...)
+		}
+	} else {
+		pcm = mix.Chime(speaker.Rate, speaker.Channels, tone.Level, SetupNotes(cue)...)
+	}
+	speaker.Get().Lane(config.StreamFeedback).Play(pcm)
+}
+
+// Preview uses the same serial PCM path and selection as live setup.
+func (m *Manager) PreviewProgressTone(choice string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active {
+		return
+	}
+	(&deviceFeedback{progressChoice: choice}).Cue("progress")
+}
+func (*deviceFeedback) Clear() { speaker.Get().Lane(config.StreamFeedback).Drain() }
+func (*deviceFeedback) Wait(ctx context.Context) bool {
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for speaker.Get().Lane(config.StreamFeedback).Queued() > 0 {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ticker.C:
+		}
+	}
+	// Account for already submitted hardware frames and room/microphone tail.
+	timer := time.NewTimer(speaker.Get().Latency() + 250*time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }

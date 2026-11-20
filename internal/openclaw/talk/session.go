@@ -22,7 +22,7 @@ type Device interface {
 	Close() error
 	Queued() int
 	StopOutput()
-	ReadyTone()
+	ReadyTone(context.Context) error
 }
 type Control interface {
 	SubscribeTalk() (<-chan connection.TalkEvent, func(), error)
@@ -42,6 +42,7 @@ type Session struct {
 	Client            Control
 	Target            string
 	Provider, Model   string
+	Greeting          string
 	DeviceContext     string
 	Audio             Device
 	Activity          func(State)
@@ -255,7 +256,7 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 	// Do not append context at startup: even silent provider context can resume
 	// a historical turn. Native user-speech handling sends it once when needed.
 	s.stage.Store(6)
-	if err = s.Audio.Start(ctx); err != nil {
+	if err = s.Audio.Start(startup); err != nil {
 		return errors.New("talk_audio_unavailable")
 	}
 	slog.Info("talk microphone capture started")
@@ -263,10 +264,25 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		return ctx.Err()
 	}
 	s.stage.Store(7)
+	if err = s.Audio.ReadyTone(startup); err != nil {
+		if startup.Err() != nil {
+			return errors.New("talk_start_timeout")
+		}
+		return errors.New("talk_audio_unavailable")
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if s.nativeMedia {
+		// The greeting is explicit speakable context, not a fake user message or
+		// replacement instructions. Send only after readiness playback succeeds.
+		if s.Greeting != "" {
+			if err = s.link.SendControl(greetingAppend(launch.Model, s.Greeting)); err != nil {
+				return errors.New("talk_control_failed")
+			}
+		}
 		close(s.audioGate)
 	}
-	s.Audio.ReadyTone()
 	return nil
 }
 func (s *Session) Close() error {

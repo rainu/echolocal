@@ -75,11 +75,11 @@ func TestVoiceModelChoicePersistsIndependentlyPerSlot(t *testing.T) {
 func TestTalkFeedbackPersistsWithoutChangingOtherSlot(t *testing.T) {
 	path := t.TempDir() + "/routing.json"
 	s := load(path)
-	if e := s.Update(0, func(v *Slot) { v.StartTone = "none"; v.EndTone = "ding" }); e != nil {
+	if e := s.Update(0, func(v *Slot) { v.StartTone = "none"; v.EndTone = "ding"; v.ProgressTone = "custom:synthetic" }); e != nil {
 		t.Fatal(e)
 	}
 	again := load(path)
-	if again.Get(0).StartTone != "none" || again.Get(0).EndTone != "ding" || again.Get(1).StartTone != "" || again.Get(1).EndTone != "" {
+	if again.Get(0).ProgressTone != "custom:synthetic" || again.Get(1).ProgressTone != "" || again.Get(0).StartTone != "none" || again.Get(0).EndTone != "ding" || again.Get(1).StartTone != "" || again.Get(1).EndTone != "" {
 		t.Fatal("feedback lost or changed another slot")
 	}
 }
@@ -146,5 +146,33 @@ func TestEndDefaultIsPinnedAfterFirstSave(t *testing.T) {
 	say.Use("en")
 	if end := load(path).Get(0).Ending; end.Phrase != "Gespräch beenden" || end.Position != "exact" || end.Timing != "turn_end" {
 		t.Fatal("saved default followed later language change")
+	}
+}
+
+func TestGreetingPromptIsPersistentPerSlotAndInvalidUpdateIsAtomic(t *testing.T) {
+	path := t.TempDir() + "/routing.json"
+	s := load(path)
+	if s.Get(0).GreetingText("de") == "" {
+		t.Fatal("missing migrated default")
+	}
+	custom := "Sage kurz guten Abend.\nDann warte."
+	if err := s.Update(0, func(v *Slot) { v.GreetingPrompt = custom }); err != nil {
+		t.Fatal(err)
+	}
+	again := load(path)
+	if again.Get(0).GreetingText("en") != custom || again.Get(1).GreetingPrompt != "" {
+		t.Fatal("custom prompt lost, translated or shared")
+	}
+	if err := again.Update(0, func(v *Slot) { v.GreetingPrompt = string([]byte{0}) }); err == nil {
+		t.Fatal("invalid prompt saved")
+	}
+	if load(path).Get(0).GreetingPrompt != custom {
+		t.Fatal("invalid save overwrote previous prompt")
+	}
+	if err := again.Update(0, func(v *Slot) { v.GreetingPrompt = "" }); err != nil {
+		t.Fatal(err)
+	}
+	if load(path).Get(0).GreetingText("de") != s.Get(1).GreetingText("de") {
+		t.Fatal("default not restored")
 	}
 }

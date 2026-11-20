@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/libcountertop/pkg/media/rtc"
 	"sync"
@@ -13,8 +14,8 @@ import (
 )
 
 type fakeDevice struct {
-	started, closed atomic.Int32
-	frames          chan []int16
+	started, closed, readyTones atomic.Int32
+	frames                      chan []int16
 }
 
 func (d *fakeDevice) Start(context.Context) error      { d.started.Add(1); return nil }
@@ -23,10 +24,11 @@ func (d *fakeDevice) Frames() (<-chan []int16, func()) { return d.frames, func()
 func (d *fakeDevice) Play([]int16)                     {}
 func (d *fakeDevice) Queued() int                      { return 0 }
 func (d *fakeDevice) StopOutput()                      {}
-func (d *fakeDevice) ReadyTone()                       {}
+func (d *fakeDevice) ReadyTone(context.Context) error  { d.readyTones.Add(1); return nil }
 
 type fakeControl struct {
 	mu                          sync.Mutex
+	holdReady                   <-chan struct{}
 	event                       chan connection.TalkEvent
 	peer                        *rtc.Link
 	id                          string
@@ -78,7 +80,17 @@ func (f *fakeControl) ExchangeOffer(ctx context.Context, _ connection.TalkLaunch
 		var event connection.TalkEvent
 		event.VoiceSessionID = f.id
 		event.Event.Type = "session.ready"
-		f.event <- event
+		if f.holdReady != nil {
+			go func() {
+				select {
+				case <-f.holdReady:
+					f.event <- event
+				case <-ctx.Done():
+				}
+			}()
+		} else {
+			f.event <- event
+		}
 	}
 	return answer, err
 }
@@ -98,7 +110,7 @@ func TestSessionWaitsForPeerProviderAndAudioThenClosesOnce(t *testing.T) {
 	if err = session.Open(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if d.started.Load() != 1 || session.Diagnostics().Stage != "ready" {
+	if d.started.Load() != 1 || d.readyTones.Load() != 1 || session.Diagnostics().Stage != "ready" {
 		t.Fatal("readiness not gated on audio")
 	}
 	session.Close()
@@ -216,4 +228,51 @@ func TestQueuedOldCancellationCannotStopNextActivation(t *testing.T) {
 		t.Fatal("old activation cancelled successor")
 	}
 	c.Stop()
+}
+
+func TestProviderReadinessGatesCueAndMicrophoneDuringSlowSetup(t *testing.T) {
+	for _, abort := range []bool{false, true} {
+		t.Run(fmt.Sprint("cancel=", abort), func(t *testing.T) {
+			d := &fakeDevice{frames: make(chan []int16)}
+			peer, err := rtc.NewAudioOnly(rtc.Media{Audio: &fakeDevice{frames: make(chan []int16)}}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer peer.Close()
+			ready := make(chan struct{})
+			c := &fakeControl{event: make(chan connection.TalkEvent, 8), peer: peer, capable: true, holdReady: ready}
+			s := NewSession(c, "synthetic-readiness", d)
+			s.nativeMedia = false
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- s.Open(ctx) }()
+			// Wait for transport setup while withholding authoritative provider readiness.
+			until := time.Now().Add(3 * time.Second)
+			for s.stage.Load() < 5 && time.Now().Before(until) {
+				time.Sleep(time.Millisecond)
+			}
+			if s.stage.Load() < 5 {
+				t.Fatal("peer setup did not complete")
+			}
+			time.Sleep(100 * time.Millisecond)
+			if d.started.Load() != 0 || d.readyTones.Load() != 0 {
+				t.Fatal("false readiness")
+			}
+			if abort {
+				cancel()
+			} else {
+				close(ready)
+			}
+			err = <-done
+			s.Close()
+			if abort {
+				if err == nil || d.started.Load() != 0 || d.readyTones.Load() != 0 {
+					t.Fatal("cancelled setup emitted ready")
+				}
+			} else if err != nil || d.started.Load() != 1 || d.readyTones.Load() != 1 {
+				t.Fatal("ready setup", err)
+			}
+		})
+	}
 }

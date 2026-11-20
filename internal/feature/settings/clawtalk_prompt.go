@@ -32,11 +32,11 @@ func promptError(err error) string {
 		return ""
 	}
 	switch err.Error() {
-	case "talk_context_too_long":
+	case "talk_context_too_long", "talk_greeting_too_long":
 		return promptText("tooLong")
 	case "talk_context_placeholder":
 		return promptText("placeholder")
-	case "talk_context_invalid":
+	case "talk_context_invalid", "talk_greeting_invalid":
 		return promptText("invalid")
 	default:
 		return say.T("openclaw.error.storage")
@@ -61,16 +61,19 @@ func talkDevicePromptPage(slot int) *TalkPromptEditor {
 		func() { shell.Get().Redraw() })}
 }
 func talkPromptPageFor(initial string, render func(string) (string, error), save func(string) error, redraw func()) *sharedshell.Page {
+	return talkPromptPageWithDefault(initial, render, save, redraw, promptText("title"), openclaw.DefaultDeviceContextTemplate, true)
+}
+func talkPromptPageWithDefault(initial string, render func(string) (string, error), save func(string) error, redraw func(), title string, defaultText func() string, placeholders bool) *sharedshell.Page {
 	var mu sync.Mutex
 	draft := initial
 	useDefault := initial == ""
 	notice := ""
-	page := &sharedshell.Page{Title: promptText("title")}
+	page := &sharedshell.Page{Title: title}
 	page.Build = func() ([]menu.Row, []func(int)) {
 		mu.Lock()
 		value, note := draft, notice
 		if useDefault {
-			value = openclaw.DefaultDeviceContextTemplate()
+			value = defaultText()
 		}
 		mu.Unlock()
 		expanded, err := render(value)
@@ -97,7 +100,7 @@ func talkPromptPageFor(initial string, render func(string) (string, error), save
 						acts = append(acts, func(int) {
 							mu.Lock()
 							if useDefault {
-								draft = openclaw.DefaultDeviceContextTemplate()
+								draft = defaultText()
 							}
 							useDefault = false
 							draft += token
@@ -110,7 +113,10 @@ func talkPromptPageFor(initial string, render func(string) (string, error), save
 					return rows, acts
 				}}
 			}},
-			{Label: promptText("next"), Kind: menu.Plain},
+		}
+		// The greeting is plain provider text, not a device template.
+		if !placeholders {
+			rows = append(rows[:1], rows[2:]...)
 		}
 		if note != "" {
 			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
@@ -130,13 +136,13 @@ func talkPromptPageFor(initial string, render func(string) (string, error), save
 			mu.Lock()
 			value := draft
 			if useDefault {
-				value = openclaw.DefaultDeviceContextTemplate()
+				value = defaultText()
 			}
 			mu.Unlock()
 			_, err := render(value)
 			stored := value
 			if err == nil {
-				if stored == openclaw.DefaultDeviceContextTemplate() {
+				if stored == defaultText() {
 					stored = ""
 				}
 				err = save(stored)
