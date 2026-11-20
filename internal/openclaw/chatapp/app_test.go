@@ -185,3 +185,13 @@ func TestRetiredKeyboardAndSendCallbacksCannotTargetNewSelection(t *testing.T) {
 		t.Fatal("stale UI callback changed the new conversation")
 	}
 }
+
+func TestHistoryOverlapDeduplicatesIdsButNotRepeatedText(t *testing.T) {
+	a := Message{ID: "a", Role: "user", Content: json.RawMessage(`"same"`)}
+	b := a
+	b.ID = "b"
+	out := mergeMessages([]Message{a}, []Message{a, b})
+	if len(out) != 2 || out[1].ID != "b" {
+		t.Fatal("tail overlap duplicated or repeated text lost")
+	}
+}

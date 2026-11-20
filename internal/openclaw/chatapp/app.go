@@ -40,6 +40,10 @@ func (s Session) Title() string {
 }
 
 type Message struct {
+	ID   string `json:"id"`
+	Meta struct {
+		ID string `json:"id"`
+	} `json:"__openclaw"`
 	Role    string          `json:"role"`
 	Content json.RawMessage `json:"content"`
 }
@@ -407,7 +411,7 @@ func (a *App) history(ctx context.Context, epoch, gen uint64, rpc RPC, s Session
 		a.state.Messages = append(h.Messages, a.state.Messages...)
 		a.state.Older = h.OlderCursor
 	} else {
-		a.state.Messages = append(append([]Message(nil), a.olderMessages...), h.Messages...)
+		a.state.Messages = mergeMessages(a.olderMessages, h.Messages)
 		if len(a.olderMessages) == 0 {
 			a.state.Older = h.OlderCursor
 		}
@@ -606,4 +610,27 @@ func (a *App) Talk(generation ...uint64) {
 	}
 	a.mu.Unlock()
 	a.redraw()
+}
+
+// Tail refresh can overlap a previously paged prefix. Deduplicate only durable
+// message identities, never identical text (which may be a legitimate repeat).
+func mergeMessages(prefix, tail []Message) []Message {
+	out := make([]Message, 0, len(prefix)+len(tail))
+	seen := map[string]bool{}
+	for _, part := range [][]Message{prefix, tail} {
+		for _, m := range part {
+			id := m.Meta.ID
+			if id == "" {
+				id = m.ID
+			}
+			if id != "" && seen[id] {
+				continue
+			}
+			if id != "" {
+				seen[id] = true
+			}
+			out = append(out, m)
+		}
+	}
+	return out
 }

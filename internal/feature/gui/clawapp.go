@@ -4,6 +4,7 @@ package gui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	gogui "github.com/go-gui-org/go-gui/gui"
@@ -234,43 +235,86 @@ func appMarkdownStyle(ink ...gogui.Color) gogui.MarkdownStyle {
 	style.Code = base
 	return style
 }
+
+// The native renderer supplies LayoutText, but not LayoutRichText. Lower
+// Markdown blocks to supported Text views instead of invisible RTF layouts.
 func (v *clawAppView) markdown(w *gogui.Window, id, text string) gogui.View {
-	return w.Markdown(gogui.MarkdownCfg{ID: id, Source: text, Style: appMarkdownStyle(widgets.Color(v.look.Palette().Text)), DisableExternalAPIs: true,
+	style := appMarkdownStyle(widgets.Color(v.look.Palette().Text))
+	return w.Markdown(gogui.MarkdownCfg{ID: id, Source: text, Style: style, DisableExternalAPIs: true,
 		RenderBlock: func(_ *gogui.Window, el gogui.MarkdownElement) (gogui.View, bool) {
-			if el.Kind == gogui.MarkdownKindCode {
-				st := appMarkdownStyle().Code
-				st.Color = gogui.White
-				return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Color: gogui.Hex(0x253B68), Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: el.PlainText, TextStyle: st, Mode: gogui.TextModeWrap})}}), true
-			}
-			if el.Kind == gogui.MarkdownKindTable {
-				// The legacy theme has no table-role fonts either. Preserve every cell
-				// in a wrapped text rendering rather than disappearing table content.
-				if el.TableData == nil {
-					return v.text(el.PlainText), true
-				}
-				rows := [][]gogui.RichText{el.TableData.Headers}
-				rows = append(rows, el.TableData.Rows...)
-				body := []gogui.View{}
-				for ri, row := range rows {
-					cells := []gogui.View{}
-					for _, cell := range row {
-						text := ""
-						for _, run := range cell.Runs {
-							text += run.Text
-						}
-						st := appMarkdownStyle(widgets.Color(v.look.Palette().Text)).Text
-						if ri == 0 {
-							st = st.Bold()
-						}
-						cells = append(cells, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingSmall, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})}}))
-					}
-					body = append(body, gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Content: cells}))
-				}
-				return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Content: body}), true
-			}
-			return nil, false
+			return v.markdownBlock(el, style), true
 		},
 	})
+}
+func (v *clawAppView) markdownBlock(el gogui.MarkdownElement, style gogui.MarkdownStyle) gogui.View {
+	if el.Kind == gogui.MarkdownKindImage {
+		return v.text(el.ImageAlt)
+	}
+	if el.Kind == gogui.MarkdownKindMath {
+		return v.text(el.MathLatex)
+	}
+	if el.Kind == gogui.MarkdownKindHR {
+		return v.text("────────────────")
+	}
+	if el.Kind == gogui.MarkdownKindCode {
+		st := style.Code
+		st.Color = gogui.White
+		return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Color: gogui.Hex(0x253B68), Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: el.PlainText, TextStyle: st, Mode: gogui.TextModeWrap})}})
+	}
+	if el.Kind == gogui.MarkdownKindTable && el.TableData != nil {
+		rows := [][]gogui.RichText{el.TableData.Headers}
+		rows = append(rows, el.TableData.Rows...)
+		body := []gogui.View{}
+		for ri, row := range rows {
+			cells := []gogui.View{}
+			for _, cell := range row {
+				text := ""
+				for _, run := range cell.Runs {
+					text += run.Text
+				}
+				st := style.Text
+				if ri == 0 {
+					st = st.Bold()
+				}
+				cells = append(cells, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingSmall, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})}}))
+			}
+			body = append(body, gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Content: cells}))
+		}
+		return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Content: body})
+	}
+	spans := []gogui.View{}
+	if el.ListPrefix != "" {
+		spans = append(spans, v.text(el.ListPrefix+" "))
+	}
+	if el.IsTaskItem {
+		mark := "☐ "
+		if el.TaskChecked {
+			mark = "☑ "
+		}
+		spans = append(spans, v.text(mark))
+	}
+	if el.Kind == gogui.MarkdownKindBlockquote {
+		spans = append(spans, v.text("› "))
+	}
+	words := 0
+	for _, run := range el.Content.Runs {
+		st := run.Style
+		st.Color = style.Text.Color
+		if st.Size < 18 {
+			st.Size = 18
+		}
+		for _, word := range strings.Fields(run.Text) {
+			words++
+			if words > 300 {
+				return gogui.Text(gogui.TextCfg{Text: el.PlainText, TextStyle: style.Text, Mode: gogui.TextModeWrap})
+			}
+			spans = append(spans, gogui.Text(gogui.TextCfg{Text: word + " ", TextStyle: st, Mode: gogui.TextModeWrap}))
+		}
+	}
+	if len(spans) == 0 {
+		return v.text(el.PlainText)
+	}
+	return gogui.Wrap(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: spans})
 }
 func (v *clawAppView) listButton(id, label string, disabled bool, do func()) gogui.View {
 	return gogui.Button(gogui.ButtonCfg{ID: id, Sizing: gogui.FillFit, Content: []gogui.View{v.text(label)}, MinHeight: 60, Padding: gogui.PaddingMedium, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
