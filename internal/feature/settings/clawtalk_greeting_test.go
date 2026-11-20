@@ -3,7 +3,10 @@
 package settings
 
 import (
+	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
+	"github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
+	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	"github.com/ygelfand/libcountertop/pkg/say"
 	"strings"
 	"testing"
@@ -47,5 +50,62 @@ func TestGreetingEditorDraftExplicitSaveAndRestoreDefault(t *testing.T) {
 	p.Actions[1].Do()
 	if len(saved) != 2 || saved[1] != "" {
 		t.Fatal("default sentinel not restored")
+	}
+}
+
+func TestConversationContextHasTwoInlinePromptsAndAtomicSave(t *testing.T) {
+	initial := clawtalk.Slot{OpenClaw: true, DeviceContextTemplate: "Original node", GreetingPrompt: "Original greeting"}
+	writes := 0
+	saved := initial
+	render := func(s string) (string, error) { return s, openclaw.ValidateDeviceContextTemplate(s) }
+	p := talkConversationPromptPageFor(initial, render, func(d, g string) error {
+		writes++
+		saved.DeviceContextTemplate = d
+		saved.GreetingPrompt = g
+		return nil
+	}, func() {})
+	fields := func() []menu.Row {
+		rows, _ := p.Build()
+		result := []menu.Row{}
+		for _, r := range rows {
+			if r.Kind == menu.Field {
+				result = append(result, r)
+			}
+		}
+		return result
+	}
+	f := fields()
+	if len(f) != 2 || f[0].Label != promptText("title") || f[1].Label != greetingPromptTitle() || f[1].Open != nil {
+		t.Fatal("prompts not separate inline fields")
+	}
+	f[0].Save("New node")
+	f[1].Save("New greeting")
+	if writes != 0 {
+		t.Fatal("draft writes immediately")
+	}
+	p.Actions[1].Do()
+	if writes != 1 || saved.DeviceContextTemplate != "New node" || saved.GreetingPrompt != "New greeting" {
+		t.Fatal("save not one combined transaction")
+	}
+	f = fields()
+	f[0].Save("Next node")
+	f[1].Save(strings.Repeat("x", talk.GreetingMaxBytes+1))
+	p.Actions[1].Do()
+	if writes != 1 || saved.DeviceContextTemplate != "New node" {
+		t.Fatal("invalid greeting partially committed device prompt")
+	}
+	p.Actions[0].Do()
+	if writes != 1 {
+		t.Fatal("reset saved implicitly")
+	}
+	p.Actions[1].Do()
+	if writes != 2 || saved.DeviceContextTemplate != "" || saved.GreetingPrompt != "" {
+		t.Fatal("both defaults not restored atomically")
+	}
+	rows, _, _ := talkOptionsRowsFor(0, initial)
+	for _, row := range rows {
+		if row.Label == greetingPromptTitle() {
+			t.Fatal("greeting still in main assistant menu")
+		}
 	}
 }

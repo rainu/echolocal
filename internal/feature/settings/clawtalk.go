@@ -8,6 +8,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
 	"github.com/ygelfand/echolocal/internal/feature/detect"
+	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	"github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/echolocal/internal/feature/tones"
 	"github.com/ygelfand/echolocal/internal/feature/voice"
@@ -62,12 +63,11 @@ func talkOptionsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), boo
 		menu.Row{Label: say.T("clawtalk.agent"), Value: agent, Kind: menu.Chevron, Open: func() menu.View { return talkAgentPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.model"), Value: model, Hint: say.T("clawtalk.model_hint"), Kind: menu.Chevron, Open: func() menu.View { return talkModelPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.context"), Value: contextSummary, Kind: menu.Chevron, Open: func() menu.View { return talkConversationContextPage(slot) }},
-		menu.Row{Label: greetingPromptTitle(), Value: greetingPromptSummary(s.GreetingPrompt), Kind: menu.Chevron, Open: func() menu.View { return talkGreetingPromptPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.start_tone"), Value: talkToneLabel(s.StartTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, false) }},
 		menu.Row{Label: progressToneTitle(), Value: talkToneLabel(s.ProgressTone), Kind: menu.Chevron, Open: func() menu.View { return talkFeedbackTonePage(slot, "progress") }},
 		menu.Row{Label: say.T("clawtalk.end_tone"), Value: talkToneLabel(s.EndTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, true) }},
 	)
-	acts = append(acts, nil, nil, nil, nil, nil, nil, nil)
+	acts = append(acts, nil, nil, nil, nil, nil, nil)
 
 	rows = append(rows, menu.Row{Label: endText("title"), Value: s.Ending.Defaults(say.Chosen()).Phrase, Kind: menu.Chevron, Open: func() menu.View { return talkEndPage(slot) }})
 	acts = append(acts, nil)
@@ -79,7 +79,12 @@ func talkOptionsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), boo
 // Conversation policy, existing-session selection and device prompt belong
 // together; audio/model settings remain on the assistant's main options page.
 func talkConversationContextPage(slot int) *TalkPromptEditor {
-	p := talkDevicePromptPage(slot)
+	p := talkConversationPromptPageFor(clawtalk.Get().Store.Get(slot),
+		featureclaw.Get().Node.ConversationDeviceContextWithTemplate,
+		func(device, greeting string) error {
+			return saveTalk(slot, func(s *clawtalk.Slot) { s.DeviceContextTemplate = device; s.GreetingPrompt = greeting })
+		},
+		func() { shell.Get().Redraw() })
 	p.Title = say.T("clawtalk.context")
 	p.Leading = func() ([]menu.Row, []func(int)) {
 		return talkContextSettingsRowsFor(slot, clawtalk.Get().Store.Get(slot))

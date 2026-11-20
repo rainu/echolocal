@@ -28,7 +28,9 @@ the same tail. Provider playout also waits for the ready cue. The existing
 After successful readiness playback the native provider receives one explicit
 greeting request using the same speakable wire
 contract as OpenClaw's triggerGreeting. A per-assistant multiline Greeting prompt
-editor controls the complete request text, with explicit Save and Restore default.
+field inside Conversation context controls the complete request text, alongside
+the separate device-context field. There is no greeting submenu. Both drafts
+share one atomic Save and Restore default action; provider delivery stays separate.
 Custom text is preserved verbatim across language changes and is limited to 1536
 UTF-8 bytes; device placeholders are not expanded. An empty stored value follows
 the localized default. Opening/editing/resetting the draft neither starts Talk nor

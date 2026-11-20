@@ -19,3 +19,9 @@ func TestPromptInputPreservesMultilineEditsInDraft(t *testing.T) {
 		t.Fatal("line breaks or unicode lost")
 	}
 }
+
+func TestInlinePromptsHaveIndependentStableInputTargets(t *testing.T) {
+	if talkPromptFieldID(0) != talkPromptInputID || talkPromptFieldID(0) == talkPromptFieldID(1) {
+		t.Fatal("prompt input identities collide")
+	}
+}

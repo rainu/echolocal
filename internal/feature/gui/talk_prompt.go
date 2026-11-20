@@ -14,6 +14,12 @@ import (
 
 const talkPromptInputID = "talk-device-prompt-multiline"
 
+func talkPromptFieldID(field int) string {
+	if field == 0 {
+		return talkPromptInputID
+	}
+	return fmt.Sprintf("%s-%d", talkPromptInputID, field)
+}
 func talkPromptInput(row menu.Row, height float32) gogui.InputCfg {
 	return gogui.InputCfg{ID: talkPromptInputID, Text: row.Value, Mode: gogui.InputMultiline, Scrollable: true, Height: height, Sizing: gogui.FillFixed,
 		OnTextChanged: func(text string, _ gogui.EventCtx) {
@@ -38,19 +44,6 @@ func extendTalkPrompt(look *widgets.UI, o *screens.Options, _ func() *screens.Ap
 			if look.Editor.Typing(w) {
 				height = 100
 			}
-			input := look.Input(talkPromptInput(rows[0], height), func() {})
-			// Retain cursor/selection when the on-screen toolbar is tapped. Send a real
-			// Enter key to the multiline input, not a whole-value append or a Save.
-			newline := look.Toolkit.ActionBar(w, []sharedshell.Action{{Label: p.NewlineLabel(), MinHeight: 48, Role: sharedshell.Plain, Do: func() {
-				w.QueueCommand(func(w *gogui.Window) {
-					for _, id := range w.ResolveID(talkPromptInputID) {
-						w.SetFocus(id)
-					}
-					w.EventFn(&gogui.Event{Type: gogui.EventKeyDown, KeyCode: gogui.KeyEnter})
-					w.EventFn(&gogui.Event{Type: gogui.EventKeyUp, KeyCode: gogui.KeyEnter})
-					w.InvalidateLayout()
-				})
-			}}}, look.Palette())
 			body := []gogui.View{}
 			if p.Leading != nil {
 				leading, actions := p.Leading()
@@ -62,19 +55,38 @@ func extendTalkPrompt(look *widgets.UI, o *screens.Options, _ func() *screens.Ap
 					body = append(body, look.Row(fmt.Sprintf("context-row-%d", i), p.Title, row, tap, false))
 				}
 			}
-			promptBlock := []gogui.View{
-				gogui.Text(gogui.TextCfg{Text: rows[0].Label, Mode: gogui.TextModeWrap}),
-				gogui.Text(gogui.TextCfg{Text: rows[0].Hint, TextStyle: widgets.Secondary(), Mode: gogui.TextModeWrap}),
-				newline, input,
-			}
-			body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Spacing: gogui.SpacingSmall, Content: promptBlock}))
-
-			for i, row := range rows[1:] {
-				var tap func(int)
-				if i+1 < len(taps) {
-					tap = taps[i+1]
+			field := 0
+			for i, row := range rows {
+				if row.Kind != menu.Field {
+					var tap func(int)
+					if i < len(taps) {
+						tap = taps[i]
+					}
+					body = append(body, look.Row(fmt.Sprintf("prompt-row-%d", i), p.Title, row, tap, false))
+					continue
 				}
-				body = append(body, look.Row(fmt.Sprintf("prompt-row-%d", i+1), p.Title, row, tap, false))
+				id := talkPromptFieldID(field)
+				field++
+				cfg := talkPromptInput(row, height)
+				cfg.ID = id
+				input := look.Input(cfg, func() {})
+				// Each toolbar restores its own input focus and cursor, never the other
+				// prompt's. Field IDs do not change when validation notices appear.
+				newline := look.Toolkit.ActionBar(w, []sharedshell.Action{{Label: p.NewlineLabel(), MinHeight: 48, Role: sharedshell.Plain, Do: func() {
+					w.QueueCommand(func(w *gogui.Window) {
+						for _, resolved := range w.ResolveID(id) {
+							w.SetFocus(resolved)
+						}
+						w.EventFn(&gogui.Event{Type: gogui.EventKeyDown, KeyCode: gogui.KeyEnter})
+						w.EventFn(&gogui.Event{Type: gogui.EventKeyUp, KeyCode: gogui.KeyEnter})
+						w.InvalidateLayout()
+					})
+				}}}, look.Palette())
+				body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Spacing: gogui.SpacingSmall, Content: []gogui.View{
+					gogui.Text(gogui.TextCfg{Text: row.Label, Mode: gogui.TextModeWrap}),
+					gogui.Text(gogui.TextCfg{Text: row.Hint, TextStyle: widgets.Secondary(), Mode: gogui.TextModeWrap}),
+					newline, input,
+				}}))
 			}
 			return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: body})
 		}, Foot: func(w *gogui.Window) gogui.View { return look.Toolkit.ActionBar(w, p.Actions, look.Palette()) }}
