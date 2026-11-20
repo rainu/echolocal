@@ -69,20 +69,8 @@ func appText(key string) string {
 	return key
 }
 func (v *clawAppView) button(id, label string, disabled bool, do func()) gogui.View {
-	// Muted action-specific accents keep the toolbar readable without bright fills.
-	color := gogui.Hex(0x30343A)
-	switch id {
-	case "claw-sessions":
-		color = gogui.Hex(0x343E50)
-	case "claw-refresh":
-		color = gogui.Hex(0x2D4546)
-	case "claw-talk":
-		color = gogui.Hex(0x354A3D)
-	case "claw-model":
-		color = gogui.Hex(0x443C50)
-	case "claw-send":
-		color = gogui.Hex(0x354655)
-	}
+	// A single muted teal ties the app's actions together.
+	color := gogui.Hex(0x2D4546)
 	style := appSmallStyle(v)
 	style.Color = gogui.Hex(0xE0E3E6)
 	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: style})}, MinHeight: 44, Height: 44, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
@@ -399,14 +387,14 @@ func appSmallStyle(v *clawAppView) gogui.TextStyle {
 }
 func (v *clawAppView) listButton(id, label string, disabled bool, do func()) gogui.View {
 	style := appSmallStyle(v)
-	style.Align = gogui.TextAlignRight
-	align := gogui.HAlignEnd
+	style.Align = gogui.TextAlignLeft
+	align := gogui.HAlignStart
+	padding := gogui.NewPadding(4, 8, 4, 16)
 	if strings.HasPrefix(id, "claw-group-") {
 		style = style.Bold()
-		style.Align = gogui.TextAlignLeft
-		align = gogui.HAlignStart
+		padding = gogui.NewPadding(4, 8, 4, 4)
 	}
-	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, HAlign: gogui.Some(align), Sizing: gogui.FillFit, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: label, TextStyle: style, Mode: gogui.TextModeSingleLine, Clip: true})}, MinHeight: 40, Height: 40, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, HAlign: gogui.Some(align), Sizing: gogui.FillFit, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: label, TextStyle: style, Mode: gogui.TextModeSingleLine, Clip: true})}, MinHeight: 40, Height: 40, Padding: padding, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
 }
 func (v *clawAppView) message(w *gogui.Window, id, role, text string) gogui.View {
 	user := role == "user"
@@ -425,7 +413,7 @@ func (v *clawAppView) message(w *gogui.Window, id, role, text string) gogui.View
 		content = gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})
 		label.Align = gogui.TextAlignRight
 	}
-	bubble := gogui.Column(gogui.ContainerCfg{ID: id, Sizing: gogui.FillFit, Padding: gogui.PaddingSmall, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: appText(role), TextStyle: label}), content}})
+	bubble := gogui.Column(gogui.ContainerCfg{ID: id, Sizing: gogui.FillFit, Padding: gogui.NewPadding(12, 16, 12, 16), Spacing: gogui.SpacingSmall, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: appText(role), TextStyle: label}), content}})
 	spacer := gogui.Column(gogui.ContainerCfg{Sizing: gogui.FixedFit, Width: 40, Padding: gogui.NoPadding})
 	children := []gogui.View{bubble, spacer}
 	if user {
