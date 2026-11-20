@@ -97,7 +97,9 @@ A successful acknowledgment alone is **not proof of agent visibility**.
 The target Gateway contract was checked against its current protocol schemas and
 handlers: tool names match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`; skills use a valid
 lowercase hyphenated name, description <=1024 and content <=65536 characters.
-Only the node role publishes metadata.
+Only the node role publishes metadata. Skill descriptor name and description
+must match the embedded SKILL.md frontmatter exactly; both are read from the
+same canonical header.
 
 Gateway approval and command allowlists still filter descriptors. On current
 Gateways, `gateway.nodes.pluginTools.enabled=false` disables node-published tools;
@@ -106,6 +108,17 @@ agent/runtime tool policy, owner-only invocation, Talk tool filtering or
 provider limitations may withhold them even after acknowledgment. Do not change
 these settings, approve broader commands, copy credentials, or replace prompts
 to make a test pass.
+
+### Current shell-less-node compatibility limitation
+
+The inspected Gateway remote-skill projection additionally requires both an
+exec-capable agent surface and `node.commands.includes("system.run")`.
+A command-only EchoLocal node intentionally does not expose system.run, so its
+acknowledged skill can still be absent from normal skill discovery. This is a
+Gateway runtime limitation, not a reason to advertise a fake shell, add command
+grants or install a second copy of the skill. A Gateway fix supporting published
+guidance from shell-less nodes is required to satisfy that delivery criterion.
+The exact frontmatter contract is independently enforced before that projection.
 
 Published skills are procedural guidance, not authorization or higher-priority
 conversation instructions. No private endpoints, credentials, actual device

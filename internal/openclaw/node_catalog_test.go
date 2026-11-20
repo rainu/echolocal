@@ -306,3 +306,13 @@ func TestNodeCatalogPayloadBound(t *testing.T) {
 		}
 	}
 }
+
+func TestNodePublishedSkillMatchesGatewayFrontmatter(t *testing.T) {
+	skill := NodeUsageSkill()
+	if skill.Name == "" || skill.Description == "" || len(skill.Description) > 1024 || len(skill.Content) > 65536 {
+		t.Fatal("invalid skill bounds")
+	}
+	if !strings.Contains(skill.Content, "\nname: "+skill.Name+"\n") || !strings.Contains(skill.Content, "\ndescription: "+skill.Description+"\n") {
+		t.Fatal("Gateway drops descriptors whose frontmatter does not match exactly")
+	}
+}
