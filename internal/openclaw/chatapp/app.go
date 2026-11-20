@@ -19,16 +19,19 @@ type RPC interface {
 	Updates() (<-chan struct{}, func(), error)
 }
 type Session struct {
-	Key           string `json:"key"`
-	SessionID     string `json:"sessionId"`
-	AgentID       string `json:"agentId"`
-	Label         string `json:"label"`
-	DerivedTitle  string `json:"derivedTitle"`
-	DisplayName   string `json:"displayName"`
-	Category      string `json:"category"`
-	Model         string `json:"model"`
-	ModelProvider string `json:"modelProvider"`
-	HasActiveRun  bool   `json:"hasActiveRun"`
+	Key            string `json:"key"`
+	SessionID      string `json:"sessionId"`
+	AgentID        string `json:"agentId"`
+	Label          string `json:"label"`
+	DerivedTitle   string `json:"derivedTitle"`
+	DisplayName    string `json:"displayName"`
+	Category       string `json:"category"`
+	Model          string `json:"model"`
+	ModelProvider  string `json:"modelProvider"`
+	HasActiveRun   bool   `json:"hasActiveRun"`
+	Unread         bool   `json:"unread"`
+	UpdatedAt      int64  `json:"updatedAt"`
+	MarkedUnreadAt *int64 `json:"markedUnreadAt"`
 }
 
 func (s Session) Title() string {
@@ -100,17 +103,33 @@ func (m Model) Key() string {
 }
 
 type State struct {
-	Sessions                                                      []Session
-	Groups                                                        []string
-	Selected                                                      Session
-	Messages                                                      []Message
-	Models                                                        []Model
-	Draft, Notice, Older                                          string
-	Connected, Loading, Busy, Talk, Stopping, ModelsReady, Active bool
-	Generation                                                    uint64
-	TalkGeneration                                                uint64
+	Sessions                                                                    []Session
+	Groups                                                                      []string
+	Selected                                                                    Session
+	Messages                                                                    []Message
+	Models                                                                      []Model
+	Draft, Notice, Older                                                        string
+	Connected, Loading, Busy, Talk, Stopping, ModelsReady, Active, HistoryReady bool
+	Generation                                                                  uint64
+	TalkGeneration                                                              uint64
 }
 type pending struct{ Session, ID, Text string }
+type readAttempt struct {
+	epoch, generation uint64
+	key, id           string
+	updated, marked   int64
+	hasMarked         bool
+}
+
+func unreadAttempt(epoch, gen uint64, s Session) readAttempt {
+	t := readAttempt{epoch: epoch, generation: gen, key: s.Key, id: s.SessionID, updated: s.UpdatedAt}
+	if s.MarkedUnreadAt != nil {
+		t.marked = *s.MarkedUnreadAt
+		t.hasMarked = true
+	}
+	return t
+}
+
 type App struct {
 	mu            sync.Mutex
 	state         State
@@ -129,6 +148,7 @@ type App struct {
 	cancel        context.CancelFunc
 	refresh       chan struct{}
 	epoch         uint64
+	readAttempt   readAttempt
 }
 
 func New(bind func() (RPC, error), redraw func(), start func(Session) (uint64, error), stop func(uint64) bool, busy func() bool) *App {
@@ -156,6 +176,7 @@ func (a *App) Open() {
 	a.ctx, a.cancel = ctx, cancel
 	a.state.Loading = true
 	a.state.Busy = false
+	a.state.HistoryReady = false
 	a.mu.Unlock()
 	go a.loop(ctx, epoch)
 }
@@ -370,6 +391,9 @@ func (a *App) reload(ctx context.Context, epoch uint64, rpc RPC) {
 		a.redraw()
 		return
 	}
+	if unreadAttempt(a.epoch, a.state.Generation, a.state.Selected) != unreadAttempt(a.epoch, a.state.Generation, selected) {
+		a.state.HistoryReady = false
+	}
 	a.state.Selected = selected
 	gen := a.state.Generation
 	oldKey := a.subscribed
@@ -420,6 +444,7 @@ func (a *App) history(ctx context.Context, epoch, gen uint64, rpc RPC, s Session
 		return
 	}
 	if err != nil {
+		a.state.HistoryReady = false
 		a.state.Notice = "history_failed"
 		return
 	}
@@ -428,6 +453,7 @@ func (a *App) history(ctx context.Context, epoch, gen uint64, rpc RPC, s Session
 		a.state.Connected = false
 		return
 	}
+	a.state.HistoryReady = true
 	a.state.Selected.Model = h.SessionInfo.Model
 	a.state.Selected.ModelProvider = h.SessionInfo.ModelProvider
 	a.state.Active = h.SessionInfo.HasActiveRun || len(h.InFlightRun) > 0 && string(h.InFlightRun) != "null"
@@ -458,8 +484,10 @@ func (a *App) Select(key string) {
 		if s.Key == key {
 			a.drafts[a.state.Selected.Key] = a.state.Draft
 			a.state.Selected = s
+			a.state.Active = s.HasActiveRun
 			a.state.Draft = a.drafts[key]
 			a.state.Messages = nil
+			a.state.HistoryReady = false
 			a.olderMessages = nil
 			a.state.Older = ""
 			a.state.Models = nil
@@ -662,4 +690,42 @@ func mergeMessages(prefix, tail []Message) []Message {
 		}
 	}
 	return out
+}
+
+// ReadVisible is called only after the selected history has been displayed at
+// its newest end. Keep the server's unread flag authoritative, including stale
+// conditional acknowledgements and read-only/operator failures.
+func (a *App) ReadVisible(generation uint64, displayed Session) {
+	a.mu.Lock()
+	s := a.state.Selected
+	token := unreadAttempt(a.epoch, generation, s)
+	if a.ctx == nil || a.ctx.Err() != nil || a.rpc == nil || !a.state.Connected || !a.state.HistoryReady ||
+		a.state.Generation != generation || token != unreadAttempt(a.epoch, generation, displayed) || !s.Unread || token == a.readAttempt {
+		a.mu.Unlock()
+		return
+	}
+	a.readAttempt = token
+	rpc, epoch, ctx := a.rpc, a.epoch, a.ctx
+	a.mu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		err := rpc.Call(ctx, "sessions.patch", map[string]any{
+			"key": s.Key, "agentId": s.AgentID, "expectedSessionId": s.SessionID,
+			"unread": false, "expectedMarkedUnreadAt": s.MarkedUnreadAt,
+		}, nil)
+		a.mu.Lock()
+		current := a.epoch == epoch && a.state.Generation == generation && a.state.Selected.Key == s.Key && a.state.Selected.SessionID == s.SessionID
+		if current && err != nil {
+			a.state.Notice = "read_failed"
+		}
+		if current && err == nil && a.state.Notice == "read_failed" {
+			a.state.Notice = ""
+		}
+		a.mu.Unlock()
+		if current {
+			a.Refresh()
+			a.redraw()
+		}
+	}()
 }

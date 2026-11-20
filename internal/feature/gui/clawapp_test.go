@@ -115,3 +115,24 @@ func TestChatHistoryBeforeLiveCaptionsAndTimestampLabels(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestSessionStatusColorsAndWorkingPriority(t *testing.T) {
+	normal := gogui.Hex(0xEEEEEE)
+	if appSessionColor(chatapp.Session{}, false, normal) != normal {
+		t.Fatal("ordinary row changed")
+	}
+	unread := appSessionColor(chatapp.Session{Unread: true}, false, normal)
+	active := appSessionColor(chatapp.Session{HasActiveRun: true}, false, normal)
+	if unread == normal || active == normal || active == unread {
+		t.Fatal("statuses indistinguishable")
+	}
+	if appSessionColor(chatapp.Session{HasActiveRun: true, Unread: true}, false, normal) != active {
+		t.Fatal("active must win")
+	}
+	if appSessionColor(chatapp.Session{Unread: true}, true, normal) != active {
+		t.Fatal("history active status lost")
+	}
+	if appSessionColor(chatapp.Session{Unread: true}, false, normal) != unread {
+		t.Fatal("unread lost when work stops")
+	}
+}

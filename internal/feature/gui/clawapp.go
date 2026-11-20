@@ -62,7 +62,8 @@ func extendClawApp(look *widgets.UI, o *screens.Options, _ func() *screens.App) 
 
 func appText(key string) string {
 	words := map[string][2]string{
-		"activity": {"Assistant is working…", "Assistent arbeitet…"}, "sessions": {"Sessions", "Sitzungen"}, "home": {"Home", "Startseite"}, "send": {"Send", "Senden"}, "talk": {"Talk", "Sprechen"}, "stop": {"Stop Talk", "Talk beenden"}, "stopping": {"Stopping…", "Wird beendet…"}, "model": {"Model", "Modell"}, "refresh": {"Refresh", "Aktualisieren"}, "older": {"Older messages", "Ältere Nachrichten"}, "tail": {"Latest messages", "Neueste Nachrichten"}, "empty": {"No sessions", "Keine Sitzungen"}, "choose": {"Choose a session on the left", "Links eine Sitzung auswählen"}, "compose": {"Message to selected session", "Nachricht an ausgewählte Sitzung"}, "ungrouped": {"Ungrouped", "Ohne Gruppe"}, "loading": {"Loading…", "Wird geladen…"}, "disconnected": {"Disconnected. Check the existing connection settings.", "Getrennt. Bestehende Verbindungseinstellungen prüfen."}, "unavailable": {"Unavailable or missing operator permissions. Refresh to retry.", "Nicht verfügbar oder Operator-Berechtigung fehlt. Zum Wiederholen aktualisieren."}, "session_changed": {"Session changed or removed. Select it again before continuing.", "Sitzung geändert oder entfernt. Vor dem Fortsetzen erneut auswählen."}, "stop_first": {"Finish sending / stop Talk before switching sessions.", "Vor dem Wechsel Senden abschließen bzw. Talk beenden."}, "history_failed": {"History unavailable. Refresh to retry.", "Verlauf nicht verfügbar. Zum Wiederholen aktualisieren."}, "action_failed": {"Action unavailable or rejected; no automatic retry.", "Aktion nicht verfügbar oder abgelehnt; keine automatische Wiederholung."}, "sending": {"Sending…", "Wird gesendet…"}, "sent": {"Message accepted", "Nachricht angenommen"}, "delivery_uncertain": {"Delivery not confirmed. Check history. Send again retries the same message ID.", "Zustellung unbestätigt. Verlauf prüfen. Erneutes Senden verwendet dieselbe Nachrichten-ID."}, "model_changed": {"Model changed", "Modell geändert"}, "talk_ended": {"Talk ended. Check Talk settings/diagnostics if unexpected.", "Talk beendet. Bei unerwartetem Ende Talk-Einstellungen/Diagnose prüfen."}, "talk_active": {"Talk in the selected session — stop before switching.", "Talk in der gewählten Sitzung — vor dem Wechsel beenden."}, "talk_failed": {"Talk unavailable. Check Talk permissions/settings.", "Talk nicht verfügbar. Talk-Berechtigung/Einstellungen prüfen."}, "default": {"Agent default", "Agent-Standard"}, "user": {"You", "Du"}, "assistant": {"Assistant", "Assistent"},
+		"read_failed": {"Read status could not be saved.", "Lesestatus konnte nicht gespeichert werden."},
+		"activity":    {"Assistant is working…", "Assistent arbeitet…"}, "sessions": {"Sessions", "Sitzungen"}, "home": {"Home", "Startseite"}, "send": {"Send", "Senden"}, "talk": {"Talk", "Sprechen"}, "stop": {"Stop Talk", "Talk beenden"}, "stopping": {"Stopping…", "Wird beendet…"}, "model": {"Model", "Modell"}, "refresh": {"Refresh", "Aktualisieren"}, "older": {"Older messages", "Ältere Nachrichten"}, "tail": {"Latest messages", "Neueste Nachrichten"}, "empty": {"No sessions", "Keine Sitzungen"}, "choose": {"Choose a session on the left", "Links eine Sitzung auswählen"}, "compose": {"Message to selected session", "Nachricht an ausgewählte Sitzung"}, "ungrouped": {"Ungrouped", "Ohne Gruppe"}, "loading": {"Loading…", "Wird geladen…"}, "disconnected": {"Disconnected. Check the existing connection settings.", "Getrennt. Bestehende Verbindungseinstellungen prüfen."}, "unavailable": {"Unavailable or missing operator permissions. Refresh to retry.", "Nicht verfügbar oder Operator-Berechtigung fehlt. Zum Wiederholen aktualisieren."}, "session_changed": {"Session changed or removed. Select it again before continuing.", "Sitzung geändert oder entfernt. Vor dem Fortsetzen erneut auswählen."}, "stop_first": {"Finish sending / stop Talk before switching sessions.", "Vor dem Wechsel Senden abschließen bzw. Talk beenden."}, "history_failed": {"History unavailable. Refresh to retry.", "Verlauf nicht verfügbar. Zum Wiederholen aktualisieren."}, "action_failed": {"Action unavailable or rejected; no automatic retry.", "Aktion nicht verfügbar oder abgelehnt; keine automatische Wiederholung."}, "sending": {"Sending…", "Wird gesendet…"}, "sent": {"Message accepted", "Nachricht angenommen"}, "delivery_uncertain": {"Delivery not confirmed. Check history. Send again retries the same message ID.", "Zustellung unbestätigt. Verlauf prüfen. Erneutes Senden verwendet dieselbe Nachrichten-ID."}, "model_changed": {"Model changed", "Modell geändert"}, "talk_ended": {"Talk ended. Check Talk settings/diagnostics if unexpected.", "Talk beendet. Bei unerwartetem Ende Talk-Einstellungen/Diagnose prüfen."}, "talk_active": {"Talk in the selected session — stop before switching.", "Talk in der gewählten Sitzung — vor dem Wechsel beenden."}, "talk_failed": {"Talk unavailable. Check Talk permissions/settings.", "Talk nicht verfügbar. Talk-Berechtigung/Einstellungen prüfen."}, "default": {"Agent default", "Agent-Standard"}, "user": {"You", "Du"}, "assistant": {"Assistant", "Assistent"},
 	}
 	if w, ok := words[key]; ok {
 		if say.Chosen() == "de" {
@@ -167,12 +168,18 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		v.historySize = size
 		main = append(main, gogui.Column(gogui.ContainerCfg{ID: historyID, Sizing: gogui.FillFill, Padding: gogui.PaddingSmall, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: messages,
 			AmendLayout: func(e gogui.EventCtx) {
+				if !tail && v.followTail && s.HistoryReady {
+					e.Window.QueueCommand(func(*gogui.Window) { v.app.ReadVisible(s.Generation, s.Selected) })
+				}
 				if tail {
 					e.Window.QueueCommand(func(w *gogui.Window) {
 						for _, id := range w.ResolveID(historyID) {
 							w.ScrollVerticalTo(id, -1e9)
 						}
 						v.followTail = true
+						if s.HistoryReady {
+							v.app.ReadVisible(s.Generation, s.Selected)
+						}
 					})
 				}
 			},
@@ -184,6 +191,9 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 				id := ids[0]
 				offset := e.Window.ScrollVerticalOffset(id)
 				v.followTail = e.Window.ScrollVerticalPct(id) >= 0.98
+				if v.followTail && s.HistoryReady {
+					v.app.ReadVisible(s.Generation, s.Selected)
+				}
 				if offset >= 0 && s.Older != "" && !locked && !s.Loading {
 					v.app.Older()
 				}
@@ -236,7 +246,7 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 					if s.Selected.Key == key {
 						label = "● " + label
 					}
-					side = append(side, v.listButton(w, fmt.Sprintf("claw-session-%d-%d", gi, si), label, locked, func() { v.app.Select(key); v.models = false }))
+					side = append(side, v.listButton(w, fmt.Sprintf("claw-session-%d-%d", gi, si), label, locked, func() { v.app.Select(key); v.models = false }, appSessionColor(session, s.Selected.Key == key && s.Active, widgets.Color(v.look.Palette().Text))))
 				}
 			}
 		}
@@ -389,8 +399,11 @@ func appSmallStyle(v *clawAppView) gogui.TextStyle {
 	st.Size = 18
 	return st
 }
-func (v *clawAppView) listButton(w *gogui.Window, id, label string, disabled bool, do func()) gogui.View {
+func (v *clawAppView) listButton(w *gogui.Window, id, label string, disabled bool, do func(), ink ...gogui.Color) gogui.View {
 	style := appSmallStyle(v)
+	if len(ink) > 0 {
+		style.Color = ink[0]
+	}
 	style.Align = gogui.TextAlignLeft
 	align := gogui.HAlignStart
 	padding := gogui.NewPadding(4, 8, 4, 16)
@@ -484,4 +497,16 @@ func appMessageLabel(role string, t time.Time, loc *time.Location) string {
 		return label
 	}
 	return label + " · " + t.In(loc).Format("02.01.2006 15:04")
+}
+
+// Working takes priority over unread; when work ends the unread color remains
+// until the Gateway acknowledges that the newest loaded history was viewed.
+func appSessionColor(s chatapp.Session, active bool, normal gogui.Color) gogui.Color {
+	if s.HasActiveRun || active {
+		return gogui.Hex(0xE6B46A)
+	}
+	if s.Unread {
+		return gogui.Hex(0x6ED4CB)
+	}
+	return normal
 }

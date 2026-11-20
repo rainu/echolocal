@@ -10,11 +10,12 @@ import (
 )
 
 type fakeRPC struct {
-	mu      sync.Mutex
-	sendIDs []string
-	fail    bool
-	gate    chan struct{}
-	calls   []string
+	mu          sync.Mutex
+	sendIDs     []string
+	readPatches []map[string]any
+	fail        bool
+	gate        chan struct{}
+	calls       []string
 }
 
 func (f *fakeRPC) Updates() (<-chan struct{}, func(), error) {
@@ -23,6 +24,9 @@ func (f *fakeRPC) Updates() (<-chan struct{}, func(), error) {
 func (f *fakeRPC) Call(ctx context.Context, method string, params, result any) error {
 	f.mu.Lock()
 	f.calls = append(f.calls, method)
+	if method == "sessions.patch" {
+		f.readPatches = append(f.readPatches, params.(map[string]any))
+	}
 	gate := f.gate
 	fail := f.fail
 	if method == "chat.send" {
@@ -207,5 +211,80 @@ func TestMessageTime(t *testing.T) {
 		if !(Message{Timestamp: json.RawMessage(raw)}).Time().IsZero() {
 			t.Fatalf("invented time for %q", raw)
 		}
+	}
+}
+
+func TestUnreadWireFlags(t *testing.T) {
+	var s Session
+	if err := json.Unmarshal([]byte(`{"key":"a","sessionId":"one","unread":true,"hasActiveRun":true,"updatedAt":123,"markedUnreadAt":120}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	if !s.Unread || !s.HasActiveRun || s.UpdatedAt != 123 || s.MarkedUnreadAt == nil || *s.MarkedUnreadAt != 120 {
+		t.Fatal(s)
+	}
+}
+func TestReadAckOnlyForDisplayedLoadedSelectionAndOncePerRevision(t *testing.T) {
+	f := &fakeRPC{}
+	a := fixture(f)
+	mark := int64(50)
+	a.state.Selected.Unread = true
+	a.state.Selected.UpdatedAt = 70
+	a.state.Selected.MarkedUnreadAt = &mark
+	displayed := a.Snapshot().Selected
+	a.ReadVisible(0, displayed)
+	if a.readAttempt.key != "" {
+		t.Fatal("unloaded history acknowledged")
+	}
+	a.state.HistoryReady = true
+	stale := displayed
+	stale.UpdatedAt = 60
+	a.ReadVisible(0, stale)
+	a.ReadVisible(1, displayed)
+	if a.readAttempt.key != "" {
+		t.Fatal("stale view acknowledged")
+	}
+	a.ReadVisible(0, displayed)
+	wait(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return len(f.readPatches) == 1 })
+	a.ReadVisible(0, displayed)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.readPatches) != 1 {
+		t.Fatal("duplicate ack")
+	}
+	p := f.readPatches[0]
+	if p["unread"] != false || p["expectedSessionId"] != "existing-id" || p["key"] != "agent:test:a" || *(p["expectedMarkedUnreadAt"].(*int64)) != 50 {
+		t.Fatal(p)
+	}
+	if !a.Snapshot().Selected.Unread {
+		t.Fatal("read flag optimistically cleared without authoritative list")
+	}
+}
+func TestFailedReadAckPreservesUnreadAndDoesNotLoop(t *testing.T) {
+	f := &fakeRPC{fail: true}
+	a := fixture(f)
+	a.state.Selected.Unread = true
+	a.state.HistoryReady = true
+	s := a.Snapshot().Selected
+	a.ReadVisible(0, s)
+	wait(t, func() bool { return a.Snapshot().Notice == "read_failed" })
+	a.ReadVisible(0, s)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.readPatches) != 1 || !a.Snapshot().Selected.Unread {
+		t.Fatal("failed ack lost unread or retried")
+	}
+}
+func TestLateReadAckCannotChangeNewSelection(t *testing.T) {
+	f := &fakeRPC{fail: true, gate: make(chan struct{})}
+	a := fixture(f)
+	a.state.Selected.Unread = true
+	a.state.HistoryReady = true
+	a.ReadVisible(0, a.Snapshot().Selected)
+	wait(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return len(f.readPatches) == 1 })
+	a.Select("agent:test:b")
+	close(f.gate)
+	time.Sleep(20 * time.Millisecond)
+	if a.Snapshot().Notice == "read_failed" || a.Snapshot().Selected.Key != "agent:test:b" {
+		t.Fatal("late ack modified new view")
 	}
 }

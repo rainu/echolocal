@@ -89,3 +89,19 @@ from older messages. Headers show role plus date/time in the configured device
 timezone. Gateway millisecond timestamps and ISO import timestamps are accepted;
 unknown dates are omitted. Live captions retain their first-received time when
 a provisional contribution becomes final.
+
+## Session status text colors
+
+Sidebar labels use the Gateway's authoritative unread and hasActiveRun fields.
+Unread is muted turquoise (#6ED4CB); working is warm orange (#E6B46A) and
+takes priority when both apply. Group titles and ordinary rows retain the theme.
+Status follows the existing event invalidations and ten-second recovery poll.
+
+Opening a session does not immediately clear unread: a successful history
+read and display at the newest end are required. Read acknowledgements use
+the existing operator sessions.patch scope, expected session identity and
+conditional expectedMarkedUnreadAt. View/epoch/revision fencing rejects stale
+display callbacks; each revision is attempted only once. Flags remain server
+authoritative after ack; failures remain visible and never optimistically clear
+unread. No read acknowledgement is sent for another selected session or while
+the reader remains above the newest loaded messages.
