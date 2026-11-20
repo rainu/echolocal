@@ -147,13 +147,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		m.mu.Unlock()
 		shellfeature.Get().Redraw()
 	}()
-	sh := shellfeature.Get()
-	idle.Get().Wake()
-	held := sh.Hold(m.conversationPage())
-	defer held.Keep(false)
-	v, e := m.Store.Target(slot)
-	if e != nil {
-		m.setError()
+	if ctx.Err() != nil {
 		return
 	}
 	muted, e := mute.Get().Muted()
@@ -172,12 +166,35 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		return nil
 	})
 	_ = claim
+	sink := &deviceFeedback{}
+	feedback := beginFeedback(ctx, sink, 900*time.Millisecond)
+	defer func() {
+		m.mu.Lock()
+		failed, muted := m.error, m.forcedMuted
+		m.mu.Unlock()
+		feedback.Finish((failed || m.Controller.State() == talk.Failed) && !muted)
+	}()
+	sh := shellfeature.Get()
+	idle.Get().Wake()
+	held := sh.Hold(m.conversationPage())
+	defer held.Keep(false)
+	v, e := m.Store.Target(slot)
+	if e != nil {
+		if ctx.Err() == nil {
+			m.setError()
+		}
+		return
+	}
+	sink.readyChoice = v.StartTone
 	a := newAudio(ctx, func() { m.markOwned(generation, talk.Muted); cancel() })
 	a.startTone, a.endTone = v.StartTone, v.EndTone
+	a.feedback = feedback
 	bound, bindErr := claw.Get().BindTalk()
 	if bindErr != nil {
 		a.Close()
-		m.setError()
+		if ctx.Err() == nil {
+			m.setError()
+		}
 		return
 	}
 	b := talk.NewSession(bound, v.Context, a)
@@ -186,7 +203,9 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	b.DeviceContext, e = claw.Get().Node.ConversationDeviceContextWithTemplate(v.DeviceContextTemplate)
 	if e != nil {
 		a.Close()
-		m.setError()
+		if ctx.Err() == nil {
+			m.setError()
+		}
 		return
 	}
 	m.mu.Lock()
@@ -212,7 +231,12 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		m.uiDirty = true
 	}
 	b.End = cancel
-	b.Failure = func() { m.markOwned(generation, talk.Failed); cancel() }
+	b.Failure = func() {
+		if ctx.Err() == nil {
+			m.markOwned(generation, talk.Failed)
+			cancel()
+		}
+	}
 	if e = m.Controller.Start(ctx, b, time.Duration(v.Timeout)*time.Second); e != nil {
 		if ctx.Err() == nil {
 			m.setError()
