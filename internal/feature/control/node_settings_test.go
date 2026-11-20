@@ -59,17 +59,38 @@ func TestNodeSettingsDiscoveryAndParserBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	fallback, fallbackErr := invoke("get", `{"domain":"","name":""}`)
-	if fallbackErr != nil || len(fallback.(map[string]any)["settings"].([]nodeSettingInfo)) != len(out.(map[string]any)["settings"].([]nodeSettingInfo)) {
+	left, _ := json.Marshal(out)
+	right, _ := json.Marshal(fallback)
+	if fallbackErr != nil || string(left) != string(right) {
 		t.Fatal("existing get discovery fallback differs")
 	}
 	data, _ := json.Marshal(out)
-	if reads != 0 || saves != 0 || secretReads != 0 || strings.Contains(string(data), "private") || strings.Contains(string(data), "synthetic-secret") {
-		t.Fatal("discovery collected values")
+	if reads != 0 || saves != 0 || secretReads != 0 || strings.Contains(string(data), "private") || strings.Contains(string(data), "synthetic-secret") || strings.Contains(string(data), "wire") || strings.Contains(string(data), "\"choices\":") {
+		t.Fatal("root index collected values or bulky choice metadata")
 	}
-	for _, want := range []string{"receiver", "sendspin", "on | off", "requiredGrants", "wire"} {
+	if len(data) > 4096 {
+		t.Fatal("fixture index unexpectedly unbounded")
+	}
+	for _, want := range []string{"receiver", "sendspin", "requiredGrants", "domains"} {
 		if !strings.Contains(string(data), want) {
-			t.Fatal("missing discovery metadata", want)
+			t.Fatal("missing compact discovery identifier", want)
 		}
+	}
+	castDetails, err := invoke("get", `{"domain":"cast","name":""}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ = json.Marshal(castDetails)
+	if !strings.Contains(string(data), "on | off") || !strings.Contains(string(data), "requiredGrants") {
+		t.Fatal("domain details omitted value formats or grants")
+	}
+	screenDetails, err := invoke("discover", `{"domain":"screen"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ = json.Marshal(screenDetails)
+	if !strings.Contains(string(data), "wire") {
+		t.Fatal("domain details omitted canonical choices")
 	}
 	for _, tc := range []struct{ raw, want string }{
 		{`{"domain":"playback","name":"cast_receiver"}`, "unsupported_domain:"},
@@ -81,6 +102,10 @@ func TestNodeSettingsDiscoveryAndParserBoundaries(t *testing.T) {
 		if err == nil || !strings.HasPrefix(err.Error(), tc.want) {
 			t.Fatal(tc.want, err)
 		}
+		if (tc.want == "unsupported_domain:" || tc.want == "unknown_setting:") && !strings.Contains(err.Error(), "settings.get with domain=\"\" and name=\"\"") {
+			t.Fatal("recovery hint omitted existing get route")
+		}
+
 	}
 	for _, raw := range []string{`{"domain":"cast","name":"receiver","value":"synthetic-secret"}`, `{"domain":"media","name":"duck","value":"101"}`, `{"domain":"screen","name":"style","value":"Localized label"}`} {
 		_, err := invoke("set", raw)

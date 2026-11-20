@@ -23,7 +23,10 @@ not prove playback. Never invent channels, target names, URLs or operations.
 
 For settings, first call echolocal_settings_discover with {}. If that new tool
 is unavailable, call echolocal_settings_get with empty domain and name for the
-same value-free discovery. Use returned exact bound domain/name and formats;
+same value-free discovery. The root reply is a compact domains/names/grants index.
+Repeat get with a selected domain and empty name for full field formats, ranges,
+choices and write availability. Never request a guessed setting name. Use returned
+exact bound domain/name and formats;
 never guess from UI labels or entity IDs. Cast Receiver is cast/receiver, NOT
 playback/cast_receiver. Toggle values are strings on/off; choices use canonical
 values, not translated labels. Required local grants are listed per field.
@@ -36,6 +39,7 @@ Synthetic examples (valid shapes, NOT actions performed):
 - echolocal_action_youtube_tv: {"args":{"operation":"watch","channel":"ESPN","device":""}}
 - echolocal_settings_discover: {}
 - echolocal_settings_get: {"domain":"","name":""}
+- echolocal_settings_get: {"domain":"cast","name":""}
 - echolocal_settings_get: {"domain":"cast","name":"receiver"}
 - echolocal_settings_set: {"domain":"cast","name":"receiver","value":"on"}
 - echolocal_audio_status: {}

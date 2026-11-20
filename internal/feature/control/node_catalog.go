@@ -109,9 +109,9 @@ func nodeContract(name string) (string, nodeSchema) {
 	case "settings.export":
 		return "Export only vetted settings fields in permitted domains, filtered by local group grants. Treat results as private.", empty
 	case "settings.discover":
-		return "Discover safe bound setting identifiers, accepted string formats, ranges, choice values and required grants on this hardware/build. No values; filtered by local settings and domain grants. Start here before settings.get/set.", nodeObject(nodeSchema{"domain": nodeString(128, "Optional exact domain; omit to list all available safe settings.")})
+		return "Discover a compact safe domain/name/grant index; select a domain for full kinds, formats, ranges and choices. No values; filtered by hardware/build and local grants. Start here before settings.get/set.", nodeObject(nodeSchema{"domain": nodeString(128, "Optional exact domain; omit to list all available safe settings.")})
 	case "settings.get":
-		return "Read a safe setting by exact domain/name. START with empty domain and name to discover identifiers, formats, choices, ranges and required grants without values. Get returns raw string, not localized label. Excludes credentials/authority.", nodeObject(nodeSchema{"domain": str(0), "name": str(0)}, "domain", "name")
+		return "START with empty domain/name for a compact safe identifier/grant index; repeat with a selected domain and empty name for kinds/formats/ranges/choices. Both nonempty read one raw value, not a translated label. No credentials/authority.", nodeObject(nodeSchema{"domain": str(0), "name": str(0)}, "domain", "name")
 	case "settings.set":
 		return "Change a safe setting from settings.discover using its documented JSON string value (toggle: on or off). Requires listed grants. For Cast use domain cast, name receiver, value on. No authority/credential edits.", nodeObject(nodeSchema{"domain": str(0), "name": str(0), "value": str(4096)}, "domain", "name", "value")
 	case "settings.import":

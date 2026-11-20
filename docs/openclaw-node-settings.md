@@ -6,24 +6,34 @@ tool, `echolocal_settings_get({"domain":"","name":""})` returns the same
 value-free discovery through the existing command. An empty name lists settings;
 an empty domain lists all currently available domains.
 
-Discovery returns exact bound `domain`/`name`, `kind`, accepted string format,
-numeric range (including a declared zero lower bound), units/examples, canonical choice values, read/write availability and `requiredGrants`. It does not return
-current values, secret fields, private endpoints, authority controls or unreviewed
-fields. Only settings registered in this hardware/build and permitted by current
-local grants are listed. Absence is not proof a device has no such hardware:
-build tags and local policy also matter. Legacy ring/Mute-LED rows are additionally checked against board capabilities. Choices without configured options remain readable but not writable. Never derive names from UI labels or
-Home Assistant entity IDs.
+The root reply is a compact `domains` index: exact domain, bound name list
+and required grants, without large choice lists or values. Repeat the same get
+with a selected domain and empty name (or select domain in settings.discover)
+to retrieve `settings` details: exact domain/name, kind, accepted string format,
+declared numeric ranges, units/examples, canonical choices, read/write availability
+and exact requiredGrants. This two-step protocol keeps responses within the agent
+tool delivery budget; the former all-fields response was truncated on a real
+device. Domain details never require guessing entity IDs or UI labels.
+
+Only settings registered in this hardware/build and permitted by current local
+grants are listed. Secret fields, private endpoints, authority controls and
+unreviewed fields are never listed. Absence is not proof that hardware is missing:
+build tags and local policy also matter. Ring/Mute-LED rows are checked against
+board capabilities. Choices without configured options remain readable but not
+writable.
 
 Examples (shapes only; no action is implied):
 
 ```json
+{"domain":"","name":""}
+{"domain":"cast","name":""}
 {"domain":"cast","name":"receiver"}
 {"domain":"cast","name":"receiver","value":"on"}
 {"domain":"cast","name":"receiver","value":"off"}
 {"domain":"clock","name":"date_pattern","value":"dd.MM.yyyy"}
 ```
 
-Use the first object with settings.get and the others with settings.set.
+Use the first three objects with settings.get and the others with settings.set.
 Every value is a JSON **string**. Toggles accept exactly `"on"` or `"off"`;
 numbers use decimal integers in the discovered range; choices use their exact
 wire values, not translated labels. Other fields use the documented field parser.

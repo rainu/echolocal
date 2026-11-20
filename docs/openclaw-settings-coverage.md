@@ -21,7 +21,7 @@ Generated from fresh, isolated registry initialization for every board in board.
 
 ## Safe settings: before/after matrix
 
-Every field listed below is supported after the change where registered, fitted and granted. Formats, numeric ranges and canonical choice values come from its bound table through live discovery. Required grants always include settings; the table lists the additional group. Empty dynamic choice lists are readable but not writable. No pair/triple/list field kind was found in these registered tables; toggle, number, choice and reviewed text are covered.
+Every field listed below is supported after the change where registered, fitted and granted. The compact root discovery lists domains/names/grants; select a domain for full details. Formats, numeric ranges and canonical choice values come from its bound table through that live detail query. Required grants always include settings; the table lists the additional group. Empty dynamic choice lists are readable but not writable. No pair/triple/list field kind was found in these registered tables; toggle, number, choice and reviewed text are covered.
 
 Rows are grouped only when domain, kind, prior access, grants and hardware/build availability agree. Each exact bound Name is listed (dots are part of the Name, not domain separators).
 

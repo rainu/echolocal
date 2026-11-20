@@ -15,6 +15,8 @@ import (
 	"strings"
 )
 
+const nodeSettingsDiscoveryHint = "use settings.get with domain=\"\" and name=\"\" to discover safe identifiers"
+
 func nodeSettingGroup(domain string) string { return nodeSettingsPolicies[domain].Group }
 func nodeReviewedSetting(domain, name string) bool {
 	p, ok := nodeSettingsPolicies[domain]
@@ -38,13 +40,13 @@ func nodeSetting(a *connection.NodeAccess, domain, name string) (setting.Bound, 
 		return nil, setting.Field{}, errors.New("setting_excluded: local administration only")
 	}
 	if _, ok := nodeSettingsPolicies[domain]; !ok {
-		return nil, setting.Field{}, errors.New("unsupported_domain: use settings.discover for available identifiers")
+		return nil, setting.Field{}, errors.New("unsupported_domain: " + nodeSettingsDiscoveryHint)
 	}
 	if !nodeReviewedSetting(domain, name) {
 		if _, ok := nodeSettingsExclusions[domain+"/"+name]; ok {
 			return nil, setting.Field{}, errors.New("setting_excluded: local administration only")
 		}
-		return nil, setting.Field{}, errors.New("unknown_setting: use settings.discover for exact bound names")
+		return nil, setting.Field{}, errors.New("unknown_setting: " + nodeSettingsDiscoveryHint)
 	}
 	if !a.Granted(nodeSettingGroup(domain)) {
 		return nil, setting.Field{}, errors.New("permission_denied")
@@ -232,6 +234,30 @@ func nodeDiscoverSettings(a *connection.NodeAccess, domain string) []nodeSetting
 	})
 	return out
 }
+
+// The root index intentionally excludes choices/examples/ranges. A complete
+// all-field metadata response exceeds the agent tool result budget on real
+// devices. Select a domain for full details without guessing bound names.
+func nodeSettingsDiscovery(a *connection.NodeAccess, domain string) map[string]any {
+	const availability = "Only currently registered and permitted safe fields; no values or excluded fields."
+	fields := nodeDiscoverSettings(a, domain)
+	if domain != "" {
+		return map[string]any{"settings": fields, "availability": availability}
+	}
+	type domainInfo struct {
+		Domain         string   `json:"domain"`
+		Names          []string `json:"names"`
+		RequiredGrants []string `json:"requiredGrants"`
+	}
+	domains := []domainInfo{}
+	for _, f := range fields {
+		if len(domains) == 0 || domains[len(domains)-1].Domain != f.Domain {
+			domains = append(domains, domainInfo{Domain: f.Domain, Names: []string{}, RequiredGrants: append([]string{}, f.RequiredGrants...)})
+		}
+		domains[len(domains)-1].Names = append(domains[len(domains)-1].Names, f.Name)
+	}
+	return map[string]any{"domains": domains, "availability": availability, "details": "Repeat settings.get with a selected domain and name=\"\" for kinds, formats, ranges, canonical choices, write availability and exact grants."}
+}
 func registerNodeSettings(a *connection.NodeAccess) {
 	add := func(name string, run func(context.Context, json.RawMessage) (any, error)) {
 		_ = nodeRegister(a, connection.NodeOperation{Command: name, Group: "settings", Run: run})
@@ -245,10 +271,10 @@ func registerNodeSettings(a *connection.NodeAccess) {
 		}
 		if p.Domain != "" {
 			if _, ok := nodeSettingsPolicies[p.Domain]; !ok {
-				return nil, errors.New("unsupported_domain: omit domain to discover available settings")
+				return nil, errors.New("unsupported_domain: " + nodeSettingsDiscoveryHint)
 			}
 		}
-		return map[string]any{"settings": nodeDiscoverSettings(a, p.Domain), "availability": "Only fields registered on this device/build and allowed by current local grants are listed; no values or excluded fields."}, nil
+		return nodeSettingsDiscovery(a, p.Domain), nil
 	})
 	add("settings.get", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p struct {
@@ -261,10 +287,10 @@ func registerNodeSettings(a *connection.NodeAccess) {
 		if p.Name == "" {
 			if p.Domain != "" {
 				if _, ok := nodeSettingsPolicies[p.Domain]; !ok {
-					return nil, errors.New("unsupported_domain: omit domain to discover available settings")
+					return nil, errors.New("unsupported_domain: " + nodeSettingsDiscoveryHint)
 				}
 			}
-			return map[string]any{"settings": nodeDiscoverSettings(a, p.Domain), "availability": "Only currently registered and permitted safe fields; no values."}, nil
+			return nodeSettingsDiscovery(a, p.Domain), nil
 		}
 		b, f, err := nodeSetting(a, p.Domain, p.Name)
 		if err != nil {
