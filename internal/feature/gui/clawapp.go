@@ -247,6 +247,18 @@ func (v *clawAppView) markdown(w *gogui.Window, id, text string) gogui.View {
 	})
 }
 func (v *clawAppView) markdownBlock(el gogui.MarkdownElement, style gogui.MarkdownStyle) gogui.View {
+	if el.Kind == gogui.MarkdownKindHeading {
+		st := style.H4
+		switch el.HeaderLevel {
+		case 1:
+			st = style.H1
+		case 2:
+			st = style.H2
+		case 3:
+			st = style.H3
+		}
+		return gogui.Text(gogui.TextCfg{Text: el.PlainText, TextStyle: st, Mode: gogui.TextModeWrap})
+	}
 	if el.Kind == gogui.MarkdownKindImage {
 		return v.text(el.ImageAlt)
 	}
@@ -284,17 +296,17 @@ func (v *clawAppView) markdownBlock(el gogui.MarkdownElement, style gogui.Markdo
 	}
 	spans := []gogui.View{}
 	if el.ListPrefix != "" {
-		spans = append(spans, v.text(el.ListPrefix+" "))
+		spans = append(spans, gogui.Text(gogui.TextCfg{Text: el.ListPrefix + " ", TextStyle: style.Text, Sizing: gogui.FitFit}))
 	}
 	if el.IsTaskItem {
 		mark := "☐ "
 		if el.TaskChecked {
 			mark = "☑ "
 		}
-		spans = append(spans, v.text(mark))
+		spans = append(spans, gogui.Text(gogui.TextCfg{Text: mark, TextStyle: style.Text, Sizing: gogui.FitFit}))
 	}
 	if el.Kind == gogui.MarkdownKindBlockquote {
-		spans = append(spans, v.text("› "))
+		spans = append(spans, gogui.Text(gogui.TextCfg{Text: "› ", TextStyle: style.Text, Sizing: gogui.FitFit}))
 	}
 	words := 0
 	for _, run := range el.Content.Runs {
@@ -308,7 +320,7 @@ func (v *clawAppView) markdownBlock(el gogui.MarkdownElement, style gogui.Markdo
 			if words > 300 {
 				return gogui.Text(gogui.TextCfg{Text: el.PlainText, TextStyle: style.Text, Mode: gogui.TextModeWrap})
 			}
-			spans = append(spans, gogui.Text(gogui.TextCfg{Text: word + " ", TextStyle: st, Mode: gogui.TextModeWrap}))
+			spans = append(spans, gogui.Text(gogui.TextCfg{Text: word + " ", TextStyle: st, Sizing: gogui.FitFit}))
 		}
 	}
 	if len(spans) == 0 {

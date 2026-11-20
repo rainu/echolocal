@@ -11,7 +11,9 @@ Talk owned by this app. Existing connection/pairing settings are unchanged.
 
 Verified against the installed Gateway protocol and Control UI implementation:
 
-- `sessions.list` with sidebar row mode and offset pagination;
+- `sessions.list` with full rows and offset pagination (`hasMore`/`nextOffset`);
+  compact/sidebar projections intern category/model fields in `sharedFacts`,
+  so this adapter deliberately requests the full supported projection.
   `sessions.groups.list` returns `{groups:[{name,position}],sectionOrder}`.
 - `sessions.subscribe` invalidates the list; `sessions.messages.subscribe`
   binds the current conversation observer. `session.message`, `chat`, status,
@@ -20,7 +22,9 @@ Verified against the installed Gateway protocol and Control UI implementation:
   message observer. Reconnect uses a new operator binding, not the Node client.
 - `chat.history` reads 50 messages / 128 KiB at a time. Older messages use the
   returned opaque `olderCursor`. User/assistant text blocks render as native
-  Markdown (including code); tool payloads/thinking blocks are not rendered.
+  Markdown (including code). Its block adapter uses native Text primitives
+  because the embedded renderer lacks the optional RichText layout interface.
+  Tool payloads/thinking blocks are not rendered.
   Remote/local images and external math/diagram APIs are disabled.
 - `chat.send` includes the selected key, existing session ID and a random
   idempotency key. No mutation is automatically replayed on reconnect. An

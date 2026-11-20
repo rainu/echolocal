@@ -28,6 +28,7 @@ type Session struct {
 	Category      string `json:"category"`
 	Model         string `json:"model"`
 	ModelProvider string `json:"modelProvider"`
+	HasActiveRun  bool   `json:"hasActiveRun"`
 }
 
 func (s Session) Title() string {
@@ -275,10 +276,11 @@ func (a *App) reload(ctx context.Context, epoch uint64, rpc RPC) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var list struct {
-		Sessions     []Session
-		Count, Total int
+		Sessions                      []Session
+		Count, TotalCount, NextOffset int
+		HasMore                       bool
 	}
-	params := map[string]any{"source": "sidebar", "rowMode": "sidebar", "includeDerivedTitles": true, "excludeCron": true, "excludeSystem": true, "excludeSubagents": true, "archived": false, "limit": 100, "offset": 0}
+	params := map[string]any{"source": "sidebar", "includeDerivedTitles": true, "excludeCron": true, "excludeSystem": true, "excludeSubagents": true, "archived": false, "limit": 100, "offset": 0}
 	var rows []Session
 	var err error
 	for offset := 0; offset < 5000; {
@@ -289,9 +291,14 @@ func (a *App) reload(ctx context.Context, epoch uint64, rpc RPC) {
 		}
 		rows = append(rows, list.Sessions...)
 		offset += len(list.Sessions)
-		if len(list.Sessions) < 100 || list.Total > 0 && offset >= list.Total {
+		if !list.HasMore {
 			break
 		}
+		if list.NextOffset < offset {
+			err = errors.New("invalid_session_page")
+			break
+		}
+		offset = list.NextOffset
 	}
 	var groups struct {
 		Groups []struct {
@@ -382,6 +389,7 @@ func (a *App) history(ctx context.Context, epoch, gen uint64, rpc RPC, s Session
 		SessionID   string
 		Messages    []Message
 		OlderCursor string
+		SessionInfo Session
 		HasMore     bool
 		NextOffset  int
 		InFlightRun json.RawMessage
@@ -401,7 +409,9 @@ func (a *App) history(ctx context.Context, epoch, gen uint64, rpc RPC, s Session
 		a.state.Connected = false
 		return
 	}
-	a.state.Active = len(h.InFlightRun) > 0 && string(h.InFlightRun) != "null"
+	a.state.Selected.Model = h.SessionInfo.Model
+	a.state.Selected.ModelProvider = h.SessionInfo.ModelProvider
+	a.state.Active = h.SessionInfo.HasActiveRun || len(h.InFlightRun) > 0 && string(h.InFlightRun) != "null"
 	if h.OlderCursor == "" && h.HasMore && h.NextOffset > 0 {
 		h.OlderCursor = "offset:" + strconv.Itoa(h.NextOffset)
 	}
