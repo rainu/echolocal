@@ -67,6 +67,8 @@ func talkOptionsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), boo
 	)
 	acts = append(acts, nil, nil, nil, nil, nil)
 
+	rows = append(rows, menu.Row{Label: endText("title"), Value: s.Ending.Defaults(say.Chosen()).Phrase, Kind: menu.Chevron, Open: func() menu.View { return talkEndPage(slot) }})
+	acts = append(acts, nil)
 	rows = append(rows, menu.Row{Label: say.T("clawtalk.timeout"), Value: say.F("clawtalk.seconds", map[string]any{"N": s.Timeout}), Kind: menu.Chevron, Open: func() menu.View { return talkTimeoutPage(slot) }})
 	acts = append(acts, nil)
 	return rows, acts, true

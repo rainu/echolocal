@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ygelfand/echolocal/internal/openclaw"
+	"github.com/ygelfand/echolocal/internal/openclaw/talk"
+	"github.com/ygelfand/libcountertop/pkg/say"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,18 +15,19 @@ import (
 )
 
 type Slot struct {
-	DeviceContextTemplate string `json:"deviceContextTemplate,omitempty"`
-	StartTone             string `json:"startTone,omitempty"`
-	EndTone               string `json:"endTone,omitempty"`
-	Provider              string `json:"provider,omitempty"`
-	Model                 string `json:"model,omitempty"`
-	OpenClaw              bool   `json:"openclaw"`
-	Agent                 string `json:"agent,omitempty"`
-	AgentLabel            string `json:"agentLabel,omitempty"`
-	Context               string `json:"context,omitempty"`
-	ContextLabel          string `json:"contextLabel,omitempty"`
-	Resume                bool   `json:"resume"`
-	Timeout               int    `json:"timeout"`
+	Ending                talk.EndSettings `json:"ending,omitempty"`
+	DeviceContextTemplate string           `json:"deviceContextTemplate,omitempty"`
+	StartTone             string           `json:"startTone,omitempty"`
+	EndTone               string           `json:"endTone,omitempty"`
+	Provider              string           `json:"provider,omitempty"`
+	Model                 string           `json:"model,omitempty"`
+	OpenClaw              bool             `json:"openclaw"`
+	Agent                 string           `json:"agent,omitempty"`
+	AgentLabel            string           `json:"agentLabel,omitempty"`
+	Context               string           `json:"context,omitempty"`
+	ContextLabel          string           `json:"contextLabel,omitempty"`
+	Resume                bool             `json:"resume"`
+	Timeout               int              `json:"timeout"`
 }
 type Store struct {
 	mu      sync.Mutex
@@ -67,7 +70,13 @@ func (s *Store) Update(slot int, change func(*Slot)) error {
 		return errors.New("talk_storage")
 	}
 	next := s.slots
+	// Materialize missing language-specific defaults on the next successful save.
+	next[slot].Ending = next[slot].Ending.Defaults(say.Chosen())
 	change(&next[slot])
+	if err := next[slot].Ending.Validate(); err != nil {
+		return err
+	}
+	next[slot].Ending.Phrase = strings.TrimSpace(next[slot].Ending.Phrase)
 	if err := openclaw.ValidateDeviceContextTemplate(next[slot].DeviceContextTemplate); err != nil {
 		return err
 	}

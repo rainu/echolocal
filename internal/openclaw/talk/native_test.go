@@ -193,6 +193,7 @@ func TestStartupSendsOnlySilenceUntilTransportAndAudioReady(t *testing.T) {
 
 func TestNativeFinalCaptionReachesDisplayBeforeEnd(t *testing.T) {
 	s, _, _ := nativeHarness(t)
+	s.Ending = EndSettings{Phrase: "Unterhaltung beenden", Position: "start", Timing: "turn_end"}
 	var mu sync.Mutex
 	roles := []string{}
 	s.Caption = func(role, text, id string) { mu.Lock(); roles = append(roles, role); mu.Unlock() }
