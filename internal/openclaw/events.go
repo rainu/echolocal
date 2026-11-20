@@ -56,6 +56,7 @@ func (r *rpcLink) subscribe() (<-chan TalkEvent, func(), error) {
 	}, nil
 }
 func (r *rpcLink) event(f frame) {
+	r.appEvent(f)
 	if f.Event != "talk.event" {
 		return
 	}
