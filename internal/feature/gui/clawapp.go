@@ -13,14 +13,17 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/drawer"
 	claw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
+	"github.com/ygelfand/echolocal/internal/feature/timesync"
 	"github.com/ygelfand/echolocal/internal/feature/voice"
 	"github.com/ygelfand/echolocal/internal/openclaw/chatapp"
+	"github.com/ygelfand/echolocal/internal/openclaw/talk"
 	sharedapps "github.com/ygelfand/libcountertop/pkg/display/apps"
 	shareddrawer "github.com/ygelfand/libcountertop/pkg/display/drawer"
 	"github.com/ygelfand/libcountertop/pkg/display/screens"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"github.com/ygelfand/libcountertop/pkg/timezone"
 )
 
 type clawAppView struct {
@@ -31,6 +34,7 @@ type clawAppView struct {
 	models            bool
 	historyGeneration uint64
 	historyCount      int
+	historySize       int
 	historyHeight     float32
 	followTail        bool
 }
@@ -140,27 +144,27 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		main = append(main, gogui.Column(gogui.ContainerCfg{ID: "claw-model-list", Sizing: gogui.FillFill, Scrollable: true, Content: modelViews}))
 	} else {
 		messages := []gogui.View{}
-
+		var captions []talk.Caption
 		if s.Talk {
-			for _, c := range clawtalk.Get().CaptionsFor(s.TalkGeneration) {
-				messages = append(messages, v.message(w, fmt.Sprintf("claw-caption-%d", len(messages)), c.Role, c.Text))
-			}
+			captions = clawtalk.Get().CaptionsFor(s.TalkGeneration)
 		}
-		for i, m := range s.Messages {
-			if m.Role != "user" && m.Role != "assistant" {
-				continue
-			}
-			text := m.Text()
-			if text == "" {
-				continue
-			}
-			messages = append(messages, v.message(w, fmt.Sprintf("claw-message-%d", i), m.Role, text))
+		entries := appMessageEntries(s.Messages, captions)
+		size := 0
+		loc, err := tz.Location(timesync.Get().Zone())
+		if err != nil || loc == nil {
+			loc = time.UTC
 		}
+		for i, m := range entries {
+			size += len(m.text)
+			messages = append(messages, v.message(w, fmt.Sprintf("claw-message-%d", i), m.role, m.text, appMessageLabel(m.role, m.timestamp, loc)))
+		}
+
 		historyID := fmt.Sprintf("claw-history-%d", s.Generation)
 		changed := v.historyGeneration != s.Generation
-		tail := changed || (v.followTail && (resized || v.historyCount != len(s.Messages)))
+		tail := changed || (v.followTail && (resized || v.historyCount != len(entries) || v.historySize != size))
 		v.historyGeneration = s.Generation
-		v.historyCount = len(s.Messages)
+		v.historyCount = len(entries)
+		v.historySize = size
 		main = append(main, gogui.Column(gogui.ContainerCfg{ID: historyID, Sizing: gogui.FillFill, Padding: gogui.PaddingSmall, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: messages,
 			AmendLayout: func(e gogui.EventCtx) {
 				if tail {
@@ -427,7 +431,7 @@ func appEllipsize(text string, width float32, measure func(string) float32) stri
 	}
 	return strings.TrimRight(string(runes[:lo]), " ") + suffix
 }
-func (v *clawAppView) message(w *gogui.Window, id, role, text string) gogui.View {
+func (v *clawAppView) message(w *gogui.Window, id, role, text, heading string) gogui.View {
 	user := role == "user"
 	color := gogui.Hex(0x232526)
 	align := gogui.HAlignStart
@@ -444,11 +448,40 @@ func (v *clawAppView) message(w *gogui.Window, id, role, text string) gogui.View
 		content = gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})
 		label.Align = gogui.TextAlignRight
 	}
-	bubble := gogui.Column(gogui.ContainerCfg{ID: id, Sizing: gogui.FillFit, Padding: gogui.NewPadding(12, 16, 12, 16), Spacing: gogui.SpacingSmall, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: appText(role), TextStyle: label}), content}})
+	bubble := gogui.Column(gogui.ContainerCfg{ID: id, Sizing: gogui.FillFit, Padding: gogui.NewPadding(12, 16, 12, 16), Spacing: gogui.SpacingSmall, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: heading, TextStyle: label}), content}})
 	spacer := gogui.Column(gogui.ContainerCfg{Sizing: gogui.FixedFit, Width: 40, Padding: gogui.NoPadding})
 	children := []gogui.View{bubble, spacer}
 	if user {
 		children = []gogui.View{spacer, bubble}
 	}
 	return gogui.Row(gogui.ContainerCfg{ID: id + "-row", Sizing: gogui.FillFit, HAlign: align, Padding: gogui.NoPadding, Content: children})
+}
+
+// Keep authoritative history in transcript order. Live Talk captions belong
+// AFTER that history, never before it; server timestamps may be absent/imported.
+type appMessageEntry struct {
+	role, text string
+	timestamp  time.Time
+}
+
+func appMessageEntries(history []chatapp.Message, captions []talk.Caption) []appMessageEntry {
+	out := make([]appMessageEntry, 0, len(history)+len(captions))
+	for _, m := range history {
+		if (m.Role == "user" || m.Role == "assistant") && m.Text() != "" {
+			out = append(out, appMessageEntry{m.Role, m.Text(), m.Time()})
+		}
+	}
+	for _, c := range captions {
+		if (c.Role == "user" || c.Role == "assistant") && c.Text != "" {
+			out = append(out, appMessageEntry{c.Role, c.Text, c.Timestamp})
+		}
+	}
+	return out
+}
+func appMessageLabel(role string, t time.Time, loc *time.Location) string {
+	label := appText(role)
+	if t.IsZero() {
+		return label
+	}
+	return label + " · " + t.In(loc).Format("02.01.2006 15:04")
 }

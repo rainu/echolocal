@@ -195,3 +195,17 @@ func TestHistoryOverlapDeduplicatesIdsButNotRepeatedText(t *testing.T) {
 		t.Fatal("tail overlap duplicated or repeated text lost")
 	}
 }
+
+func TestMessageTime(t *testing.T) {
+	for _, raw := range []string{"1795204431169", `"2026-11-20T19:53:51.169Z"`} {
+		m := Message{Timestamp: json.RawMessage(raw)}
+		if m.Time().UnixMilli() != 1795204431169 {
+			t.Fatalf("timestamp %s: %v", raw, m.Time())
+		}
+	}
+	for _, raw := range []string{"", "null", "0", `"bad"`, "{}"} {
+		if !(Message{Timestamp: json.RawMessage(raw)}).Time().IsZero() {
+			t.Fatalf("invented time for %q", raw)
+		}
+	}
+}

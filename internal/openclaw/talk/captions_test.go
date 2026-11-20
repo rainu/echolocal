@@ -56,3 +56,23 @@ func TestDeletedCaptionHistoryCannotResurrect(t *testing.T) {
 		t.Fatal("future activation blocked")
 	}
 }
+
+func TestCaptionTimestampSurvivesFinalization(t *testing.T) {
+	var l ConversationLog
+	l.Begin(9)
+	l.Delta(9, "user", "hello")
+	before := l.Snapshot()[0].Entries[0].Timestamp
+	if before.IsZero() {
+		t.Fatal("missing caption time")
+	}
+	l.Delta(9, "user", " world")
+	l.Append(9, "user", "hello world", "final")
+	entry := l.Snapshot()[0].Entries[0]
+	if entry.Timestamp != before || entry.Provisional {
+		t.Fatal("final lost original time")
+	}
+	l.Append(9, "assistant", "reply", "answer")
+	if l.Snapshot()[0].Entries[1].Timestamp.IsZero() {
+		t.Fatal("missing final time")
+	}
+}

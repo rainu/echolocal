@@ -3,10 +3,13 @@
 package gui
 
 import (
+	"encoding/json"
 	gogui "github.com/go-gui-org/go-gui/gui"
 	"github.com/ygelfand/echolocal/internal/openclaw/chatapp"
+	"github.com/ygelfand/echolocal/internal/openclaw/talk"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestChatAppHasNoSettingsTimeoutAndClosesItsController(t *testing.T) {
@@ -89,5 +92,26 @@ func TestChatSessionEllipsisFitsMeasuredWidth(t *testing.T) {
 		if got != tt.want || measure(got) > tt.width {
 			t.Errorf("%q width %v: got %q, want %q", tt.text, tt.width, got, tt.want)
 		}
+	}
+}
+
+func TestChatHistoryBeforeLiveCaptionsAndTimestampLabels(t *testing.T) {
+	stamp := time.Date(2026, 11, 20, 12, 34, 0, 0, time.UTC)
+	history := []chatapp.Message{{Role: "user", Content: json.RawMessage(`"old"`)}, {Role: "tool", Content: json.RawMessage(`"hidden"`)}, {Role: "assistant", Content: json.RawMessage(`"reply"`)}}
+	entries := appMessageEntries(history, []talk.Caption{{Role: "user", Text: "new speech", Timestamp: stamp}, {Role: "assistant", Text: "live reply", Timestamp: stamp}})
+	if len(entries) != 4 {
+		t.Fatalf("entries: %v", entries)
+	}
+	for i, want := range []string{"old", "reply", "new speech", "live reply"} {
+		if entries[i].text != want {
+			t.Fatalf("entry %d: %q", i, entries[i].text)
+		}
+	}
+	loc := time.FixedZone("device", 3600)
+	if got := appMessageLabel("user", stamp, loc); !strings.HasSuffix(got, "20.11.2026 13:34") {
+		t.Fatal(got)
+	}
+	if got := appMessageLabel("user", time.Time{}, loc); got != appText("user") {
+		t.Fatal(got)
 	}
 }

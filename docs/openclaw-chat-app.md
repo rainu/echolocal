@@ -79,3 +79,13 @@ scroll, reaching the top fetches older messages. New messages follow the tail
 only while the reader is already there; changing sessions opens its latest page.
 The native Markdown adapter reuses the cached parser without returning the
 upstream document toolbar or its reserved first-line spacing.
+
+## Message ordering and time
+
+History retains its authoritative oldest-to-newest transcript order. Current
+Talk captions follow the loaded history; initial selection opens at the bottom.
+Tail-follow also tracks growing live captions, but does not pull a reader away
+from older messages. Headers show role plus date/time in the configured device
+timezone. Gateway millisecond timestamps and ISO import timestamps are accepted;
+unknown dates are omitted. Live captions retain their first-received time when
+a provisional contribution becomes final.

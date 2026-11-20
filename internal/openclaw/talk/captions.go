@@ -15,6 +15,7 @@ type ConversationLog struct {
 type Caption struct {
 	Role, Text, ID string
 	Provisional    bool
+	Timestamp      time.Time
 }
 type Conversation struct {
 	Generation uint64
@@ -66,18 +67,20 @@ func (l *ConversationLog) Append(generation uint64, role, text, id string) {
 	// A final may cover several inferred same-role segments. Replace those
 	// together, never publish the provisional text as authoritative history.
 	position := -1
+	timestamp := time.Now()
 	kept := c.Entries[:0]
 	for _, e := range c.Entries {
 		if e.Role == role && e.Provisional {
 			if position < 0 {
 				position = len(kept)
+				timestamp = e.Timestamp
 			}
 			continue
 		}
 		kept = append(kept, e)
 	}
 	c.Entries = kept
-	final := Caption{Role: role, Text: text, ID: id}
+	final := Caption{Role: role, Text: text, ID: id, Timestamp: timestamp}
 	if position >= 0 {
 		c.Entries = append(c.Entries, Caption{})
 		copy(c.Entries[position+1:], c.Entries[position:])
@@ -138,7 +141,7 @@ func (l *ConversationLog) Delta(generation uint64, role, delta string) {
 			copy(c.Entries, c.Entries[1:])
 			c.Entries = c.Entries[:31]
 		}
-		c.Entries = append(c.Entries, Caption{Role: role, Provisional: true})
+		c.Entries = append(c.Entries, Caption{Role: role, Provisional: true, Timestamp: time.Now()})
 	}
 	e := &c.Entries[len(c.Entries)-1]
 	// Cap before concatenation, including oversized/untrusted fragments.

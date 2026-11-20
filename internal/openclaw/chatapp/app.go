@@ -45,8 +45,27 @@ type Message struct {
 	Meta struct {
 		ID string `json:"id"`
 	} `json:"__openclaw"`
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
+	Timestamp json.RawMessage `json:"timestamp"`
+	Role      string          `json:"role"`
+	Content   json.RawMessage `json:"content"`
+}
+
+// Time accepts the Gateway's millisecond epoch and imported ISO timestamps.
+// Missing/invalid times stay unknown rather than being replaced by "now".
+func (m Message) Time() time.Time {
+	var n int64
+	if json.Unmarshal(m.Timestamp, &n) == nil && n > 0 {
+		if n < 1e11 {
+			return time.Unix(n, 0)
+		}
+		return time.UnixMilli(n)
+	}
+	var text string
+	if json.Unmarshal(m.Timestamp, &text) == nil {
+		t, _ := time.Parse(time.RFC3339Nano, text)
+		return t
+	}
+	return time.Time{}
 }
 
 func (m Message) Text() string {
