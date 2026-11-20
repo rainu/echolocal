@@ -16,6 +16,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
 	sharedcomponent "github.com/ygelfand/libcountertop/pkg/runtime/component"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"strings"
 	"sync"
 	"time"
 )
@@ -101,7 +102,7 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.mu.Unlock()
-	go m.activate(ctx, cancel, slot, generation)
+	go m.activate(ctx, cancel, slot, generation, nil)
 	return true
 }
 
@@ -122,7 +123,7 @@ func (m *Manager) StartOwned(slot int, haBusy bool) (uint64, error) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.mu.Unlock()
-	go m.activate(ctx, cancel, slot, generation)
+	go m.activate(ctx, cancel, slot, generation, nil)
 	return generation, nil
 }
 
@@ -136,7 +137,7 @@ func (m *Manager) StopOwned(generation uint64) bool {
 	m.cancel()
 	return true
 }
-func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot int, generation uint64) {
+func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot int, generation uint64, selected *Slot) {
 	defer cancel()
 	defer func() {
 		status := m.Status()
@@ -177,9 +178,16 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}()
 	sh := shellfeature.Get()
 	idle.Get().Wake()
-	held := sh.Hold(m.conversationPage())
-	defer held.Keep(false)
-	v, e := m.Store.Target(slot)
+	if selected == nil {
+		held := sh.Hold(m.conversationPage())
+		defer held.Keep(false)
+	}
+	var v Slot
+	if selected == nil {
+		v, e = m.Store.Target(slot)
+	} else {
+		v = *selected
+	}
 	if e != nil {
 		if ctx.Err() == nil {
 			m.setError()
@@ -363,4 +371,34 @@ func (m *Manager) userSpeechOwned(generation uint64) {
 	if m.active && m.generation == generation {
 		m.Controller.UserSpeech()
 	}
+}
+
+// StartSession uses an existing selected session without rewriting assistant
+// slots, generating a new chat, or taking the app out of the foreground.
+func (m *Manager) StartSession(key string, haBusy bool) (uint64, error) {
+	parts := strings.SplitN(key, ":", 3)
+	if len(parts) != 3 || parts[0] != "agent" || parts[1] == "" || parts[2] == "" {
+		return 0, errors.New("talk_target_missing")
+	}
+	m.mu.Lock()
+	if m.active || haBusy {
+		m.mu.Unlock()
+		return 0, errors.New("talk_unavailable")
+	}
+	v := m.Store.Get(0)
+	v.Context = key
+	v.Agent = parts[1]
+	v.OpenClaw = true
+	v.Resume = true
+	m.active = true
+	m.generation++
+	generation := m.generation
+	m.captions.Begin(generation)
+	m.lastBackend, m.lastAudio = nil, nil
+	m.error, m.forcedMuted = false, false
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.cancel = cancel
+	m.mu.Unlock()
+	go m.activate(ctx, cancel, 0, generation, &v)
+	return generation, nil
 }

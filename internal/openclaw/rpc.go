@@ -22,6 +22,7 @@ type rpcLink struct {
 	closed    bool
 	nodeCalls map[string]context.CancelFunc
 	subs      map[*eventSubscription]bool
+	appSubs   map[chan struct{}]bool
 }
 
 func newRPCLink(conn *websocket.Conn) *rpcLink {
@@ -34,6 +35,10 @@ func (r *rpcLink) close() {
 		return
 	}
 	r.closed = true
+	for ch := range r.appSubs {
+		close(ch)
+		delete(r.appSubs, ch)
+	}
 	for _, cancel := range r.nodeCalls {
 		cancel()
 	}
