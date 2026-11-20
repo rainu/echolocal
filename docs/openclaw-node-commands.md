@@ -110,3 +110,11 @@ stages. Do not infer one from another.
 
 Use the agent nodes tool actions screen_snapshot and screen_record for media.
 Generic invoke intentionally rejects media payloads to avoid base64 context bloat.
+
+## Current settings discovery
+
+The maintained settings contract is [documented here](openclaw-node-settings.md).
+Use echolocal.settings.discover with an empty object, or the existing
+echolocal.settings.get with empty domain/name. Only the live catalog and safe
+discovery establish available identifiers and formats; raw local registry or
+entity IDs are not the Node authorization contract.
