@@ -22,3 +22,13 @@ a new activation. Only existing provider-final publication paths write remote
 chat history. Delta counters expose availability without transcript payloads.
 Device and active-provider verification must be recorded separately; source
 inspection and synthetic tests alone do not prove active-provider availability.
+
+## Speaker styling
+
+The live conversation and local history detail use the same text-only cards.
+User contributions have a dark teal background; assistant contributions have a
+dark blue background. Both use white, wrapping text in light and dark themes.
+Repeated speaker headings are omitted from the graphical cards; the underlying
+rows retain localized labels for other consumers. Status rows and end/history/
+delete actions keep their standard rendering. This is display-only: ordering,
+provisional reconciliation and final-only history are unchanged.

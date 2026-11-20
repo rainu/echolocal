@@ -37,8 +37,13 @@ func captionRows(entries []talk.Caption) []menu.Row {
 	}
 	return rows
 }
-func (m *Manager) conversationPage() *shell.Page {
-	return &shell.Page{Title: "OpenClaw", Build: func() ([]menu.Row, []func(int)) {
+
+// CaptionPage marks transcript pages for the dedicated, label-free card renderer.
+// The embedded rows retain speaker labels for non-graphical consumers.
+type CaptionPage struct{ *shell.Page }
+
+func (m *Manager) conversationPage() *CaptionPage {
+	return &CaptionPage{&shell.Page{Title: "OpenClaw", Build: func() ([]menu.Row, []func(int)) {
 		state := m.state()
 		m.mu.Lock()
 		active, a, generation := m.active, m.lastAudio, m.generation
@@ -64,7 +69,7 @@ func (m *Manager) conversationPage() *shell.Page {
 	}, Actions: []shell.Action{
 		{Label: say.T("clawtalk.history"), MinHeight: 64, Do: func() { shellfeature.Get().Push(m.HistoryPage()) }},
 		{Label: say.T("clawtalk.end"), MinHeight: 72, Role: shell.Danger, Do: func() { m.Stop() }},
-	}}
+	}}}
 }
 
 // HistoryPage only exposes this device's bounded in-memory caption cache.
@@ -75,7 +80,7 @@ func (m *Manager) HistoryPage() *shell.Page {
 		for i := len(calls) - 1; i >= 0; i-- {
 			generation, started := calls[i].Generation, calls[i].Started
 			rows = append(rows, menu.Row{Label: started.Local().Format("15:04:05"), Kind: menu.Chevron, Open: func() menu.View {
-				return &shell.Page{Title: started.Local().Format("15:04:05"), Actions: append(m.historyEndActions(), m.deleteHistoryAction(generation)), Build: func() ([]menu.Row, []func(int)) {
+				return &CaptionPage{&shell.Page{Title: started.Local().Format("15:04:05"), Actions: append(m.historyEndActions(), m.deleteHistoryAction(generation)), Build: func() ([]menu.Row, []func(int)) {
 					var entries []talk.Caption
 					for _, c := range m.captions.Snapshot() {
 						if c.Generation == generation {
@@ -91,7 +96,7 @@ func (m *Manager) HistoryPage() *shell.Page {
 					}
 					rows := captionRows(finals)
 					return rows, make([]func(int), len(rows))
-				}}
+				}}}
 			}})
 		}
 		if len(rows) == 0 {

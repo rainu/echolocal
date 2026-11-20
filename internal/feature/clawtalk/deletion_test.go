@@ -17,7 +17,7 @@ func TestDeleteConfirmationAndOpenDetailDoNotRetainDeletedText(t *testing.T) {
 	m.captions.Begin(1)
 	m.captions.Append(1, "user", "synthetic private caption", "a")
 	rows, _ := m.HistoryPage().Build()
-	detail := rows[0].Open().(*shell.Page)
+	detail := rows[0].Open().(*CaptionPage)
 	m.deleteHistoryAction(1).Do()
 	confirm := sh.Top().(*shell.Page)
 	if confirm.Actions[1].Label != m.deleteHistoryAction(1).Label {
