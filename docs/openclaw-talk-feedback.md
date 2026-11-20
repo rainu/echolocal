@@ -9,7 +9,7 @@ and end tones are retained. The default ready cue rises; setup failure uses a
 longer descending three-note cue. An explicitly configured silent ready tone
 remains silent.
 
-Progress uses cancellable feedback-lane PCM, not an overlay renderer. Success
+Progress uses cancellable feedback-lane PCM appended rather than mixed. Success
 joins the loop, removes queued progress, waits for already submitted hardware
 audio, and plays readiness only after peer/provider/audio readiness. It never
 waits for a complete ring cycle. Fast setup preserves the acknowledgment.

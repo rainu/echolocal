@@ -259,7 +259,7 @@ func (m *Manager) PreviewTone(choice string, end bool) {
 }
 
 // Queued PCM is used for setup cues so cancellation can remove pending samples.
-// Overlay renderers are intentionally not used: Lane.Drain cannot cancel them.
+// Append rather than overlay: separate cues must not be mixed together.
 type deviceFeedback struct{ readyChoice string }
 
 func (d *deviceFeedback) Cue(cue string) {

@@ -172,7 +172,8 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		m.mu.Lock()
 		failed, muted := m.error, m.forcedMuted
 		m.mu.Unlock()
-		feedback.Finish((failed || m.Controller.State() == talk.Failed) && !muted)
+		// Only this generation may determine its setup outcome.
+		feedback.Finish(failed && !muted)
 	}()
 	sh := shellfeature.Get()
 	idle.Get().Wake()

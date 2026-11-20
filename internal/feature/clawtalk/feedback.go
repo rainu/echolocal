@@ -62,7 +62,7 @@ func (f *setupFeedback) Stop() {
 }
 func (f *setupFeedback) Ready(ctx context.Context) bool {
 	f.Stop()
-	if ctx.Err() != nil || !f.sink.Wait(ctx) {
+	if ctx.Err() != nil || !f.sink.Wait(ctx) || ctx.Err() != nil {
 		return false
 	}
 	f.sink.Cue("ready")
