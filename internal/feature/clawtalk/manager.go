@@ -166,7 +166,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		return nil
 	})
 	_ = claim
-	sink := &deviceFeedback{}
+	sink := &deviceFeedback{progressChoice: m.Store.Get(slot).ProgressTone}
 	feedback := beginFeedback(ctx, sink, 900*time.Millisecond)
 	defer func() {
 		m.mu.Lock()
@@ -200,6 +200,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}
 	b := talk.NewSession(bound, v.Context, a)
 	b.Provider, b.Model = v.Provider, v.Model
+	b.Greeting = talk.GreetingForLanguage(say.Chosen())
 	b.Ending = v.Ending.Defaults(say.Chosen())
 	b.DeviceContext, e = claw.Get().Node.ConversationDeviceContextWithTemplate(v.DeviceContextTemplate)
 	if e != nil {

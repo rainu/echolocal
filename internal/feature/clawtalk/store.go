@@ -17,6 +17,7 @@ import (
 type Slot struct {
 	Ending                talk.EndSettings `json:"ending,omitempty"`
 	DeviceContextTemplate string           `json:"deviceContextTemplate,omitempty"`
+	ProgressTone          string           `json:"progressTone,omitempty"`
 	StartTone             string           `json:"startTone,omitempty"`
 	EndTone               string           `json:"endTone,omitempty"`
 	Provider              string           `json:"provider,omitempty"`

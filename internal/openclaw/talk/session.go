@@ -42,6 +42,7 @@ type Session struct {
 	Client            Control
 	Target            string
 	Provider, Model   string
+	Greeting          string
 	DeviceContext     string
 	Audio             Device
 	Activity          func(State)
@@ -273,6 +274,13 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		return ctx.Err()
 	}
 	if s.nativeMedia {
+		// The greeting is explicit speakable context, not a fake user message or
+		// replacement instructions. Send only after readiness playback succeeds.
+		if s.Greeting != "" {
+			if err = s.link.SendControl(greetingAppend(launch.Model, s.Greeting)); err != nil {
+				return errors.New("talk_control_failed")
+			}
+		}
 		close(s.audioGate)
 	}
 	return nil

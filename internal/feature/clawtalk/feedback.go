@@ -51,6 +51,10 @@ func beginFeedback(ctx context.Context, sink feedbackSink, interval time.Duratio
 				}
 				progress = true
 				sink.Cue("progress")
+				// Custom clips may exceed the repeat interval. Never queue a backlog.
+				if !sink.Wait(loop) {
+					return
+				}
 				timer.Reset(interval)
 			}
 		}

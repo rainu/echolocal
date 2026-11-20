@@ -75,11 +75,11 @@ func TestVoiceModelChoicePersistsIndependentlyPerSlot(t *testing.T) {
 func TestTalkFeedbackPersistsWithoutChangingOtherSlot(t *testing.T) {
 	path := t.TempDir() + "/routing.json"
 	s := load(path)
-	if e := s.Update(0, func(v *Slot) { v.StartTone = "none"; v.EndTone = "ding" }); e != nil {
+	if e := s.Update(0, func(v *Slot) { v.StartTone = "none"; v.EndTone = "ding"; v.ProgressTone = "custom:synthetic" }); e != nil {
 		t.Fatal(e)
 	}
 	again := load(path)
-	if again.Get(0).StartTone != "none" || again.Get(0).EndTone != "ding" || again.Get(1).StartTone != "" || again.Get(1).EndTone != "" {
+	if again.Get(0).ProgressTone != "custom:synthetic" || again.Get(1).ProgressTone != "" || again.Get(0).StartTone != "none" || again.Get(0).EndTone != "ding" || again.Get(1).StartTone != "" || again.Get(1).EndTone != "" {
 		t.Fatal("feedback lost or changed another slot")
 	}
 }

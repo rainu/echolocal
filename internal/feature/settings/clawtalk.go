@@ -62,10 +62,11 @@ func talkOptionsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), boo
 		menu.Row{Label: say.T("clawtalk.agent"), Value: agent, Kind: menu.Chevron, Open: func() menu.View { return talkAgentPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.model"), Value: model, Hint: say.T("clawtalk.model_hint"), Kind: menu.Chevron, Open: func() menu.View { return talkModelPage(slot) }},
 		menu.Row{Label: say.T("clawtalk.context"), Value: contextSummary, Kind: menu.Chevron, Open: func() menu.View { return talkConversationContextPage(slot) }},
+		menu.Row{Label: progressToneTitle(), Value: talkToneLabel(s.ProgressTone), Kind: menu.Chevron, Open: func() menu.View { return talkFeedbackTonePage(slot, "progress") }},
 		menu.Row{Label: say.T("clawtalk.start_tone"), Value: talkToneLabel(s.StartTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, false) }},
 		menu.Row{Label: say.T("clawtalk.end_tone"), Value: talkToneLabel(s.EndTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, true) }},
 	)
-	acts = append(acts, nil, nil, nil, nil, nil)
+	acts = append(acts, nil, nil, nil, nil, nil, nil)
 
 	rows = append(rows, menu.Row{Label: endText("title"), Value: s.Ending.Defaults(say.Chosen()).Phrase, Kind: menu.Chevron, Open: func() menu.View { return talkEndPage(slot) }})
 	acts = append(acts, nil)
@@ -402,23 +403,56 @@ func talkToneDetail(title string, choice talkChoice, preview, use func()) *share
 		{Label: say.T("clawtalk.tone_use"), MinHeight: 72, Role: sharedshell.Primary, Do: use},
 	}}
 }
-func talkTonePage(slot int, end bool) *sharedshell.Page {
-	key := "clawtalk.start_tone"
-	if end {
-		key = "clawtalk.end_tone"
+func progressToneTitle() string {
+	switch say.Chosen() {
+	case "de":
+		return "Verbindungston"
+	case "it":
+		return "Tono di connessione"
+	case "vi":
+		return "Âm kết nối"
+	default:
+		return "Connection tone"
 	}
-	return &sharedshell.Page{Title: say.T(key), Build: func() ([]menu.Row, []func(int)) {
+}
+func talkTonePage(slot int, end bool) *sharedshell.Page {
+	cue := "ready"
+	if end {
+		cue = "end"
+	}
+	return talkFeedbackTonePage(slot, cue)
+}
+func talkFeedbackTonePage(slot int, cue string) *sharedshell.Page {
+	title := say.T("clawtalk.start_tone")
+	if cue == "end" {
+		title = say.T("clawtalk.end_tone")
+	}
+	if cue == "progress" {
+		title = progressToneTitle()
+	}
+	return &sharedshell.Page{Title: title, Build: func() ([]menu.Row, []func(int)) {
 		saved := clawtalk.Get().Store.Get(slot)
 		selected := saved.StartTone
-		if end {
+		if cue == "end" {
 			selected = saved.EndTone
+		}
+		if cue == "progress" {
+			selected = saved.ProgressTone
 		}
 		rows := []menu.Row{}
 		for _, choice := range talkToneChoices() {
 			rows = append(rows, menu.Row{Label: choice.label, Chosen: choice.id == selected, Kind: menu.Chevron, Open: func() menu.View {
-				return talkToneDetail(say.T(key), choice, func() { clawtalk.Get().PreviewTone(choice.id, end) }, func() {
+				return talkToneDetail(title, choice, func() {
+					if cue == "progress" {
+						clawtalk.Get().PreviewProgressTone(choice.id)
+					} else {
+						clawtalk.Get().PreviewTone(choice.id, cue == "end")
+					}
+				}, func() {
 					if saveTalk(slot, func(s *clawtalk.Slot) {
-						if end {
+						if cue == "progress" {
+							s.ProgressTone = choice.id
+						} else if cue == "end" {
 							s.EndTone = choice.id
 						} else {
 							s.StartTone = choice.id

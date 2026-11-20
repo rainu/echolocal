@@ -187,3 +187,40 @@ func TestCancellationDuringProgressDrainDoesNotEmitReady(t *testing.T) {
 		}
 	}
 }
+
+type blockedFeedback struct {
+	testFeedback
+	waiting chan struct{}
+}
+
+func (s *blockedFeedback) Wait(ctx context.Context) bool {
+	select {
+	case s.waiting <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return false
+}
+func TestLongConnectionClipDoesNotBacklogAndCancelsImmediately(t *testing.T) {
+	sink := &blockedFeedback{waiting: make(chan struct{}, 1)}
+	f := beginFeedback(context.Background(), sink, time.Millisecond)
+	select {
+	case <-sink.waiting:
+	case <-time.After(time.Second):
+		t.Fatal("not playing")
+	}
+	time.Sleep(15 * time.Millisecond)
+	if got := sink.snapshot(); len(got) != 2 || got[1] != "progress" {
+		t.Fatal("queued overlapping clips", got)
+	}
+	done := make(chan struct{})
+	go func() { f.Stop(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cannot interrupt long clip")
+	}
+	if got := sink.snapshot(); got[len(got)-1] != "clear" {
+		t.Fatal("clip survived cancellation", got)
+	}
+}

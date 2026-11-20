@@ -260,13 +260,20 @@ func (m *Manager) PreviewTone(choice string, end bool) {
 
 // Queued PCM is used for setup cues so cancellation can remove pending samples.
 // Append rather than overlay: separate cues must not be mixed together.
-type deviceFeedback struct{ readyChoice string }
+type deviceFeedback struct{ readyChoice, progressChoice string }
 
 func (d *deviceFeedback) Cue(cue string) {
 	slog.Info("talk feedback cue", "cue", cue)
+	choice := ""
+	if cue == "ready" {
+		choice = d.readyChoice
+	}
+	if cue == "progress" {
+		choice = d.progressChoice
+	}
 	var pcm []int16
-	if cue == "ready" && d.readyChoice != "" {
-		sound := tones.Get().Sound(schema.Chime(d.readyChoice), schema.ChimeChirp)
+	if choice != "" {
+		sound := tones.Get().Sound(schema.Chime(choice), schema.ChimeChirp)
 		if len(sound.Clip) > 0 {
 			pcm = mix.Scale(sound.Clip, tone.Level)
 		} else {
@@ -276,6 +283,16 @@ func (d *deviceFeedback) Cue(cue string) {
 		pcm = mix.Chime(speaker.Rate, speaker.Channels, tone.Level, SetupNotes(cue)...)
 	}
 	speaker.Get().Lane(config.StreamFeedback).Play(pcm)
+}
+
+// Preview uses the same serial PCM path and selection as live setup.
+func (m *Manager) PreviewProgressTone(choice string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active {
+		return
+	}
+	(&deviceFeedback{progressChoice: choice}).Cue("progress")
 }
 func (*deviceFeedback) Clear() { speaker.Get().Lane(config.StreamFeedback).Drain() }
 func (*deviceFeedback) Wait(ctx context.Context) bool {
