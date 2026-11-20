@@ -24,11 +24,14 @@ import (
 )
 
 type clawAppView struct {
-	app     *chatapp.App
-	look    *widgets.UI
-	folded  map[string]bool
-	sidebar bool
-	models  bool
+	app               *chatapp.App
+	look              *widgets.UI
+	folded            map[string]bool
+	sidebar           bool
+	models            bool
+	historyGeneration uint64
+	historyCount      int
+	followTail        bool
 }
 
 func (*clawAppView) Covers() bool           { return true }
@@ -48,7 +51,7 @@ func extendClawApp(look *widgets.UI, o *screens.Options, _ func() *screens.App) 
 		if view != v {
 			return nil
 		}
-		return &screens.Screen{Title: "OpenClaw", View: v, Fixed: true, Build: v.build}
+		return &screens.Screen{View: v, Fixed: true, Build: v.build}
 	})
 }
 
@@ -65,7 +68,7 @@ func appText(key string) string {
 	return key
 }
 func (v *clawAppView) button(id, label string, disabled bool, do func()) gogui.View {
-	return gogui.Button(gogui.ButtonCfg{ID: id, Label: label, MinHeight: 60, Padding: gogui.PaddingMedium, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Label: label, MinHeight: 44, Height: 44, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
 }
 func (v *clawAppView) text(text string) gogui.View {
 	return gogui.Text(gogui.TextCfg{Text: text, Mode: gogui.TextModeWrap})
@@ -99,7 +102,8 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 	if s.Selected.Model != "" {
 		title += " · " + s.Selected.Model
 	}
-	main := []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Content: []gogui.View{gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Content: []gogui.View{v.text(title)}}), v.button("claw-latest", appText("tail"), false, func() { w.ScrollVerticalTo(fmt.Sprintf("claw-history-%d", s.Generation), -1e9) })}})}
+	main := []gogui.View{gogui.Text(gogui.TextCfg{ID: "claw-title", Sizing: gogui.FillFit, Clip: true, Text: title, TextStyle: appSmallStyle(v), Mode: gogui.TextModeSingleLine})}
+
 	if s.Talk {
 		main = append(main, v.text(say.T("clawtalk.state."+string(clawtalk.Get().Status().State))))
 	}
@@ -124,12 +128,10 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 		main = append(main, gogui.Column(gogui.ContainerCfg{ID: "claw-model-list", Sizing: gogui.FillFill, Scrollable: true, Content: modelViews}))
 	} else {
 		messages := []gogui.View{}
-		if s.Older != "" {
-			messages = append(messages, v.button("claw-older", appText("older"), locked, v.app.Older))
-		}
+
 		if s.Talk {
 			for _, c := range clawtalk.Get().CaptionsFor(s.TalkGeneration) {
-				messages = append(messages, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Content: []gogui.View{v.text(appText(c.Role)), v.text(c.Text)}}))
+				messages = append(messages, v.message(w, fmt.Sprintf("claw-caption-%d", len(messages)), c.Role, c.Text))
 			}
 		}
 		for i, m := range s.Messages {
@@ -140,14 +142,40 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 			if text == "" {
 				continue
 			}
-			messages = append(messages, gogui.Column(gogui.ContainerCfg{ID: fmt.Sprintf("claw-message-%d", i), Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Content: []gogui.View{
-				v.text(appText(m.Role)), v.markdown(w, fmt.Sprintf("claw-md-%d", i), text),
-			}}))
+			messages = append(messages, v.message(w, fmt.Sprintf("claw-message-%d", i), m.Role, text))
 		}
-		main = append(main, gogui.Column(gogui.ContainerCfg{ID: fmt.Sprintf("claw-history-%d", s.Generation), Sizing: gogui.FillFill, Scrollable: true, ScrollMode: gogui.ScrollVerticalOnly, Content: messages}))
+		historyID := fmt.Sprintf("claw-history-%d", s.Generation)
+		changed := v.historyGeneration != s.Generation
+		tail := changed || (v.followTail && v.historyCount != len(s.Messages))
+		v.historyGeneration = s.Generation
+		v.historyCount = len(s.Messages)
+		main = append(main, gogui.Column(gogui.ContainerCfg{ID: historyID, Sizing: gogui.FillFill, Padding: gogui.PaddingSmall, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: messages,
+			AmendLayout: func(e gogui.EventCtx) {
+				if tail {
+					e.Window.QueueCommand(func(w *gogui.Window) {
+						for _, id := range w.ResolveID(historyID) {
+							w.ScrollVerticalTo(id, -1e9)
+						}
+						v.followTail = true
+					})
+				}
+			},
+			OnScroll: func(e gogui.EventCtx) {
+				ids := e.Window.ResolveID(historyID)
+				if len(ids) != 1 {
+					return
+				}
+				id := ids[0]
+				offset := e.Window.ScrollVerticalOffset(id)
+				v.followTail = e.Window.ScrollVerticalPct(id) >= 0.98
+				if offset >= 0 && s.Older != "" && !locked && !s.Loading {
+					v.app.Older()
+				}
+			},
+		}))
 	}
-	input := v.look.Input(gogui.InputCfg{ID: fmt.Sprintf("claw-compose-%d", s.Generation), Text: s.Draft, Placeholder: appText("compose"), Sizing: gogui.FillFit, Disabled: locked || !s.Connected || s.Selected.Key == "", OnTextChanged: func(text string, e gogui.EventCtx) { v.app.Draft(text, s.Generation); e.Window.InvalidateLayout() }}, func() {})
-	main = append(main, gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Spacing: gogui.SpacingSmall, Content: []gogui.View{input, v.button("claw-send", appText("send"), locked || !s.Connected || s.Selected.Key == "" || s.Draft == "", func() { v.app.Send(s.Generation) })}}))
+	input := v.look.Input(gogui.InputCfg{ID: fmt.Sprintf("claw-compose-%d", s.Generation), Text: s.Draft, Placeholder: appText("compose"), Sizing: gogui.FillFit, Height: 44, MinHeight: 44, MaxHeight: 44, Padding: gogui.PaddingSmall, Disabled: locked || !s.Connected || s.Selected.Key == "", OnTextChanged: func(text string, e gogui.EventCtx) { v.app.Draft(text, s.Generation); e.Window.InvalidateLayout() }}, func() {})
+	main = append(main, gogui.Row(gogui.ContainerCfg{ID: "claw-composer", Sizing: gogui.FillFit, VAlign: gogui.VAlignMiddle, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: []gogui.View{input, v.button("claw-send", appText("send"), locked || !s.Connected || s.Selected.Key == "" || s.Draft == "", func() { v.app.Send(s.Generation) })}}))
 	body := []gogui.View{}
 	if v.sidebar {
 		groups := append([]string(nil), s.Groups...)
@@ -196,15 +224,15 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 				}
 			}
 		}
-		width := float32(280)
+		width := float32(220)
 		vw, _ := w.WindowSize()
 		if vw < 900 {
-			width = 220
+			width = 180
 		}
-		body = append(body, gogui.Column(gogui.ContainerCfg{ID: "claw-sidebar", Sizing: gogui.FixedFill, Width: width, Scrollable: true, ScrollMode: gogui.ScrollVerticalOnly, Spacing: gogui.SpacingSmall, Content: side}))
+		body = append(body, gogui.Column(gogui.ContainerCfg{ID: "claw-sidebar", Sizing: gogui.FixedFill, Width: width, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: side}))
 	}
-	body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFill, Spacing: gogui.SpacingSmall, Content: main}))
-	return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFill, Spacing: gogui.SpacingSmall, Content: []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Spacing: gogui.SpacingSmall, Content: controls}), gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFill, Spacing: gogui.SpacingMedium, Content: body})}})
+	body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: main}))
+	return gogui.Column(gogui.ContainerCfg{ID: "claw-app", Padding: gogui.PaddingSmall, Sizing: gogui.FillFill, Spacing: gogui.SpacingSmall, Content: []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: controls}), gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: body})}})
 }
 
 // The embedded device theme predates go-gui's document-role ladder. Do not
@@ -239,11 +267,19 @@ func appMarkdownStyle(ink ...gogui.Color) gogui.MarkdownStyle {
 // The native renderer supplies LayoutText, but not LayoutRichText. Lower
 // Markdown blocks to supported Text views instead of invisible RTF layouts.
 func (v *clawAppView) markdown(w *gogui.Window, id, text string) gogui.View {
-	style := appMarkdownStyle(widgets.Color(v.look.Palette().Text))
-	return w.Markdown(gogui.MarkdownCfg{ID: id, Source: text, Style: style, DisableExternalAPIs: true,
-		RenderBlock: func(_ *gogui.Window, el gogui.MarkdownElement) (gogui.View, bool) {
-			return v.markdownBlock(el, style), true
-		},
+	style := appMarkdownStyle(gogui.White)
+	// Use the cached Markdown parser, but return only our native block views.
+	// The stock document widget always adds a clipboard toolbar and reserves
+	// room for it; neither belongs on this touch-only chat surface.
+	return gogui.ViewFunc(func(w *gogui.Window) gogui.View {
+		blocks := []gogui.View{}
+		w.Markdown(gogui.MarkdownCfg{ID: id, Source: text, Style: style, DisableExternalAPIs: true,
+			RenderBlock: func(_ *gogui.Window, el gogui.MarkdownElement) (gogui.View, bool) {
+				blocks = append(blocks, v.markdownBlock(el, style))
+				return nil, true
+			},
+		}).GenerateLayout(w)
+		return gogui.Column(gogui.ContainerCfg{ID: id + "-native", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: blocks})
 	})
 }
 func (v *clawAppView) markdownBlock(el gogui.MarkdownElement, style gogui.MarkdownStyle) gogui.View {
@@ -328,6 +364,36 @@ func (v *clawAppView) markdownBlock(el gogui.MarkdownElement, style gogui.Markdo
 	}
 	return gogui.Wrap(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: spans})
 }
+func appSmallStyle(v *clawAppView) gogui.TextStyle {
+	st := appMarkdownStyle(widgets.Color(v.look.Palette().Text)).Text
+	st.Size = 18
+	return st
+}
 func (v *clawAppView) listButton(id, label string, disabled bool, do func()) gogui.View {
-	return gogui.Button(gogui.ButtonCfg{ID: id, Sizing: gogui.FillFit, Content: []gogui.View{v.text(label)}, MinHeight: 60, Padding: gogui.PaddingMedium, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Sizing: gogui.FillFit, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: appSmallStyle(v), Mode: gogui.TextModeSingleLine, Clip: true})}, MinHeight: 40, Height: 40, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+}
+func (v *clawAppView) message(w *gogui.Window, id, role, text string) gogui.View {
+	user := role == "user"
+	color := gogui.Hex(0x202938)
+	align := gogui.HAlignStart
+	if user {
+		color = gogui.Hex(0x204C68)
+		align = gogui.HAlignEnd
+	}
+	label := appSmallStyle(v)
+	label.Color = gogui.Hex(0xCBD5E1)
+	var content gogui.View = v.markdown(w, id+"-md", text)
+	if user {
+		st := appMarkdownStyle(gogui.White).Text
+		st.Align = gogui.TextAlignRight
+		content = gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})
+		label.Align = gogui.TextAlignRight
+	}
+	bubble := gogui.Column(gogui.ContainerCfg{ID: id, Sizing: gogui.FillFit, Padding: gogui.PaddingSmall, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: appText(role), TextStyle: label}), content}})
+	spacer := gogui.Column(gogui.ContainerCfg{Sizing: gogui.FixedFit, Width: 40, Padding: gogui.NoPadding})
+	children := []gogui.View{bubble, spacer}
+	if user {
+		children = []gogui.View{spacer, bubble}
+	}
+	return gogui.Row(gogui.ContainerCfg{ID: id + "-row", Sizing: gogui.FillFit, HAlign: align, Padding: gogui.NoPadding, Content: children})
 }
