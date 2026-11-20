@@ -14,6 +14,8 @@ var PermissionGroups = []string{"screen", "input", "display", "settings", "audio
 
 type NodeOperation struct {
 	Command, Group string
+	Description    string
+	Parameters     map[string]any
 	Run            func(context.Context, json.RawMessage) (any, error)
 }
 type NodeAccess struct {
@@ -25,10 +27,11 @@ type NodeAccess struct {
 	next, generation uint64
 	storageErr       bool
 	cleanup          []func()
+	changed          chan struct{}
 }
 
 func NewNodeAccess(path string) *NodeAccess {
-	a := &NodeAccess{path: path, grants: map[string]bool{}, operations: map[string]NodeOperation{}, active: map[uint64]context.CancelFunc{}}
+	a := &NodeAccess{changed: make(chan struct{}, 1), path: path, grants: map[string]bool{}, operations: map[string]NodeOperation{}, active: map[uint64]context.CancelFunc{}}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return a
@@ -95,6 +98,7 @@ func (a *NodeAccess) SetGrants(changes map[string]bool) error {
 	a.grants = next
 	a.storageErr = false
 	a.cancel()
+	a.changedLocked()
 	return nil
 }
 func (a *NodeAccess) OnCleanup(fn func()) {
@@ -121,7 +125,21 @@ func (a *NodeAccess) Register(op NodeOperation) error {
 	if _, ok := a.operations[op.Command]; ok {
 		return errors.New("operation_duplicate")
 	}
+	if op.Parameters != nil {
+		var detached map[string]any
+		data, err := json.Marshal(op.Parameters)
+		if err != nil || len(data) > 16384 || json.Unmarshal(data, &detached) != nil || (op.Description == "" || len(op.Description) > 1024) || !safeToolName.MatchString(toolName(op.Command)) {
+			return errors.New("operation_metadata_invalid")
+		}
+		op.Parameters = detached
+		for command := range a.operations {
+			if toolName(command) == toolName(op.Command) {
+				return errors.New("operation_tool_name_collision")
+			}
+		}
+	}
 	a.operations[op.Command] = op
+	a.changedLocked()
 	return nil
 }
 func (a *NodeAccess) Commands() []string {
@@ -163,7 +181,15 @@ func (a *NodeAccess) Execute(ctx context.Context, name string, params json.RawMe
 	if ctx.Err() != nil {
 		return nil, errors.New("cancelled")
 	}
+	if op.Parameters != nil {
+		if err := validateNodeParameters(params, op.Parameters); err != nil {
+			return nil, err
+		}
+	}
 	result, err := op.Run(ctx, params)
+	if err != nil && err.Error() == "invalid_params" && op.Parameters != nil {
+		err = invalidParameter("$", "expected the documented parameter shape and field constraints")
+	}
 	a.mu.Lock()
 	stale := gen != a.generation || !a.granted(op.Group)
 	a.mu.Unlock()

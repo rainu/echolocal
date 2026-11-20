@@ -452,18 +452,5 @@ func registerNodeTalk(a *connection.NodeAccess) {
 		}
 		return map[string]bool{"stopped": stopped}, nil
 	})
-	add("talk.stop", func(ctx context.Context, raw json.RawMessage) (any, error) {
-		if nodeEmpty(raw) != nil {
-			return nil, errors.New("invalid_params")
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		stopped := false
-		if owned != 0 {
-			stopped = clawtalk.Get().StopOwned(owned)
-			owned = 0
-		}
-		return map[string]bool{"stopped": stopped}, nil
-	})
 
 }

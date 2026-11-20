@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/spf13/cobra"
 	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
+	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	harness "github.com/ygelfand/libcountertop/pkg/runtime/control"
 	"time"
 )
@@ -32,6 +33,13 @@ func nodeExecuteCommand() *cobra.Command {
 			return "", errors.New("result_too_large")
 		}
 		return string(out), nil
+	})
+}
+func nodeCatalogCommand() *cobra.Command {
+	return harness.Says(&cobra.Command{Use: "node-catalog", Short: "Local diagnostics: current node descriptors, usage skill and publication status", Args: cobra.NoArgs}, func([]string) (string, error) {
+		c := featureclaw.Get().Node
+		raw, _ := json.Marshal(map[string]any{"tools": c.NodeAccess().Tools(), "skills": []connection.NodeSkill{connection.NodeUsageSkill()}, "publication": c.NodePublication()})
+		return string(raw), nil
 	})
 }
 func nodeCommandsCommand() *cobra.Command {

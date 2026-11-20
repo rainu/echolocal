@@ -1,5 +1,9 @@
 # Node registry inventory
 
+For typed tool/skill publication, schemas, examples and troubleshooting, see
+[Published tools and guidance](openclaw-node-tools.md). This inventory alone is
+not the agent-visible tool catalog.
+
 Metadata only; no setting values or live state.
 
 ## Actions

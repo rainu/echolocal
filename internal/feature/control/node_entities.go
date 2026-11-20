@@ -37,46 +37,52 @@ func registerNodeEntities(a *connection.NodeAccess) {
 			if (e.ObjectID != "noise_layer_1" && e.ObjectID != "noise_layer_2") || e.OnCommand == nil {
 				continue
 			}
-			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.background." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
-				var p struct {
-					Value *string `json:"value"`
-				}
-				if decodeNode(raw, &p) != nil {
-					return nil, errors.New("invalid_params")
-				}
-				if p.Value != nil {
-					valid := false
-					for _, v := range e.Options {
-						if v == *p.Value {
-							valid = true
-						}
+			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.background." + e.ObjectID, Group: "audio",
+				Description: "Read background-noise layer value/options; set value to one of the current entity options. Omitted value reads only.",
+				Parameters:  nodeObject(nodeSchema{"value": nodeEnum(e.Options...)}),
+				Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+					var p struct {
+						Value *string `json:"value"`
 					}
-					if !valid {
+					if decodeNode(raw, &p) != nil {
 						return nil, errors.New("invalid_params")
 					}
-					e.OnCommand(*p.Value)
-				}
-				return map[string]any{"value": e.Get(), "options": e.Options}, nil
-			}})
+					if p.Value != nil {
+						valid := false
+						for _, v := range e.Options {
+							if v == *p.Value {
+								valid = true
+							}
+						}
+						if !valid {
+							return nil, errors.New("invalid_params")
+						}
+						e.OnCommand(*p.Value)
+					}
+					return map[string]any{"value": e.Get(), "options": e.Options}, nil
+				}})
 		case *esphome.Number:
 			if !strings.HasPrefix(e.ObjectID, "volume_") || e.OnCommand == nil {
 				continue
 			}
-			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.volume." + e.ObjectID, Group: "audio", Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
-				var p struct {
-					Value *float32 `json:"value"`
-				}
-				if decodeNode(raw, &p) != nil {
-					return nil, errors.New("invalid_params")
-				}
-				if p.Value != nil {
-					if float64(*p.Value) < e.Min || float64(*p.Value) > e.Max {
+			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.volume." + e.ObjectID, Group: "audio",
+				Description: "Read this speaker volume entity and its min/max; optional value sets it within the entity's published range. No microphone mute.",
+				Parameters:  nodeObject(nodeSchema{"value": nodeNumber("number", e.Min, e.Max)}),
+				Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
+					var p struct {
+						Value *float32 `json:"value"`
+					}
+					if decodeNode(raw, &p) != nil {
 						return nil, errors.New("invalid_params")
 					}
-					e.OnCommand(*p.Value)
-				}
-				return map[string]any{"value": e.Get(), "min": e.Min, "max": e.Max}, nil
-			}})
+					if p.Value != nil {
+						if float64(*p.Value) < e.Min || float64(*p.Value) > e.Max {
+							return nil, errors.New("invalid_params")
+						}
+						e.OnCommand(*p.Value)
+					}
+					return map[string]any{"value": e.Get(), "min": e.Min, "max": e.Max}, nil
+				}})
 		}
 	}
 }
