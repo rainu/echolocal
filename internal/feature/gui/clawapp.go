@@ -69,7 +69,23 @@ func appText(key string) string {
 	return key
 }
 func (v *clawAppView) button(id, label string, disabled bool, do func()) gogui.View {
-	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Label: label, MinHeight: 44, Height: 44, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	// Muted action-specific accents keep the toolbar readable without bright fills.
+	color := gogui.Hex(0x30343A)
+	switch id {
+	case "claw-sessions":
+		color = gogui.Hex(0x343E50)
+	case "claw-refresh":
+		color = gogui.Hex(0x2D4546)
+	case "claw-talk":
+		color = gogui.Hex(0x354A3D)
+	case "claw-model":
+		color = gogui.Hex(0x443C50)
+	case "claw-send":
+		color = gogui.Hex(0x354655)
+	}
+	style := appSmallStyle(v)
+	style.Color = gogui.Hex(0xE0E3E6)
+	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Color: color, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: style})}, MinHeight: 44, Height: 44, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
 }
 func (v *clawAppView) text(text string) gogui.View {
 	return gogui.Text(gogui.TextCfg{Text: text, Mode: gogui.TextModeWrap})
@@ -319,7 +335,7 @@ func (v *clawAppView) markdownBlock(el gogui.MarkdownElement, style gogui.Markdo
 	if el.Kind == gogui.MarkdownKindCode {
 		st := style.Code
 		st.Color = gogui.White
-		return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Color: gogui.Hex(0x253B68), Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: el.PlainText, TextStyle: st, Mode: gogui.TextModeWrap})}})
+		return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.PaddingMedium, Color: gogui.Hex(0x30343A), Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: el.PlainText, TextStyle: st, Mode: gogui.TextModeWrap})}})
 	}
 	if el.Kind == gogui.MarkdownKindTable && el.TableData != nil {
 		rows := [][]gogui.RichText{el.TableData.Headers}
@@ -382,14 +398,22 @@ func appSmallStyle(v *clawAppView) gogui.TextStyle {
 	return st
 }
 func (v *clawAppView) listButton(id, label string, disabled bool, do func()) gogui.View {
-	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, Sizing: gogui.FillFit, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: appSmallStyle(v), Mode: gogui.TextModeSingleLine, Clip: true})}, MinHeight: 40, Height: 40, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	style := appSmallStyle(v)
+	style.Align = gogui.TextAlignRight
+	align := gogui.HAlignEnd
+	if strings.HasPrefix(id, "claw-group-") {
+		style = style.Bold()
+		style.Align = gogui.TextAlignLeft
+		align = gogui.HAlignStart
+	}
+	return gogui.Button(gogui.ButtonCfg{ID: id, Variant: gogui.ButtonGhost, HAlign: gogui.Some(align), Sizing: gogui.FillFit, Content: []gogui.View{gogui.Text(gogui.TextCfg{Sizing: gogui.FillFit, Text: label, TextStyle: style, Mode: gogui.TextModeSingleLine, Clip: true})}, MinHeight: 40, Height: 40, Padding: gogui.PaddingSmall, Disabled: disabled, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
 }
 func (v *clawAppView) message(w *gogui.Window, id, role, text string) gogui.View {
 	user := role == "user"
-	color := gogui.Hex(0x202938)
+	color := gogui.Hex(0x232526)
 	align := gogui.HAlignStart
 	if user {
-		color = gogui.Hex(0x204C68)
+		color = gogui.Hex(0x2B3033)
 		align = gogui.HAlignEnd
 	}
 	label := appSmallStyle(v)
