@@ -32,10 +32,11 @@ type Control interface {
 	ExchangeOffer(context.Context, connection.TalkLaunch, string) (string, error)
 }
 type Session struct {
-	native        *nativeState
-	nativeEnabled atomic.Bool
-	nativeMedia   bool
-	audioGate     chan struct{}
+	inputDeltas, outputDeltas atomic.Uint64
+	native                    *nativeState
+	nativeEnabled             atomic.Bool
+	nativeMedia               bool
+	audioGate                 chan struct{}
 
 	Client            Control
 	Target            string
@@ -44,6 +45,8 @@ type Session struct {
 	Audio             Device
 	Activity          func(State)
 	Caption           func(role, text, id string)
+	PartialCaption    func(role, delta string)
+	ClearPartial      func()
 	UserSpeech        func()
 	End, Failure      func()
 	mu                sync.Mutex
@@ -296,6 +299,7 @@ func (s *Session) Close() error {
 	return s.closeErr
 }
 func (s *Session) control(ctx context.Context, events <-chan connection.TalkEvent) {
+	defer s.clearPartial()
 	pending := map[string]bool{}
 	for {
 		select {
@@ -335,11 +339,31 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 					go s.End()
 				}
 				return
-			case "transcript.done":
+			case "transcript.delta", "output.text.delta":
+				// The native channel owns partials when active; Gateway finals remain
+				// authoritative on public Live transports.
+				if s.nativeEnabled.Load() {
+					continue
+				}
+				var p struct{ Role, Text, Delta string }
+				if json.Unmarshal(e.Event.Payload, &p) != nil {
+					continue
+				}
+				if e.Event.Type == "output.text.delta" {
+					p.Role = "assistant"
+				}
+				if p.Text == "" {
+					p.Text = p.Delta
+				}
+				s.partial(p.Role, p.Text)
+			case "transcript.done", "output.text.done":
 				var p struct{ Role, Text string }
 				if json.Unmarshal(e.Event.Payload, &p) != nil {
 					slog.Warn("talk transcript event malformed")
 					continue
+				}
+				if e.Event.Type == "output.text.done" {
+					p.Role = "assistant"
 				}
 				slog.Info("talk transcript event", "role", p.Role)
 				if p.Role == "assistant" {
@@ -394,6 +418,7 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				slog.Info("talk provider event", "type", e.Event.Type)
 				s.activity(Speaking)
 			case "turn.cancelled":
+				s.clearPartial()
 				slog.Info("talk provider event", "type", e.Event.Type)
 				s.Audio.StopOutput()
 				if s.Activity != nil {
@@ -496,6 +521,7 @@ func (s *Session) activity(state State) {
 
 type Diagnostics struct {
 	ControlMessages, NativeDelegations, NativeResults, NativeResponses, HistoryFailures, StartupSilence, ResponsesTimed uint64
+	InputDeltas, OutputDeltas                                                                                           uint64
 	OutputQueueClears                                                                                                   uint64
 	FinalToFirstPCMMS, MaxFinalToFirstPCMMS                                                                             int64
 
@@ -516,6 +542,8 @@ func (s *Session) Diagnostics() Diagnostics {
 	d.NativeDelegations = s.native.delegations.Load()
 	d.NativeResults = s.native.results.Load()
 	d.NativeResponses = s.native.responses.Load()
+	d.InputDeltas = s.inputDeltas.Load()
+	d.OutputDeltas = s.outputDeltas.Load()
 	d.ResponsesTimed = s.native.timedResponses.Load()
 	d.OutputQueueClears = s.native.outputClears.Load()
 	d.FinalToFirstPCMMS = s.native.firstPCMMS.Load()
@@ -555,4 +583,23 @@ func safeReason(err error) string {
 		return err.Error()
 	}
 	return "talk_failed"
+}
+
+func (s *Session) partial(role, delta string) {
+	if delta != "" {
+		if role == "user" {
+			s.inputDeltas.Add(1)
+		}
+		if role == "assistant" {
+			s.outputDeltas.Add(1)
+		}
+	}
+	if s.PartialCaption != nil && (role == "user" || role == "assistant") && delta != "" {
+		s.PartialCaption(role, delta)
+	}
+}
+func (s *Session) clearPartial() {
+	if s.ClearPartial != nil {
+		s.ClearPartial()
+	}
 }

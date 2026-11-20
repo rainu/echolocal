@@ -178,6 +178,7 @@ var Get = sync.OnceValue(func() *screens.App {
 		extendTV,
 		extendVoiceMatch,
 		extendTalkPrompt,
+		extendTalkCaptions,
 	} {
 		extend(look, &o, self)
 	}

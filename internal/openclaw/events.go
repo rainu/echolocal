@@ -63,15 +63,15 @@ func (r *rpcLink) event(f frame) {
 	if json.Unmarshal(f.Payload, &e) != nil || e.VoiceSessionID == "" {
 		return
 	}
-	// No audio, tool arguments/results or transcript deltas are needed here.
+	// Retain only transcript payloads; never audio or tool arguments/results.
 	switch e.Event.Type {
 	case "session.ready", "session.closed", "session.error", "session.replaced",
-		"turn.started", "turn.ended", "turn.cancelled", "transcript.done",
+		"turn.started", "turn.ended", "turn.cancelled", "transcript.done", "transcript.delta", "output.text.delta", "output.text.done",
 		"output.audio.started", "output.audio.done", "tool.call", "tool.result", "tool.error":
 	default:
 		return
 	}
-	if e.Event.Type != "transcript.done" {
+	if e.Event.Type != "transcript.done" && e.Event.Type != "transcript.delta" && e.Event.Type != "output.text.delta" && e.Event.Type != "output.text.done" {
 		e.Event.Payload = nil
 	}
 	r.mu.Lock()

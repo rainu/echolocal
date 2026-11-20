@@ -12,7 +12,10 @@ type ConversationLog struct {
 	mu    sync.Mutex
 	calls []Conversation
 }
-type Caption struct{ Role, Text, ID string }
+type Caption struct {
+	Role, Text, ID string
+	Provisional    bool
+}
 type Conversation struct {
 	Generation uint64
 	Started    time.Time
@@ -60,7 +63,28 @@ func (l *ConversationLog) Append(generation uint64, role, text, id string) {
 		copy(c.Entries, c.Entries[1:])
 		c.Entries = c.Entries[:31]
 	}
-	c.Entries = append(c.Entries, Caption{Role: role, Text: text, ID: id})
+	// A final may cover several inferred same-role segments. Replace those
+	// together, never publish the provisional text as authoritative history.
+	position := -1
+	kept := c.Entries[:0]
+	for _, e := range c.Entries {
+		if e.Role == role && e.Provisional {
+			if position < 0 {
+				position = len(kept)
+			}
+			continue
+		}
+		kept = append(kept, e)
+	}
+	c.Entries = kept
+	final := Caption{Role: role, Text: text, ID: id}
+	if position >= 0 {
+		c.Entries = append(c.Entries, Caption{})
+		copy(c.Entries[position+1:], c.Entries[position:])
+		c.Entries[position] = final
+	} else {
+		c.Entries = append(c.Entries, final)
+	}
 }
 func (l *ConversationLog) Snapshot() []Conversation {
 	l.mu.Lock()
@@ -91,4 +115,57 @@ func (l *ConversationLog) Clear() {
 	defer l.mu.Unlock()
 	clear(l.calls)
 	l.calls = nil
+}
+
+// Delta appends verbatim fragments. Role changes form inferred display paragraphs,
+// not provider-final contributions. The cache remains bounded and volatile.
+func (l *ConversationLog) Delta(generation uint64, role, delta string) {
+	if (role != "user" && role != "assistant") || delta == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.calls) == 0 {
+		return
+	}
+	c := &l.calls[len(l.calls)-1]
+	if c.Generation != generation {
+		return
+	}
+	n := len(c.Entries)
+	if n == 0 || !c.Entries[n-1].Provisional || c.Entries[n-1].Role != role {
+		if n == 32 {
+			copy(c.Entries, c.Entries[1:])
+			c.Entries = c.Entries[:31]
+		}
+		c.Entries = append(c.Entries, Caption{Role: role, Provisional: true})
+	}
+	e := &c.Entries[len(c.Entries)-1]
+	// Cap before concatenation, including oversized/untrusted fragments.
+	r := []rune(e.Text)
+	if len(r) < 4096 {
+		d := []rune(delta)
+		if len(d) > 4096-len(r) {
+			d = d[:4096-len(r)]
+		}
+		e.Text += string(d)
+	}
+}
+func (l *ConversationLog) DropPending(generation uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i := range l.calls {
+		c := &l.calls[i]
+		if c.Generation != generation {
+			continue
+		}
+		kept := c.Entries[:0]
+		for _, e := range c.Entries {
+			if !e.Provisional {
+				kept = append(kept, e)
+			}
+		}
+		clear(c.Entries[len(kept):])
+		c.Entries = kept
+	}
 }
