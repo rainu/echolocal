@@ -141,6 +141,7 @@ func (a *App) Close() {
 		a.cancel()
 		a.cancel = nil
 	}
+	observerID := "echolocal-chat-" + strconv.FormatUint(a.epoch, 10)
 	a.epoch++
 	rpc, key := a.rpc, a.subscribed
 	a.rpc = nil
@@ -156,7 +157,7 @@ func (a *App) Close() {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			_ = rpc.Call(ctx, "sessions.messages.unsubscribe", map[string]any{"key": key, "subscriptionId": "echolocal-chat"}, nil)
+			_ = rpc.Call(ctx, "sessions.messages.unsubscribe", map[string]any{"key": key, "subscriptionId": observerID}, nil)
 		}()
 	}
 }
@@ -345,10 +346,10 @@ func (a *App) reload(ctx context.Context, epoch uint64, rpc RPC) {
 	a.mu.Unlock()
 	if oldKey != selected.Key {
 		if oldKey != "" {
-			_ = rpc.Call(ctx, "sessions.messages.unsubscribe", map[string]any{"key": oldKey, "subscriptionId": "echolocal-chat"}, nil)
+			_ = rpc.Call(ctx, "sessions.messages.unsubscribe", map[string]any{"key": oldKey, "subscriptionId": "echolocal-chat-" + strconv.FormatUint(epoch, 10)}, nil)
 		}
 		if selected.Key != "" {
-			if e := rpc.Call(ctx, "sessions.messages.subscribe", map[string]any{"key": selected.Key, "subscriptionId": "echolocal-chat"}, nil); e == nil {
+			if e := rpc.Call(ctx, "sessions.messages.subscribe", map[string]any{"key": selected.Key, "subscriptionId": "echolocal-chat-" + strconv.FormatUint(epoch, 10)}, nil); e == nil {
 				a.mu.Lock()
 				if a.epoch == epoch {
 					a.subscribed = selected.Key

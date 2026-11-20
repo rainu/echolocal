@@ -208,9 +208,13 @@ func (v *clawAppView) build(w *gogui.Window) gogui.View {
 
 // The embedded device theme predates go-gui's document-role ladder. Do not
 // inherit zero-sized role fonts from it: materialize the complete public grid.
-func appMarkdownStyle() gogui.MarkdownStyle {
+func appMarkdownStyle(ink ...gogui.Color) gogui.MarkdownStyle {
 	style := gogui.DefaultMarkdownStyle()
-	base := gogui.CurrentTheme().TextStyleDef
+	base := gogui.CurrentTheme().Cfg.TextStyleDef
+	base.Color = gogui.White
+	if len(ink) > 0 {
+		base.Color = ink[0]
+	}
 	if base.Size < 18 {
 		base.Size = 18
 	}
@@ -231,7 +235,7 @@ func appMarkdownStyle() gogui.MarkdownStyle {
 	return style
 }
 func (v *clawAppView) markdown(w *gogui.Window, id, text string) gogui.View {
-	return w.Markdown(gogui.MarkdownCfg{ID: id, Source: text, Style: appMarkdownStyle(), DisableExternalAPIs: true,
+	return w.Markdown(gogui.MarkdownCfg{ID: id, Source: text, Style: appMarkdownStyle(widgets.Color(v.look.Palette().Text)), DisableExternalAPIs: true,
 		RenderBlock: func(_ *gogui.Window, el gogui.MarkdownElement) (gogui.View, bool) {
 			if el.Kind == gogui.MarkdownKindCode {
 				st := appMarkdownStyle().Code
@@ -254,7 +258,7 @@ func (v *clawAppView) markdown(w *gogui.Window, id, text string) gogui.View {
 						for _, run := range cell.Runs {
 							text += run.Text
 						}
-						st := appMarkdownStyle().Text
+						st := appMarkdownStyle(widgets.Color(v.look.Palette().Text)).Text
 						if ri == 0 {
 							st = st.Bold()
 						}
