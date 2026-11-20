@@ -18,9 +18,13 @@ func TestConfiguredEndMatching(t *testing.T) {
 		{"Gespräch beenden", true, true, true},
 		{"  „GESPRÄCH BEENDEN!“  ", true, true, true},
 		{"Gespra\u0308ch  beenden", true, true, true},
-		{"Gespräch beenden und danke", false, true, false},
-		{"Danke, Gespräch beenden", false, false, true},
-		{"Bitte Gespräch beenden und danke", false, false, false},
+		{"Gespräch beenden und danke", true, true, false},
+		{"Danke, Gespräch beenden", true, false, true},
+		{"Bitte Gespräch beenden und danke", true, false, false},
+		{"Gespräch beenden, danke", true, true, false},
+		{"Okey, du kannst das Gespräch beenden, danke", true, false, false},
+		{"Okey, du kannst das Gespräch beendende, danke", false, false, false},
+		{"Bitte Vorgespräch beenden, danke", false, false, false},
 		{"Gespräch beendende", false, false, false},
 		{"Vorgespräch beenden", false, false, false},
 		{"Gespräch beenden_weiter", false, false, false},
@@ -61,6 +65,9 @@ func TestEndTimingPositionAndRoles(t *testing.T) {
 					t.Fatal("wrong role")
 				}
 				text := "Gespräch beenden"
+				if position == "exact" {
+					text = "Okey, du kannst das Gespräch beenden, danke"
+				}
 				if position == "start" {
 					text += " und danke"
 				}

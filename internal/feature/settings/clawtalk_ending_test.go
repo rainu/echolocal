@@ -13,6 +13,10 @@ import (
 
 func TestEndSettingsUIIsLocalizedSingleInputAndIndependentChoices(t *testing.T) {
 	before := say.Chosen()
+	say.Use("de")
+	if endText("exact") != "Enthält" {
+		t.Fatal("misleading whole-utterance label")
+	}
 	defer say.Use(before)
 	for _, lang := range say.Languages() {
 		say.Use(lang)
@@ -36,6 +40,9 @@ func TestEndSettingsUIIsLocalizedSingleInputAndIndependentChoices(t *testing.T) 
 			if r.Label == "" {
 				t.Fatal("missing translation", lang)
 			}
+		}
+		if len(rows) != 5 {
+			t.Fatal("unexpected help text rows", len(rows))
 		}
 		if fields != 1 || len(rows) != len(acts) || rows[0].Value == "" {
 			t.Fatal("missing single initialized input")

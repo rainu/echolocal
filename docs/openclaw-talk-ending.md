@@ -1,7 +1,7 @@
 # Configurable Live Talk ending (Refs #23)
 
 Each OpenClaw assistant slot has **End conversation** settings: one editable
-phrase (1–256 characters, a single line), **Exact / Start / End** position,
+phrase (1–256 characters, a single line), **Contains / Start / End** position,
 and independently **End of turn / Immediately** timing. Changes apply to the
 next activation and persist atomically with the slot, not in provider prompts.
 Only user transcripts can trigger ending; closure is guarded once per activation.
@@ -15,24 +15,26 @@ to `turn_end`. The next successful slot save materializes these defaults; after
 that a language change does not replace the saved phrase. Until that first save,
 an old slot derives its phrase from the current UI language.
 
-This intentionally replaces the old multilingual phrase set and courtesy-clause
-grammar. Synonyms such as “goodbye”, courtesy extensions and commands in a
-different language no longer end a default exact-mode conversation. Users can
-edit their single phrase or choose Start/End. This avoids a hidden second grammar
-that would contradict the selected matching mode.
+The stored position key `exact` is retained for compatibility, but now means
+**Contains**: the complete normalized phrase can occur anywhere in the utterance.
+Existing saved slots immediately gain this behavior without losing their phrase
+or timing. Only complete word sequences match, not substrings inside words.
 
 Matching uses Unicode NFC, case-insensitive words, normalized whitespace and
 punctuation. Letter/number/combining-mark/underscore boundaries prevent matches
-inside words. Start matches `Gespräch beenden und danke`, End matches
-`Danke, Gespräch beenden`; Exact matches neither. Middle mentions match neither
-Start nor End. Start/End are positional rules, not semantic intent classifiers.
+inside words. With `Gespräch beenden`, Contains matches both
+`Gespräch beenden, danke` and `Okey, du kannst das Gespräch beenden, danke`.
+Start matches only at the beginning; End only at the end. A middle mention
+matches Contains but neither Start nor End. These are textual rules, not semantic
+intent classifiers. Synonyms and translations are not additional hidden phrases.
 
 ## Interim recognition and transport limits
 
 Immediately evaluates the accumulated user utterance on every available interim
 update, with no turn-end gate for any position. Recognition may revise itself;
 an early match cannot be undone after closing. In End mode the current interim
-end is provisional. Both warnings are shown in settings.
+end is provisional. This behavior is documented here; the interim-risk helper was removed from
+settings at the owner's request.
 
 Native `session.input_transcript.delta` events and alternative Gateway
 `transcript.delta` events append verbatim. Native `input_transcript.added` and

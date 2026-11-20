@@ -88,7 +88,9 @@ func (s EndSettings) Matches(text string) bool {
 	}
 	switch s.Position {
 	case "exact":
-		return text == phrase
+		// Keep the stored key for existing slots; match the complete phrase
+		// anywhere, with word boundaries on both sides.
+		return strings.Contains(" "+text+" ", " "+phrase+" ")
 	case "start":
 		return text == phrase || strings.HasPrefix(text, phrase+" ")
 	case "end":
