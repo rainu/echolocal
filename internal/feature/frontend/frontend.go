@@ -21,6 +21,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/call"
 	"github.com/ygelfand/echolocal/internal/feature/dhcp"
 	"github.com/ygelfand/echolocal/internal/feature/discovery"
+	"github.com/ygelfand/echolocal/internal/feature/files"
 	"github.com/ygelfand/echolocal/internal/feature/homeassistant"
 	"github.com/ygelfand/echolocal/internal/feature/network"
 	"github.com/ygelfand/echolocal/internal/feature/voicematch"
@@ -37,6 +38,7 @@ var get = sync.OnceValue(func() *webapi.API {
 		"alarms":    alarm.Get().Handler(alerts.Get().Tones),
 		"call":      call.Get().Handler(discovery.Get().Peers),
 		"broadcast": broadcast.Get().WebHandler(),
+		"files":     files.Get().Handler(),
 		"voices":    voicematch.Get().Handler(householdPeople),
 	}
 	input := &textentry.Controller{}

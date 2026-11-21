@@ -210,3 +210,5 @@ asset management, supported rendering features and lifecycle guarantees.
 
 OpenClaw owner web/API settings: [coverage and API](docs/openclaw-owner-settings.md).
 Settings completeness requirements: [contributing](CONTRIBUTING.md).
+
+Managed owner file transfers: [web interface, API and limits](docs/managed-files.md).
