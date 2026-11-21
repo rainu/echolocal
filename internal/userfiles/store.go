@@ -121,9 +121,16 @@ func (s *Store) entries() ([]fs.FileInfo, error) {
 	defer d.Close()
 	return d.Readdir(-1)
 }
-func (s *Store) freeBytes() (int64, error) {
+
+// reserveCapacity respects the OS's unavailable blocks without subtracting
+// our explicit free-space reserve twice. A negative result forbids publication.
+func reserveCapacity(available, free, reserve int64) int64 {
+	return min(available, free-reserve)
+}
+func (s *Store) usableBytes() (int64, error) {
 	if s.free != nil {
-		return s.free()
+		free, err := s.free()
+		return reserveCapacity(free, free, s.reserve), err
 	}
 	d, err := s.root.Open(".")
 	if err != nil {
@@ -134,7 +141,7 @@ func (s *Store) freeBytes() (int64, error) {
 	if err = syscall.Fstatfs(int(d.Fd()), &st); err != nil {
 		return 0, err
 	}
-	return int64(st.Bavail) * int64(st.Bsize), nil
+	return reserveCapacity(int64(st.Bavail)*int64(st.Bsize), int64(st.Bfree)*int64(st.Bsize), s.reserve), nil
 }
 func (s *Store) view() (View, error) {
 	v := View{Files: []Metadata{}, Budget: s.budget, MaxFile: s.maxFile, MaxFiles: MaxFiles}
@@ -153,11 +160,11 @@ func (s *Store) view() (View, error) {
 		v.Used += e.Size()
 	}
 	slices.SortFunc(v.Files, func(a, b Metadata) int { return strings.Compare(a.Name, b.Name) })
-	free, err := s.freeBytes()
+	free, err := s.usableBytes()
 	if err != nil {
 		return v, err
 	}
-	v.Available = max(int64(0), min(s.budget-v.Used, free-s.reserve))
+	v.Available = max(int64(0), min(s.budget-v.Used, free))
 	if len(v.Files) >= MaxFiles {
 		v.Available = 0
 	}
@@ -290,11 +297,11 @@ func (s *Store) Upload(name string, size int64, body io.Reader) (Metadata, error
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	free, err := s.freeBytes()
+	free, err := s.usableBytes()
 	if err != nil {
 		return Metadata{}, err
 	}
-	if free < s.reserve {
+	if free < 0 {
 		return Metadata{}, ErrFull
 	}
 	// Link is atomic and never overwrites an existing name (including symlinks).

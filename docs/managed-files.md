@@ -22,8 +22,10 @@ plain HTTP. Use the device's trusted HTTPS certificate/normal browser trust flow
 - Maximum file: **128 MiB** (134217728 bytes).
 - Total active user files: **512 MiB** (536870912 bytes), at most **256 files**.
 - At least **128 MiB** filesystem availability is reserved for other device work.
-  Reported available capacity is the smaller of quota remaining and filesystem
-  availability minus this reserve. It is a snapshot, not a reservation guarantee.
+  Reported capacity is the minimum of quota remaining, OS-available bytes
+  (Bavail), and total free bytes (Bfree) minus this reserve. OS-reserved
+  blocks remain untouched and count toward the total free-space reserve;
+  they are not subtracted twice. It is a snapshot, not a reservation guarantee.
 - One admitted upload at a time; other uploads immediately return 423.
   Metadata and downloads remain available. Each upload has a five-minute deadline.
 - Names are 1–128 ASCII bytes: letters, digits, spaces, dots, dashes, underscores;

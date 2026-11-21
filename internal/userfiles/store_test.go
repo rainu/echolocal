@@ -338,3 +338,13 @@ func TestHTTPTransferErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestOSReservedBlocksAreNotDoubleCounted(t *testing.T) {
+	for _, tc := range []struct{ available, free, reserve, want int64 }{
+		{110, 200, 128, 72}, {110, 200, 64, 110}, {10, 100, 128, -28}, {40, 128, 128, 0},
+	} {
+		if got := reserveCapacity(tc.available, tc.free, tc.reserve); got != tc.want {
+			t.Errorf("got %d want %d", got, tc.want)
+		}
+	}
+}
