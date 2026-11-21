@@ -90,7 +90,10 @@ unmodified underlying clock/UI; do not restart the daemon to remove a test.
 ### Animation, expressions and audio envelope
 
 Push the generated fixture directory and choose `--animation .../linear.vrma`,
-`step.vrma` or `cubicspline.vrma`. These newly authored clips exercise head
+`step.vrma` or `cubicspline.vrma`. The generator also emits malformed GLB/WAV and external-URI rejection fixtures.
+The viewer must reject those with a nonzero exit and must not fetch the external
+resource. Invalid duration and non-finite mouth values are rejected before
+opening EGL. These newly authored clips exercise head
 rotation and hips translation on a two-second loop. Retargeting to both VRM
 generations is experimental, not general motion-library compatibility proof.
 
