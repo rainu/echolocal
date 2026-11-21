@@ -1,0 +1,193 @@
+{
+  "date": "2026-11-21",
+  "target": "Echo Show 8 Athena / Android API28 / ARMv7",
+  "viewport": [
+    640,
+    640
+  ],
+  "fps_cap": 30,
+  "binary_sha256": "6b893cc25d2a3912db4958bbf51f085089f0c3b781f7dbcd9d350fe4b20ca391",
+  "assets": [
+    {
+      "file": "sample-vrm1.vrm",
+      "bytes": 10776032,
+      "sha256": "12c2b97e95e700783a6a550dc0eee2d7880aeedccef9ae67bc4c5a2f0f2631a2",
+      "nodes": 171,
+      "skin_joint_counts": [
+        83,
+        137,
+        137
+      ]
+    },
+    {
+      "file": "Seed-san.vrm",
+      "bytes": 10917800,
+      "sha256": "624d0d554bc205bbdc33e22a68a2c3c20edebb3e573011ead8878a65e5329b23",
+      "nodes": 147,
+      "skin_joint_counts": [
+        23,
+        7,
+        1,
+        21,
+        80
+      ]
+    },
+    {
+      "file": "alicia-vrm0.vrm",
+      "bytes": 7878712,
+      "sha256": "237bb02efadf8c13a114af91dd8e860173081457dee87017e51011c448d05dc2",
+      "nodes": 143,
+      "skin_joint_counts": [
+        62,
+        17,
+        29,
+        24,
+        22,
+        21,
+        9,
+        22,
+        36,
+        11,
+        13,
+        6
+      ]
+    }
+  ],
+  "soak": {
+    "GPU": "Mali-G72 MP3",
+    "GL": "OpenGL ES 3.2 v1.r14p0-01rel0.01e5c7ea2a98fd18e15a3ddbd079d568",
+    "VRMA_TRACKS": 2,
+    "VRMA_DURATION_S": 2.0,
+    "VRM": "1",
+    "NODES": 147,
+    "PARTS": 21,
+    "VERTICES": 34059,
+    "TRIANGLES": 45058,
+    "TEXTURE_RGBA_BYTES": 43253760,
+    "EXPRESSIONS": 18,
+    "LOAD_MS": 696.012,
+    "FIRST_FRAME_MS": 709.812,
+    "INTERVAL_MS_P95": 33.539,
+    "INTERVAL_MS_P99": 34.703,
+    "INTERVAL_MS_MAX": 46.849,
+    "CPU_CORES_AVERAGE": 0.138,
+    "FRAMES": 27000,
+    "ELAPSED_S": 900.0,
+    "FPS": 30.0,
+    "WORK_MS_P50": 6.718,
+    "WORK_MS_P95": 8.61,
+    "WORK_MS_P99": 10.44,
+    "PEAK_RSS_KIB": 134764
+  },
+  "resources": {
+    "sample_count": 30,
+    "steady_pss_kib_min": 57050,
+    "steady_pss_kib_max": 57478,
+    "steady_rss_kib_min": 62740,
+    "steady_rss_kib_max": 63168,
+    "thermal_all_zones_millic_min": 25129,
+    "thermal_all_zones_millic_max": 40300,
+    "soak_exit": 0
+  },
+  "checks": {
+    "cases": [
+      {
+        "name": "final-self-test",
+        "exit": 0,
+        "passed": true
+      },
+      {
+        "name": "final-vrm0-vrma",
+        "exit": 0,
+        "passed": true
+      },
+      {
+        "name": "final-neutral",
+        "exit": 0,
+        "passed": true
+      },
+      {
+        "name": "final-open",
+        "exit": 0,
+        "passed": true
+      },
+      {
+        "name": "final-wav",
+        "exit": 0,
+        "passed": true
+      },
+      {
+        "name": "negative-malformed.vrm",
+        "exit": 1,
+        "passed": true
+      },
+      {
+        "name": "negative-external-buffer.vrm",
+        "exit": 1,
+        "passed": true
+      },
+      {
+        "name": "negative-external-image.vrm",
+        "exit": 1,
+        "passed": true
+      },
+      {
+        "name": "negative-wav",
+        "exit": 1,
+        "passed": true
+      },
+      {
+        "name": "negative-mouth",
+        "exit": 1,
+        "passed": true
+      },
+      {
+        "name": "negative-duration",
+        "exit": 1,
+        "passed": true
+      },
+      {
+        "name": "lifecycle-TERM",
+        "exit": 0,
+        "passed": true
+      },
+      {
+        "name": "lifecycle-KILL",
+        "exit": 137,
+        "passed": true
+      }
+    ],
+    "image_differences": {
+      "open": {
+        "pixels": 155,
+        "bbox": [
+          214,
+          141,
+          232,
+          157
+        ]
+      },
+      "wav": {
+        "pixels": 133,
+        "bbox": [
+          214,
+          141,
+          232,
+          157
+        ]
+      }
+    },
+    "binary_sha256": "6b893cc25d2a3912db4958bbf51f085089f0c3b781f7dbcd9d350fe4b20ca391"
+  },
+  "cleanup": {
+    "verified_and_removed_files": 37,
+    "bytes_retained": 49880573,
+    "device_directory_removed": true
+  },
+  "limits": [
+    "No live Talk/audio playback or microphone capture",
+    "No GPU utilization or total driver-memory measurement",
+    "Frame intervals are render-loop starts, not physical presentation timestamps",
+    "Authored VRMA head/hips fixtures, not general animation compatibility"
+  ]
+}
