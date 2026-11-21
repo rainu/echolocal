@@ -1,8 +1,9 @@
 # Managed user files
 
 The owner web interface's **Files** page and `/api/v1/files` share one persistent,
-flat user-files area. This is asset storage, not a general device filesystem
-browser. No folders, rename, overwrite, previews or automatic activation.
+flat user-files area for transfers. A separate read-only directory-metadata
+browser lists the real device filesystem (see below). No folders, rename,
+overwrite, previews or automatic activation in the upload area.
 Uploading a picture does not add a photo provider; uploading VRM/VRMA does not
 import an avatar; custom tones continue to use their existing validated mechanism.
 
@@ -53,6 +54,55 @@ The managed directory is `layout.StateDir + "/user-files"` (0700; files 0600).
 Credentials, settings, app-private state and existing consumer stores are outside
 that root. A rollback to older software leaves these files intact but unavailable
 through the old API. This is not a backup or an untrusted local-root security boundary.
+
+## Real device filesystem browser (owner-requested follow-up)
+
+The **Device filesystem** tab starts at the actual device root `/`.
+It lists real directory entries directly from the filesystem on every request.
+There is no virtual hierarchy or separately maintained inventory. Files created
+by other programs appear on refresh. Use directory links, breadcrumbs, Up, or an
+absolute path. The **Show upload directory** shortcut opens the same physical
+directory used by the **Uploads** tab; upload inventory also returns its absolute
+`directory` path.
+
+This extends the original issue's managed-area-only scope **for directory
+metadata only**, following the owner's review request. Listings can expose names,
+sizes, permissions and timestamps of configuration/system entries to the
+authenticated owner, but never read or return their contents. This is intentional,
+not a content-access grant. No new agent/Node API or permissions are introduced.
+
+`GET /api/v1/filesystem?path=%2F&offset=0` returns:
+
+```json
+{"path":"/","parent":"","entries":[
+  {"name":"system","kind":"directory","size":4096,
+   "modified":"2026-01-01T00:00:00Z","mode":"drwxr-xr-x"}
+],"nextOffset":256}
+```
+
+The example is illustrative, not a fabricated device inventory. `parent` is empty
+only at root; `nextOffset` exists only when another page is available. Entries
+have kind `directory`, `file`, `symlink` or `special`. Symlinks are shown but
+never followed, including intermediate path components; open their real target
+directory by its absolute path instead. Every component is opened relative to a
+pinned directory descriptor with no-follow and directory-only flags. File content
+cannot be fetched through this API, including regular files, pipes and devices.
+
+Pages contain at most 256 entries, directories first and name-sorted **within
+each page**. The underlying directory stream determines page membership. This
+bounds memory without recursively scanning or indexing the device. Listings are
+snapshots; external changes between pages may change page membership. Refresh
+from page one after changes. Paging is bounded to 65,536 entries per directory;
+the last page then returns `limitReached:true` and the UI reports that remaining
+entries require a more specific path.
+
+Only GET is supported. Writes and HEAD return 405. Relative paths, dot segments,
+control characters, backslashes and invalid offsets return 400. Missing
+directories return 404, OS permission denial returns 403, non-directory/symlink
+paths return 409 and other listing failures return 500, with bounded JSON errors
+and no raw OS error. Owner authentication, HTTPS and no-store apply as above.
+The browser has no editor, arbitrary download, upload, execute or delete endpoint.
+Transfers remain restricted to the real managed upload directory.
 
 ## API
 

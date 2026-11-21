@@ -38,6 +38,7 @@ type Metadata struct {
 	Modified time.Time `json:"modified"`
 }
 type View struct {
+	Directory string     `json:"directory"`
 	Files     []Metadata `json:"files"`
 	Used      int64      `json:"usedBytes"`
 	Available int64      `json:"availableBytes"`
@@ -144,7 +145,7 @@ func (s *Store) usableBytes() (int64, error) {
 	return reserveCapacity(int64(st.Bavail)*int64(st.Bsize), int64(st.Bfree)*int64(st.Bsize), s.reserve), nil
 }
 func (s *Store) view() (View, error) {
-	v := View{Files: []Metadata{}, Budget: s.budget, MaxFile: s.maxFile, MaxFiles: MaxFiles}
+	v := View{Directory: s.path, Files: []Metadata{}, Budget: s.budget, MaxFile: s.maxFile, MaxFiles: MaxFiles}
 	entries, err := s.entries()
 	if err != nil {
 		return v, err
