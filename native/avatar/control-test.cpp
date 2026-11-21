@@ -1,0 +1,66 @@
+#include <algorithm>
+#include <cassert>
+#include <cerrno>
+#include <cstring>
+static double stamp = 1;
+static double now() { return stamp; }
+#include "control.hpp"
+#include "turntable.hpp"
+int main() {
+  RendererControl c(true);
+  c.parse("S 1 0 1 1 0.7 0 90 0 1 0 0");
+  assert(c.idle && !c.blink && c.animation && c.mouth(0) == .7f);
+  c.parse("S 0 1 0 3 0.5 0.8 -45 0 1 0 0");
+  assert(c.yaw == -45);
+  assert(!c.idle && c.blink && !c.animation && c.mouth(0) == .8f);
+  stamp += .3;
+  assert(c.mouth(0) == 0);
+  for (const char *s : {"S 1 1 1 9 0 0 0 0 1 0 0", "S 1 1 1 1 nan 0 0 0 1 0 0",
+                        "S 1 1 1 1 0 2 0 0 1 0 0", "S 1 1 1 1 0 0 0 extra 0 1 0 0"}) {
+    c.parse(s);
+    assert(c.mode == 3);
+  }
+  for (const char *bad :
+       {"S 1 1 1 0 0 0 nan 0 1 0 0", "S 1 1 1 0 0 0 inf 0 1 0 0", "S 1 1 1 0 0 0 181 0 1 0 0"}) {
+    c.parse(bad);
+    assert(c.yaw == -45);
+  }
+  for (float angle : {-180.f, -90.f, 0.f, 90.f, 180.f}) {
+    auto m = avatarYaw(angle, 2, 3);
+    auto x = m[0] * 2 + m[8] * 3 + m[12], z = m[2] * 2 + m[10] * 3 + m[14];
+    assert(std::abs(x - 2) < 1e-5f && std::abs(z - 3) < 1e-5f);
+  }
+  auto side = avatarYaw(90, 2, 3);
+  assert(std::abs((side[0] * 2 + side[8] * 4 + side[12]) - 3) < 1e-5f);
+  assert(std::abs((side[2] * 2 + side[10] * 4 + side[14]) - 3) < 1e-5f);
+  c.parse("S 1 1 1 0 0 0 40 -70 2.5 0 0");
+  assert(c.pitch == -70 && c.zoom == 2.5f && c.yaw == 40);
+  for(const char *bad:{"S 1 1 1 0 0 0 0 nan 1 0 0","S 1 1 1 0 0 0 0 86 1 0 0","S 1 1 1 0 0 0 0 0 0 0 0","S 1 1 1 0 0 0 0 0 3.1 0 0","S 1 1 1 0 0 0 0 0 0"}){c.parse(bad);assert(c.pitch == -70 && c.zoom == 2.5f && c.yaw == 40);}
+  for(float yaw:{-180.f,0.f,90.f})for(float pitch:{-85.f,0.f,85.f}) {
+   auto m=avatarOrbit(yaw,pitch,2,5,3);
+   for(int r=0;r<3;++r){float v=m[r]*2+m[4+r]*5+m[8+r]*3+m[12+r];assert(std::abs(v-(r==0?2:r==1?5:3))<1e-5f);}
+   auto z=avatarZoom(m,2);assert(z[0]==m[0]*2 && z[1]==m[1]*2 && z[2]==m[2]);
+  }
+  auto tilt=avatarOrbit(0,90,0,0,0);
+  assert(std::abs(tilt[6]-1)<1e-5f && std::abs(tilt[9]+1)<1e-5f);
+  c.parse("S 1 1 1 0 0 0 40 -70 2.5 0.25 -0.5");
+  assert(c.panX==.25f && c.panY==-.5f);
+  for(const char *bad:{"S 1 1 1 0 0 0 0 0 1 nan 0","S 1 1 1 0 0 0 0 0 1 0 inf","S 1 1 1 0 0 0 0 0 1 1.1 0","S 1 1 1 0 0 0 0 0 1 0 -1.1","S 1 1 1 0 0 0 0 0 1"}) {c.parse(bad);assert(c.panX==.25f && c.panY==-.5f);}
+  auto m=avatarOrbit(35,20,2,5,3);
+  auto moved=avatarPan(avatarZoom(m,2),.25f,-.5f);
+  assert(std::abs(moved[12]-(2*m[12]+.5f))<1e-5f);
+  assert(std::abs(moved[13]-(2*m[13]+1))<1e-5f);
+  assert(moved[2]==m[2] && moved[0]==2*m[0]);
+  int fds[2];
+  assert(pipe(fds) == 0);
+  assert(dup2(fds[0], STDIN_FILENO) >= 0);
+  close(fds[0]);
+  const char *s = "S 0 0 0 1 0.3 0 0 0 1 0 0\n";
+  assert(write(fds[1], s, strlen(s)) > 0);
+  c.read();
+  assert(c.mode == 1 && c.mouth(0) == .3f && !c.ended);
+  close(fds[1]);
+  c.read();
+  assert(c.ended);
+  puts("CONTROL_TEST=PASS");
+}

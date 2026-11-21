@@ -1,0 +1,86 @@
+#pragma once
+// Bounded scalar-only stdin protocol for the versioned local avatar control.
+#include <cerrno>
+#include <cmath>
+#include <cstdio>
+#include <poll.h>
+#include <string>
+#include <unistd.h>
+struct RendererControl {
+  bool enabled = false, idle = true, blink = true, animation = true,
+       ended = false;
+  int mode = 0;
+  float fixed = .5f, level = 0, yaw = 0, pitch = 0, zoom = 1, panX = 0, panY = 0;
+  double updated = 0;
+  std::string line;
+  explicit RendererControl(bool on) : enabled(on) {}
+  void parse(const std::string &s) {
+    int i, b, a, m;
+    float f, l, y, p, z, x, t;
+    char extra;
+    if (sscanf(s.c_str(), "S %d %d %d %d %f %f %f %f %f %f %f %c", &i, &b, &a, &m, &f, &l,
+               &y, &p, &z, &x, &t, &extra) != 11 ||
+        i < 0 || i > 1 || b < 0 || b > 1 || a < 0 || a > 1 || m < 0 || m > 3 ||
+        !std::isfinite(f) || !std::isfinite(l) || f < 0 || f > 1 || l < 0 ||
+        l > 1 || !std::isfinite(y) || y < -180 || y > 180 || !std::isfinite(p) || p < -85 || p > 85 ||
+        !std::isfinite(z) || z < .5f || z > 3 || !std::isfinite(x) || x < -1 || x > 1 ||
+ !std::isfinite(t) || t < -1 || t > 1)
+      return;
+    idle = i;
+    blink = b;
+    animation = a;
+    mode = m;
+    fixed = f;
+    level = l;
+    yaw = y;
+    pitch = p;
+    zoom = z;
+ panX = x; panY = t;
+    updated = now();
+  }
+  void read() {
+    if (!enabled)
+      return;
+    // Frame-budget bound even when input is flooded or malformed.
+    for (int n = 0; n < 2048; ++n) {
+      pollfd p{STDIN_FILENO, POLLIN, 0};
+      if (poll(&p, 1, 0) <= 0)
+        break;
+      if (p.revents & (POLLERR | POLLNVAL)) {
+        ended = true;
+        break;
+      }
+      if (!(p.revents & (POLLIN | POLLHUP)))
+        break;
+      char c;
+      ssize_t k = ::read(STDIN_FILENO, &c, 1);
+      if (k == 0) {
+        ended = true;
+        break;
+      }
+      if (k < 0) {
+        if (errno != EINTR && errno != EAGAIN)
+          ended = true;
+        break;
+      }
+      if (c == '\n') {
+        parse(line);
+        line.clear();
+      } else if (line.size() < 120)
+        line += c;
+      else {
+        ended = true;
+        break;
+      }
+    }
+  }
+  float mouth(double t) const {
+    if (mode == 1)
+      return fixed;
+    if (mode == 2)
+      return float(.5 + .5 * std::sin(t * 8));
+    if (mode == 3 && now() - updated < .2)
+      return level;
+    return 0;
+  }
+};
