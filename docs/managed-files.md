@@ -177,3 +177,8 @@ Uploading pictures does not add a photo provider, uploading VRM/VRMA does not
 import an avatar, and tones retain their existing validated workflow. Neither API
 adds a renderer, avatar engine, tone importer, network-drive protocol or agent
 file command.
+
+## Optional standard-protocol adapter
+
+See [managed WebDAV subset](managed-webdav.md) for the off-by-default protocol,
+configuration, client restrictions and interoperability verification status.

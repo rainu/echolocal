@@ -48,6 +48,7 @@ var nodeSettingsExclusions = map[string]string{
 	"rtsp/audio":           "Exposes microphone audio through a persistent camera server; local administration only.",
 	"access/adb":           "Authority, transport security or credential configuration; local administration only.",
 	"access/adopted":       "Authority, transport security or credential configuration; local administration only.",
+	"access/webdav":        "Enables a persistent file protocol; owner administration only.",
 	"access/password":      "Authority, transport security or credential configuration; local administration only.",
 	"bluetooth/proxy":      "Changes network proxy exposure; local administration only.",
 	"bluetooth/scan":       "Changes network scanning; local administration only.",

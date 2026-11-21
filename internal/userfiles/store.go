@@ -4,6 +4,7 @@
 package userfiles
 
 import (
+	"context"
 	"errors"
 	"io"
 	"io/fs"
@@ -229,6 +230,15 @@ func (s *Store) Delete(name string) error {
 	return s.root.Remove(name)
 }
 func (s *Store) Upload(name string, size int64, body io.Reader) (Metadata, error) {
+	return s.UploadContext(context.Background(), name, size, body)
+}
+
+func (s *Store) UploadContext(ctx context.Context, name string, size int64, body io.Reader) (Metadata, error) {
+	body = contextReader{ctx, body}
+	if err := ctx.Err(); err != nil {
+		return Metadata{}, err
+	}
+
 	if !ValidName(name) {
 		return Metadata{}, ErrName
 	}
@@ -298,6 +308,9 @@ func (s *Store) Upload(name string, size int64, body io.Reader) (Metadata, error
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Metadata{}, err
+	}
 	free, err := s.usableBytes()
 	if err != nil {
 		return Metadata{}, err
@@ -317,4 +330,20 @@ func (s *Store) Upload(name string, size int64, body io.Reader) (Metadata, error
 		return Metadata{}, err
 	}
 	return Metadata{name, st.Size(), st.ModTime().UTC()}, nil
+}
+
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := r.r.Read(p)
+	if e := r.ctx.Err(); e != nil {
+		return n, e
+	}
+	return n, err
 }

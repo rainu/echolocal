@@ -429,6 +429,8 @@ github.com/rainu/libcountertop v0.0.0-20261121221959-81d94bd0b743 h1:Zs0fRZ3Pcr7
 github.com/rainu/libcountertop v0.0.0-20261121221959-81d94bd0b743/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
 github.com/rainu/libcountertop v0.0.0-20261121224107-44bf067dff6c h1:CQKo2Mb7zVj1n5CHZLAct333qnUa1x4vGoHHDkwtMe8=
 github.com/rainu/libcountertop v0.0.0-20261121224107-44bf067dff6c/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
+github.com/rainu/libcountertop v0.0.0-20261121232438-f17279c36b9b h1:ULnhibywDkOYRAwEJoKnXJRKO7EuxplcERapvVvntEE=
+github.com/rainu/libcountertop v0.0.0-20261121232438-f17279c36b9b/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=

@@ -125,6 +125,7 @@ Credential/authority names are deliberately not enumerated in agent-facing docum
 | Changes remote call authorization; local administration only. | 1 |
 | Changes unattended call acceptance; local administration only. | 1 |
 | Changes unattended camera acceptance; local administration only. | 1 |
+| Enables a persistent file protocol; owner administration only. | 1 |
 | Enables a persistent camera network server; local administration only. | 1 |
 | Exposes microphone audio through a persistent camera server; local administration only. | 1 |
 | Selects dashboard identity; local administration only. | 1 |

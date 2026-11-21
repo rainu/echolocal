@@ -40,6 +40,7 @@ var get = sync.OnceValue(func() *webapi.API {
 		"call":       call.Get().Handler(discovery.Get().Peers),
 		"broadcast":  broadcast.Get().WebHandler(),
 		"files":      files.Get().Handler(),
+		"webdav":     files.Get().DAVHandler(),
 		"filesystem": devicefs.Handler(),
 		"voices":     voicematch.Get().Handler(householdPeople),
 	}
