@@ -14,7 +14,8 @@ import (
 )
 
 // ConnectionSettings is private on-device configuration, never a diagnostic,
-// Node export, or remotely writable API. Token is a shared Gateway credential,
+// Node export, or agent-writable API. Owner web configuration uses protected
+// write-only credential updates. Token is a shared Gateway credential,
 // NEVER a role-scoped device token returned by a connection handshake.
 type ConnectionSettings struct {
 	URL      string `json:"url"`

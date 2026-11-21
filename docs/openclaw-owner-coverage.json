@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "availability": "Panel boards with !board_biscuit; unavailable on speaker-only builds",
+  "stores": {
+    "ConnectionSettings": {
+      "url": {
+        "device": "Connection",
+        "web": "Connection",
+        "api": "PUT /connection"
+      },
+      "token": {
+        "device": "Connection password input",
+        "web": "Write-only replacement / explicit clear",
+        "api": "PUT /connection; never returned"
+      },
+      "uiName": {
+        "device": "Connection",
+        "web": "Connection",
+        "api": "PUT /connection"
+      },
+      "nodeName": {
+        "device": "Connection",
+        "web": "Connection",
+        "api": "PUT /connection"
+      }
+    },
+    "Slot": {
+      "ending": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "deviceContextTemplate": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "greetingPrompt": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "progressTone": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "startTone": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "endTone": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "provider": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "model": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "openclaw": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "agent": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "agentLabel": {
+        "device": "Derived from shared metadata picker",
+        "web": "Derived; not trusted from browser",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "context": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "contextLabel": {
+        "device": "Derived from shared metadata picker",
+        "web": "Derived; not trusted from browser",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "resume": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      },
+      "timeout": {
+        "device": "Assistant / Conversation context",
+        "web": "Assistant 1 / Assistant 2",
+        "api": "GET/PUT /slots/{1|2}"
+      }
+    },
+    "EndSettings": {
+      "phrase": {
+        "device": "End conversation",
+        "web": "Assistant / End conversation",
+        "api": "PUT /slots/{1|2} ending"
+      },
+      "position": {
+        "device": "End conversation",
+        "web": "Assistant / End conversation",
+        "api": "PUT /slots/{1|2} ending"
+      },
+      "timing": {
+        "device": "End conversation",
+        "web": "Assistant / End conversation",
+        "api": "PUT /slots/{1|2} ending"
+      }
+    }
+  },
+  "actions": [
+    "connect",
+    "disconnect",
+    "pair_again",
+    "forget",
+    "clear_events",
+    "stop_talk"
+  ],
+  "operations": {
+    "permissions": {
+      "device": "Connection / Operator and Node permissions",
+      "web": "Permissions",
+      "api": "PUT /permissions/{operator|node}",
+      "dependency": "Gateway approves operator upgrades; local Node groups are separate"
+    },
+    "catalogs": {
+      "device": "Agent / Native Live model / Existing session pickers",
+      "web": "Load choices",
+      "api": "GET /choices/{agents|models|sessions}?slot=1",
+      "dependency": "Connected Talk-authorized Controller UI; model transport/provider filtering shared"
+    },
+    "tones": {
+      "device": "Ready / Connection / End tone preview",
+      "web": "Per-assistant tone pickers and Preview",
+      "api": "POST /preview",
+      "dependency": "Built-in + installed custom catalog; native audition avoids active Talk; web audition returns browser-local audio without device playback"
+    },
+    "prompts": {
+      "device": "Conversation context editor, placeholders and defaults",
+      "web": "Multiline prompt editors, defaults and preview",
+      "api": "POST /preview cue=context; PUT /slots/{1|2}",
+      "dependency": "Shared template validator and live expanded byte budget"
+    },
+    "history": {
+      "device": "Local history / delete one / delete all / end",
+      "web": "Local history",
+      "api": "GET /history; DELETE /history/{generation|0}; POST /actions stop_talk",
+      "dependency": "Bounded volatile local final captions only; no remote transcript fetch"
+    },
+    "wake": {
+      "device": "Assistant / local wake word",
+      "web": "Per-assistant local wake selector",
+      "api": "PUT /wake/{1|2}",
+      "dependency": "Installed local wake model catalog; same writer/voice slots/detector reload"
+    },
+    "registry": {
+      "device": "Existing bound settings",
+      "web": "Existing grouped Settings pages",
+      "api": "GET /settings; GET/PUT /settings/{domain}/{name}",
+      "dependency": "Actual registered build/hardware table; no new Node authority"
+    }
+  },
+  "exceptions": [
+    {
+      "id": "experimental-avatar-lab",
+      "device": "Avatar Lab settings and runtime controls",
+      "web": "temporarily device-only",
+      "api": "temporarily device/CLI-only",
+      "reason": "Narrow owner-approved experimental Avatar Lab exception; reassess before promotion to a supported settings feature. Not an exemption for future avatar settings."
+    }
+  ]
+}

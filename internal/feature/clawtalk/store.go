@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Slot struct {
@@ -84,6 +86,10 @@ func (s *Store) Update(slot int, change func(*Slot)) error {
 	// Materialize missing language-specific defaults on the next successful save.
 	next[slot].Ending = next[slot].Ending.Defaults(say.Chosen())
 	change(&next[slot])
+	next[slot].Ending = next[slot].Ending.Defaults(say.Chosen())
+	if err := ValidateSlot(next[slot]); err != nil {
+		return err
+	}
 	if err := next[slot].Ending.Validate(); err != nil {
 		return err
 	}
@@ -158,3 +164,37 @@ func label(s string) string {
 	}
 	return string(r)
 }
+
+// ValidateSlot is shared by native and owner web saves. Dynamic catalog choices
+// are checked at selection time, not on unrelated edits or future catalog changes.
+func ValidateSlot(v Slot) error {
+	if err := v.Ending.Defaults(say.Chosen()).Validate(); err != nil {
+		return err
+	}
+	if err := openclaw.ValidateDeviceContextTemplate(v.DeviceContextTemplate); err != nil {
+		return err
+	}
+	if err := talk.ValidateGreetingPrompt(v.GreetingPrompt); err != nil {
+		return err
+	}
+	if v.Timeout != 0 && (v.Timeout < 15 || v.Timeout > 900) {
+		return errors.New("talk_timeout_invalid")
+	}
+	for _, text := range []string{v.Agent, v.Context, v.Provider, v.Model, v.AgentLabel, v.ContextLabel, v.ProgressTone, v.StartTone, v.EndTone} {
+		if !utf8.ValidString(text) || len(text) > 1024 {
+			return errors.New("talk_selection_invalid")
+		}
+		for _, r := range text {
+			if unicode.IsControl(r) {
+				return errors.New("talk_selection_invalid")
+			}
+		}
+	}
+	if strings.ContainsAny(v.Agent, ":/\\ \t\r\n") {
+		return errors.New("talk_target_missing")
+	}
+	return nil
+}
+
+// NewStore opens the same private profile store used by the device UI.
+func NewStore(path string) *Store { return load(path) }

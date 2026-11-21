@@ -11,7 +11,6 @@ import (
 	"github.com/ygelfand/echolocal/internal/hardware/mic"
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/openclaw/talk"
-	"github.com/ygelfand/libcountertop/pkg/audio/mix"
 	"github.com/ygelfand/libcountertop/pkg/audio/tone"
 	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 	"log/slog"
@@ -271,17 +270,7 @@ func (d *deviceFeedback) Cue(cue string) {
 	if cue == "progress" {
 		choice = d.progressChoice
 	}
-	var pcm []int16
-	if choice != "" {
-		sound := tones.Get().Sound(schema.Chime(choice), schema.ChimeChirp)
-		if len(sound.Clip) > 0 {
-			pcm = mix.Scale(sound.Clip, tone.Level)
-		} else {
-			pcm = mix.Chime(speaker.Rate, speaker.Channels, tone.Level, sound.Notes...)
-		}
-	} else {
-		pcm = mix.Chime(speaker.Rate, speaker.Channels, tone.Level, SetupNotes(cue)...)
-	}
+	pcm := tonePCM(choice, cue)
 	speaker.Get().Lane(config.StreamFeedback).Play(pcm)
 }
 
