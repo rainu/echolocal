@@ -64,7 +64,7 @@ func newFixture(t *testing.T) *fixture {
 	node := openclaw.NewNode(filepath.Join(f.dir, "node.json"), "test", openclaw.NodeMetadata{Name: "Test Node", Model: "test"})
 	node.AttachNodeAccess(openclaw.NewNodeAccess(filepath.Join(f.dir, "permissions.json")))
 	g := openclaw.NewConnections(filepath.Join(f.dir, "connection.json"), ui, node, "Test UI", "Test Node")
-	f.a = New(Options{Connections: g, Store: clawtalk.NewStore(filepath.Join(f.dir, "slots.json")), Caller: f.calls, Changed: func() { f.changed++ }, Preview: func(string, string) { f.previews++ }})
+	f.a = New(Options{Connections: g, Store: clawtalk.NewStore(filepath.Join(f.dir, "slots.json")), Caller: f.calls, Changed: func() { f.changed++ }, Preview: func(string, string) []byte { f.previews++; return []byte("synthetic WAV") }})
 	w := webapi.New(webapi.Options{Settings: &memory{schema.Frontend{Password: "SYNTHETIC_OWNER_PASSWORD"}}, Registry: &setting.Registry{}, Device: func() webapi.Device { return webapi.Device{Name: "test"} }, Pages: map[string]http.Handler{"openclaw": f.a.Handler()}})
 	f.h = w.Handler()
 	return f
@@ -270,7 +270,7 @@ func TestStrictBodiesPromptPreviewAndLocales(t *testing.T) {
 	f := newFixture(t)
 	requireCode(t, f.request(t, "POST", "/preview", map[string]any{"cue": "context", "template": "Use {{node_id}}"}, true), 200)
 	requireCode(t, f.request(t, "POST", "/preview", map[string]any{"cue": "context", "template": "{{unknown}}"}, true), 422)
-	requireCode(t, f.request(t, "POST", "/preview", map[string]any{"cue": "ready", "choice": "none"}, true), 204)
+	requireCode(t, f.request(t, "POST", "/preview", map[string]any{"cue": "ready", "choice": "none"}, true), 200)
 	requireCode(t, f.request(t, "POST", "/actions", map[string]any{"action": "connect", "unexpected": true}, true), 400)
 	for _, body := range []string{`{"action":"disconnect"}{}`, strings.Repeat("x", 65537)} {
 		r := httptest.NewRequest("POST", "https://device.invalid/api/v1/openclaw/actions", strings.NewReader(body))
@@ -324,8 +324,25 @@ func TestWakeSelectionUsesInjectedSharedCatalogAndWriter(t *testing.T) {
 		t.Fatal("invalid wake persisted")
 	}
 	f.a.o.Busy = func() bool { return true }
-	requireCode(t, f.request(t, "POST", "/preview", map[string]any{"cue": "ready", "choice": "none"}, true), 409)
-	if f.previews != 0 {
-		t.Fatal("preview preempted active Talk")
+	requireCode(t, f.request(t, "POST", "/preview", map[string]any{"cue": "ready", "choice": "none"}, true), 200)
+	if f.previews != 1 {
+		t.Fatal("browser preview incorrectly blocked by active Talk")
+	}
+}
+
+func TestBrowserPreviewReturnsAudioInsteadOfDevicePlayback(t *testing.T) {
+	f := newFixture(t)
+	f.a.o.Busy = func() bool { t.Fatal("browser preview consulted device playback state"); return true }
+	w := f.request(t, "POST", "/preview", map[string]any{"cue": "ready", "choice": ""}, true)
+	requireCode(t, w, 200)
+	var body struct {
+		Audio []byte `json:"audio"`
+	}
+	if json.Unmarshal(w.Body.Bytes(), &body) != nil || string(body.Audio) != "synthetic WAV" || f.previews != 1 {
+		t.Fatal("missing browser audio")
+	}
+	requireCode(t, f.request(t, "POST", "/preview", map[string]any{"cue": "ready", "choice": "../../private"}, true), 400)
+	if f.previews != 1 {
+		t.Fatal("invalid tone rendered")
 	}
 }

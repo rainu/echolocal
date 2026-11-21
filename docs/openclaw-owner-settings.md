@@ -31,7 +31,7 @@ never as a Node command or a control-only/screen session route.
 | New context every time vs resume; existing session vs new context | Conditional Resume / Session | GET /choices/sessions?slot=1&agent=...; PUT slot | Only matching-agent session metadata; no transcript request; agent changes reset stale context |
 | Device context template, supported placeholders, default reset, expanded preview | Multiline context editor | PUT slot; POST /preview cue=context | Shared parser and device expansion; 1536 UTF-8 bytes after expansion; next activation |
 | Greeting prompt and localized default reset | Multiline greeting editor | PUT slot | Shared greeting validator, separate persisted text; next activation |
-| Ready / connection-progress / ending tones; default, none, custom tones; preview | Three independent tone pickers | GET root tones; PUT slot; POST /preview cue=ready/progress/end | Shared catalog and actual audio preview path; active Talk makes preview unavailable |
+| Ready / connection-progress / ending tones; default, none, custom tones; preview | Three independent tone pickers | GET root tones; PUT slot; POST /preview cue=ready/progress/end | Shared catalog and PCM rendering; web audition plays locally in the browser, never on the device |
 | Ending phrase, contains/start/end position, immediate/end-of-turn evaluation | Ending section | PUT slot ending | Shared EndSettings validation/defaults; canonical exact means contains; next activation |
 | Conversation timeout | Assistant timeout | PUT slot timeout | Same private state; 15–900 seconds; default 60; native preset choices offered in web UI |
 | Local final-caption history, delete one/all, end current conversation | Local history | GET /history; DELETE /history/{generation or 0} with confirm=true; POST /actions stop_talk | Same bounded volatile local display cache; no remote history and no persisted transcript |
@@ -80,7 +80,7 @@ the chat application. Owner configuration does not change Gateway configuration.
 - PUT /wake/{1|2} accepts `{value: localModelId}` (empty means off).
 - Unknown fields, oversized/trailing JSON and invalid slots are rejected.
   Validation errors use 422, invalid bodies 400, unavailable catalogs 503, busy
-  preview 409, and unauthenticated requests 401. Errors never echo request values
+  unavailable selection 503, and unauthenticated requests 401. Errors never echo request values
   or raw Gateway/provider/storage payloads. All responses are no-store.
 - Refresh reloads the same source of truth; no separate web settings file exists.
   Profile prompt validation runs before Talk authorization changes or persistence.
@@ -118,3 +118,13 @@ Avatar Lab may remain device/CLI-only while experimental. Its runtime renderer
 and import support do not broaden this exception. Before promoting its settings
 to a supported feature, reassess and implement owner web/API parity, shared
 validation/persistence and tests. No other settings gain an exception by analogy.
+
+### Browser tone audition
+
+`POST /openclaw/preview` with a validated `ready`, `progress`, or `end` cue
+and catalog `choice` returns `{ "audio": "<base64 PCM16 WAV>" }` (HTTP 200).
+The web interface plays this audio in its local browser with native controls;
+there is no device speaker output, microphone capture or Talk interruption.
+The empty choice uses the same cue defaults as the native UI; `none` returns
+short silence. Uploaded tones use the same stored clip and level as device
+feedback. Prompt-context previews retain their existing JSON contract.

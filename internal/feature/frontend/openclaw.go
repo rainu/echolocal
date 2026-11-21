@@ -21,13 +21,7 @@ func addOpenClaw(pages map[string]http.Handler) {
 	pages["openclaw"] = openclawconfig.New(openclawconfig.Options{
 		WakeChoices: assistantconfig.WakeChoices, WakeIDs: assistantconfig.WakeIDs, SaveWake: assistantconfig.SetWakeWord, Busy: m.Busy,
 		Connections: claw.Get().Connections, Store: m.Store, Stop: m.Stop, Changed: shell.Get().Redraw,
-		Preview: func(cue, choice string) {
-			if cue == "progress" {
-				m.PreviewProgressTone(choice)
-			} else {
-				m.PreviewTone(choice, cue == "end")
-			}
-		},
+		Preview: clawtalk.PreviewAudio,
 		History: m.ConfigurationHistory, DeleteHistory: m.DeleteConfigurationHistory,
 	}).Handler()
 }

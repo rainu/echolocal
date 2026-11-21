@@ -144,7 +144,7 @@
       "device": "Ready / Connection / End tone preview",
       "web": "Per-assistant tone pickers and Preview",
       "api": "POST /preview",
-      "dependency": "Built-in + installed custom catalog; no preview during active Talk"
+      "dependency": "Built-in + installed custom catalog; native audition avoids active Talk; web audition returns browser-local audio without device playback"
     },
     "prompts": {
       "device": "Conversation context editor, placeholders and defaults",

@@ -29,7 +29,7 @@ type Options struct {
 	Store         *clawtalk.Store
 	Stop          func() bool
 	Changed       func()
-	Preview       func(cue, choice string)
+	Preview       func(cue, choice string) []byte
 	History       func() []talk.Conversation
 	DeleteHistory func(uint64)
 }
@@ -436,14 +436,12 @@ func (a *API) preview(w http.ResponseWriter, r *http.Request) {
 		failure(w, errors.New("bad_request"), 400)
 		return
 	}
-	if a.o.Busy != nil && a.o.Busy() {
-		failure(w, errors.New("busy"), 409)
+	// Browser audition returns audio only: it must never enqueue device output.
+	if a.o.Preview == nil {
+		failure(w, errors.New("selection_unavailable"), 503)
 		return
 	}
-	if a.o.Preview != nil {
-		a.o.Preview(b.Cue, b.Choice)
-	}
-	w.WriteHeader(204)
+	output(w, map[string]any{"audio": a.o.Preview(b.Cue, b.Choice)})
 }
 func (a *API) history(w http.ResponseWriter, r *http.Request) {
 	out := []talk.Conversation{}
