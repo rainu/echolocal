@@ -6,6 +6,9 @@ regular files (including system/configuration files), and select the upload
 destination directory and filename. Normal symlinks resolve to real targets;
 the returned path and breadcrumbs show the canonical directory.
 
+File sizes use appropriate B/KiB/MiB/GiB units; small scripts are not rounded
+to zero MiB.
+
 **Managed assets** retains the bounded asset/consumer workflow below. It is not
 the boundary of the normal filesystem browser.
 
@@ -61,8 +64,11 @@ the open descriptor. Downloads open nonblocking and verify a regular file before
 serving. Listings read the filesystem every time; no recursive scan, content
 index or separately maintained inventory.
 
-Pages have at most 256 entries, directories first and name-sorted within each
-page; directory-stream order determines membership. `nextOffset` advertises the
+Pages have at most 256 entries. The complete bounded directory is sorted before
+paging: directories (including symlinks to directories) first, then other entries,
+each group alphabetically sorted case-insensitively with an exact-name tie-break.
+Lightweight names/types are retained for sorting; full metadata is loaded only
+for the current page. `nextOffset` advertises the
 next page. Refresh from page one after external changes. Paging is bounded to
 65,536 entries/directory; `limitReached:true` reports that bound.
 

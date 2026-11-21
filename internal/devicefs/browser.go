@@ -110,36 +110,79 @@ func handler(root string) http.Handler {
 			return
 		}
 		defer d.Close()
-		for skipped := 0; skipped < offset; skipped += pageSize {
-			entries, e := d.Readdir(pageSize)
-			if e != nil && e != io.EOF {
-				directoryFailure(w, e)
-				return
-			}
-			if len(entries) < pageSize {
-				empty := Listing{Path: name, Parent: parent(name), Entries: []Entry{}}
-				fillCapacity(d, &empty)
-				respond(w, 200, empty)
-				return
-			}
-		}
-		infos, err := d.Readdir(pageSize + 1)
+		// Sort the complete bounded directory before paging. ReadDir retains
+		// lightweight names/types; stat metadata is loaded only for this page.
+		entries, err := d.ReadDir(maxOffset + pageSize + 1)
 		if err != nil && err != io.EOF {
 			directoryFailure(w, err)
 			return
 		}
 		listing := Listing{Path: name, Parent: parent(name), Entries: []Entry{}}
 		fillCapacity(d, &listing)
-		if len(infos) > pageSize {
-			infos = infos[:pageSize]
-			next := offset + pageSize
-			if next > maxOffset {
-				listing.LimitReached = true
-			} else {
-				listing.NextOffset = &next
-			}
+		if len(entries) > maxOffset+pageSize {
+			entries = entries[:maxOffset+pageSize]
+			listing.LimitReached = true
 		}
-		for _, info := range infos {
+		type item struct {
+			entry                       fs.DirEntry
+			folder                      bool
+			key, targetKind, targetPath string
+		}
+		ordered := make([]item, 0, len(entries))
+		for _, entry := range entries {
+			if r.Context().Err() != nil {
+				return
+			}
+			v := item{entry: entry, folder: entry.IsDir(), key: strings.ToLower(entry.Name())}
+			if entry.Type()&os.ModeSymlink != 0 {
+				target, e := resolve(root, path.Join(name, entry.Name()))
+				if e == nil {
+					st, e := os.Lstat(filepath.Join(root, target))
+					if e == nil && (st.IsDir() || st.Mode().IsRegular()) {
+						v.targetPath = target
+						if st.IsDir() {
+							v.targetKind = "directory"
+							v.folder = true
+						} else {
+							v.targetKind = "file"
+						}
+					}
+				}
+			}
+			ordered = append(ordered, v)
+		}
+		slices.SortFunc(ordered, func(a, b item) int {
+			if a.folder != b.folder {
+				if a.folder {
+					return -1
+				}
+				return 1
+			}
+			if c := strings.Compare(a.key, b.key); c != 0 {
+				return c
+			}
+			return strings.Compare(a.entry.Name(), b.entry.Name())
+		})
+		metadataRoot, err := os.OpenRoot("/proc/self/fd/" + strconv.FormatUint(uint64(d.Fd()), 10))
+		if err != nil {
+			directoryFailure(w, err)
+			return
+		}
+		defer metadataRoot.Close()
+		end := min(offset+pageSize, len(ordered))
+		if end < len(ordered) {
+			next := end
+			listing.NextOffset = &next
+		}
+		for _, v := range ordered[min(offset, len(ordered)):end] {
+			info, e := metadataRoot.Lstat(v.entry.Name())
+			if errors.Is(e, fs.ErrNotExist) {
+				continue
+			} // externally removed
+			if e != nil {
+				directoryFailure(w, e)
+				return
+			}
 			kind := "special"
 			switch {
 			case info.Mode()&os.ModeSymlink != 0:
@@ -149,33 +192,12 @@ func handler(root string) http.Handler {
 			case info.Mode().IsRegular():
 				kind = "file"
 			}
-			entry := Entry{Name: info.Name(), Kind: kind, Size: info.Size(), Modified: info.ModTime().UTC(), Mode: info.Mode().String()}
-			if kind == "symlink" {
-				target, e := resolve(root, path.Join(name, info.Name()))
-				if e == nil {
-					st, e := os.Lstat(filepath.Join(root, target))
-					if e == nil && (st.IsDir() || st.Mode().IsRegular()) {
-						entry.TargetPath = target
-						if st.IsDir() {
-							entry.TargetKind = "directory"
-						} else {
-							entry.TargetKind = "file"
-						}
-					}
-				}
-			}
-			listing.Entries = append(listing.Entries, entry)
+			listing.Entries = append(listing.Entries, Entry{
+				Name: info.Name(), Kind: kind, Size: info.Size(),
+				Modified: info.ModTime().UTC(), Mode: info.Mode().String(),
+				TargetKind: v.targetKind, TargetPath: v.targetPath,
+			})
 		}
-		// Sort each bounded page; page order follows the underlying directory stream.
-		slices.SortFunc(listing.Entries, func(a, b Entry) int {
-			if (a.Kind == "directory") != (b.Kind == "directory") {
-				if a.Kind == "directory" {
-					return -1
-				}
-				return 1
-			}
-			return strings.Compare(a.Name, b.Name)
-		})
 		respond(w, 200, listing)
 	})
 }

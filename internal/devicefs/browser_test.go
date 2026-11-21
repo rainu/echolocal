@@ -170,3 +170,38 @@ func TestOwnerOnlyMount(t *testing.T) {
 		}
 	}
 }
+
+func TestGlobalDirectoriesFirstAlphabeticalAcrossPages(t *testing.T) {
+	root := t.TempDir()
+	// Deliberately create files before directories and in reverse name order.
+	for i := 299; i >= 0; i-- {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("item-%03d", i)), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"z-file.txt", "apple.txt", "APPLE.txt", "A-file.txt"} {
+		os.WriteFile(filepath.Join(root, name), nil, 0600)
+	}
+	for _, name := range []string{"Zulu", "Beta", "alpha"} {
+		os.Mkdir(filepath.Join(root, name), 0700)
+	}
+	os.Symlink("Zulu", filepath.Join(root, "aardvark-link"))
+	h := handler(root)
+	first := decode(t, request(h, "GET", "/"))
+	expected := []string{"aardvark-link", "alpha", "Beta", "Zulu", "A-file.txt", "APPLE.txt", "apple.txt", "item-000"}
+	for i, name := range expected {
+		if first.Entries[i].Name != name {
+			t.Fatalf("position %d: got %q want %q", i, first.Entries[i].Name, name)
+		}
+	}
+	if len(first.Entries) != 256 || first.Entries[255].Name != "item-248" || first.NextOffset == nil || *first.NextOffset != 256 {
+		t.Fatal("incorrect globally sorted first page")
+	}
+	if first.Entries[0].TargetKind != "directory" {
+		t.Fatal("directory alias not classified as folder")
+	}
+	second := decode(t, request(h, "GET", "/?offset=256"))
+	if len(second.Entries) != 52 || second.Entries[0].Name != "item-249" || second.Entries[51].Name != "z-file.txt" || second.NextOffset != nil {
+		t.Fatal("second page is not the continuation of the globally sorted directory")
+	}
+}
