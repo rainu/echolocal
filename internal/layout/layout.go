@@ -7,15 +7,17 @@ import (
 )
 
 const (
-	Dir      = "/system/app/echod"
-	Binary   = Dir + "/echod"
-	Surface  = Dir + "/echolocal-surface"
-	Camera   = Dir + "/echolocal-camera"
-	CamShim  = Dir + "/libecholocal-camshim.so"
-	StateDir = "/data/misc/echolocal"
-	KeyPath  = StateDir + "/psk"
-	DialPath = StateDir + "/dial-target"
-	NamePath = StateDir + "/name"
+	Dir            = "/system/app/echod"
+	Binary         = Dir + "/echod"
+	Surface        = Dir + "/echolocal-surface"
+	AvatarRenderer = Dir + "/echolocal-avatar"
+	AvatarDir      = StateDir + "/avatar"
+	Camera         = Dir + "/echolocal-camera"
+	CamShim        = Dir + "/libecholocal-camshim.so"
+	StateDir       = "/data/misc/echolocal"
+	KeyPath        = StateDir + "/psk"
+	DialPath       = StateDir + "/dial-target"
+	NamePath       = StateDir + "/name"
 
 	CrashPath = StateDir + "/crash"
 

@@ -55,7 +55,20 @@ func (s *Settings) Name() string { return "settings" }
 
 func Open() { shell.Get().Push(root()) }
 
-var pages = map[string]func() *sharedshell.Page{"settings": root, "camera": cameraPage, "openclaw": openclawPage}
+var pages = map[string]func() sharedshell.View{
+	"settings": func() sharedshell.View { return root() },
+	"camera":   func() sharedshell.View { return cameraPage() },
+	"openclaw": func() sharedshell.View { return openclawPage() },
+}
+
+var avatarPage func() sharedshell.View
+
+// RegisterAvatar is called by the Athena GUI during device initialization.
+func RegisterAvatar(page func() sharedshell.View) {
+	avatarPage = page
+	pages["avatar"] = page
+	pages["vrm-test"] = page
+}
 
 func OpenPage(name string) bool {
 	page, ok := pages[name]

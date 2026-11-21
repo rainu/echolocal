@@ -113,7 +113,7 @@ build-echolocal: ## Build the host CLI into ./bin
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/echolocal ./cmd/echolocal
 
 .PHONY: build-echod
-build-echod: stage-airplay stage-pryon $(if $(filter $(BOARD),$(PART_BOARDS)),stage-speech stage-parts) ##Cross-compile echod for the Echo Dot (DOT_ARCH=arm64 for a Fire OS 5 kernel; TAGS=noasm for the portable dot; PACK=bin/upx-5.3.0/build/upx to compress it)
+build-echod: $(if $(filter athena,$(BOARD)),stage-avatar) stage-airplay stage-pryon $(if $(filter $(BOARD),$(PART_BOARDS)),stage-speech stage-parts) ##Cross-compile echod for the Echo Dot (DOT_ARCH=arm64 for a Fire OS 5 kernel; TAGS=noasm for the portable dot; PACK=bin/upx-5.3.0/build/upx to compress it)
 	@mkdir -p $(BUILD_DIR)
 	$(DEVICE_ENV) go build $(DEVICE_TAGS) -ldflags "$(DEVICE_LDFLAGS)" -o $(DEVICE_BIN) ./cmd/echod
 	$(if $(PACK),$(PACK) -q $(DEVICE_BIN))
@@ -404,3 +404,16 @@ clean: ## Remove build artifacts
 .PHONY: help
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+##@ Avatar
+.PHONY: build-avatar stage-avatar test-avatar
+build-avatar: ## Build the Athena/API-28 native avatar helper
+	$(MAKE) -C native/avatar NDK="$(NDK)" NDK_HOST="$(NDK_HOST)" OUT="$(abspath $(BUILD_DIR))/avatar"
+stage-avatar: build-avatar ## Include helper and licenses in the Athena daemon payload
+	@mkdir -p $(PARTS_DIR)
+	cp $(BUILD_DIR)/avatar/echolocal-avatar $(PARTS_DIR)/echolocal-avatar
+	cp native/avatar/LICENSE $(PARTS_DIR)/echolocal-avatar.LICENSE
+	cp native/avatar/THIRD_PARTY.md $(PARTS_DIR)/echolocal-avatar.THIRD_PARTY.md
+test-avatar: ## Run native protocol and Go lifecycle/asset checks
+	$(MAKE) -C native/avatar host-test
+	go test -race ./internal/avatar
