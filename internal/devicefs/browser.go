@@ -1,4 +1,4 @@
-// Package devicefs exposes real on-device directory metadata, never file contents.
+// Package devicefs provides owner-only real filesystem browsing and transfers.
 // It must only be mounted in the owner-authenticated HTTPS API.
 package devicefs
 
@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -22,38 +24,36 @@ const pageSize = 256
 const maxOffset = 65536 - pageSize
 
 type Entry struct {
-	Name     string    `json:"name"`
-	Kind     string    `json:"kind"`
-	Size     int64     `json:"size"`
-	Modified time.Time `json:"modified"`
-	Mode     string    `json:"mode"`
+	Name       string    `json:"name"`
+	Kind       string    `json:"kind"`
+	Size       int64     `json:"size"`
+	Modified   time.Time `json:"modified"`
+	Mode       string    `json:"mode"`
+	TargetKind string    `json:"targetKind,omitempty"`
+	TargetPath string    `json:"targetPath,omitempty"`
 }
 type Listing struct {
-	LimitReached bool    `json:"limitReached,omitempty"`
-	Path         string  `json:"path"`
-	Parent       string  `json:"parent"`
-	Entries      []Entry `json:"entries"`
-	NextOffset   *int    `json:"nextOffset,omitempty"`
+	AvailableBytes int64   `json:"availableBytes"`
+	MaxUploadBytes int64   `json:"maxUploadBytes"`
+	ReadOnly       bool    `json:"readOnly"`
+	CapacityKnown  bool    `json:"capacityKnown"`
+	LimitReached   bool    `json:"limitReached,omitempty"`
+	Path           string  `json:"path"`
+	Parent         string  `json:"parent"`
+	Entries        []Entry `json:"entries"`
+	NextOffset     *int    `json:"nextOffset,omitempty"`
 }
 
-// Handler lists the actual process filesystem starting at /. There is no
-// synthetic root, content reader, archive, upload, delete or execute operation.
+// Handler browses the actual filesystem and streams owner-authorized transfers.
+// Uploads are create-only; no remount, overwrite, delete or execute operation.
 func Handler() http.Handler { return handler("/") }
 
 // handler takes a trusted root only for isolated fixture tests, never from HTTP.
 func handler(root string) http.Handler {
+	var uploads sync.Mutex
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		if r.Method != http.MethodGet {
-			w.Header().Set("Allow", "GET")
-			failure(w, 405, "method_not_allowed")
-			return
-		}
-		if r.URL.Path != "" && r.URL.Path != "/" {
-			failure(w, 404, "not_found")
-			return
-		}
 		query := r.URL.Query()
 		name := query.Get("path")
 		if name == "" {
@@ -76,6 +76,25 @@ func handler(root string) http.Handler {
 			}
 		}
 		name = path.Clean(name)
+		if r.URL.Path == "/file" {
+			serveFile(w, r, root, name, &uploads)
+			return
+		}
+		if r.URL.Path != "" && r.URL.Path != "/" {
+			failure(w, 404, "not_found")
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			failure(w, 405, "method_not_allowed")
+			return
+		}
+		resolved, err := resolve(root, name)
+		if err != nil {
+			directoryFailure(w, err)
+			return
+		}
+		name = resolved
 		offset := 0
 		if raw := query.Get("offset"); raw != "" {
 			var err error
@@ -98,7 +117,9 @@ func handler(root string) http.Handler {
 				return
 			}
 			if len(entries) < pageSize {
-				respond(w, 200, Listing{Path: name, Parent: parent(name), Entries: []Entry{}})
+				empty := Listing{Path: name, Parent: parent(name), Entries: []Entry{}}
+				fillCapacity(d, &empty)
+				respond(w, 200, empty)
 				return
 			}
 		}
@@ -108,6 +129,7 @@ func handler(root string) http.Handler {
 			return
 		}
 		listing := Listing{Path: name, Parent: parent(name), Entries: []Entry{}}
+		fillCapacity(d, &listing)
 		if len(infos) > pageSize {
 			infos = infos[:pageSize]
 			next := offset + pageSize
@@ -127,7 +149,22 @@ func handler(root string) http.Handler {
 			case info.Mode().IsRegular():
 				kind = "file"
 			}
-			listing.Entries = append(listing.Entries, Entry{Name: info.Name(), Kind: kind, Size: info.Size(), Modified: info.ModTime().UTC(), Mode: info.Mode().String()})
+			entry := Entry{Name: info.Name(), Kind: kind, Size: info.Size(), Modified: info.ModTime().UTC(), Mode: info.Mode().String()}
+			if kind == "symlink" {
+				target, e := resolve(root, path.Join(name, info.Name()))
+				if e == nil {
+					st, e := os.Lstat(filepath.Join(root, target))
+					if e == nil && (st.IsDir() || st.Mode().IsRegular()) {
+						entry.TargetPath = target
+						if st.IsDir() {
+							entry.TargetKind = "directory"
+						} else {
+							entry.TargetKind = "file"
+						}
+					}
+				}
+			}
+			listing.Entries = append(listing.Entries, entry)
 		}
 		// Sort each bounded page; page order follows the underlying directory stream.
 		slices.SortFunc(listing.Entries, func(a, b Entry) int {
@@ -171,10 +208,16 @@ func openDirectory(root, name string) (*os.File, error) {
 }
 func directoryFailure(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, syscall.EROFS):
+		failure(w, 403, "read_only_filesystem")
 	case errors.Is(err, fs.ErrPermission):
 		failure(w, 403, "permission_denied")
 	case errors.Is(err, fs.ErrNotExist):
 		failure(w, 404, "not_found")
+	case errors.Is(err, errOutside):
+		failure(w, 403, "outside_root")
+	case errors.Is(err, syscall.ENAMETOOLONG):
+		failure(w, 400, "invalid_path")
 	case errors.Is(err, syscall.ENOTDIR), errors.Is(err, syscall.ELOOP):
 		failure(w, 409, "not_directory")
 	default:
@@ -188,4 +231,25 @@ func respond(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+// resolve follows normal filesystem symlinks, then maps the canonical path into
+// the trusted root. Production root is /. Tests use an isolated fixture root.
+// Subsequent opens pin each canonical component with O_NOFOLLOW, so a symlink
+// replacement after resolution cannot redirect the descriptor.
+var errOutside = errors.New("outside_root")
+
+func resolve(root, name string) (string, error) {
+	real, err := filepath.EvalSymlinks(filepath.Join(root, name))
+	if err != nil {
+		return "", err
+	}
+	relative, err := filepath.Rel(root, real)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, "../") {
+		return "", errOutside
+	}
+	if relative == "." {
+		return "/", nil
+	}
+	return "/" + filepath.ToSlash(relative), nil
 }

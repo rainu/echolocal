@@ -70,7 +70,7 @@ func TestRealMetadataAndExternalChanges(t *testing.T) {
 		t.Fatal("stale or virtual inventory")
 	}
 }
-func TestNoContentWritesOrSymlinkTraversal(t *testing.T) {
+func TestListingsDoNotReadFilesOrWriteAndResolveDirectoryAliases(t *testing.T) {
 	root := t.TempDir()
 	os.Mkdir(filepath.Join(root, "dir"), 0700)
 	os.WriteFile(filepath.Join(root, "dir", "secret"), []byte("fixture"), 0600)
@@ -78,7 +78,11 @@ func TestNoContentWritesOrSymlinkTraversal(t *testing.T) {
 	os.Symlink(t.TempDir(), filepath.Join(root, "external-link"))
 	syscall.Mkfifo(filepath.Join(root, "pipe"), 0600)
 	h := handler(root)
-	for _, name := range []string{"/dir/secret", "/internal-link", "/internal-link/child", "/external-link", "/pipe"} {
+	v := decode(t, request(h, "GET", "/?path=/internal-link"))
+	if v.Path != "/dir" || len(v.Entries) != 1 {
+		t.Fatal("alias did not navigate to its real directory", v)
+	}
+	for _, name := range []string{"/dir/secret", "/internal-link/child", "/external-link", "/pipe"} {
 		w := request(h, "GET", "/?path="+url.QueryEscape(name))
 		if w.Code < 400 {
 			t.Errorf("opened %q: %d", name, w.Code)
