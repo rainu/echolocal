@@ -41,6 +41,7 @@ var get = sync.OnceValue(func() *webapi.API {
 	}
 	input := &textentry.Controller{}
 	addDesktop(pages, input)
+	addOpenClaw(pages)
 	a := webapi.New(webapi.Options{
 		Settings: config.FrontendSection,
 		Registry: &component.Settings,

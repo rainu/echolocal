@@ -207,3 +207,6 @@ service. Models and optional VRMA motions are provisioned with
 `echolocal avatar import`; no third-party model is embedded in the distribution.
 See [native avatars and Avatar Lab](docs/avatar.md) for build, installation,
 asset management, supported rendering features and lifecycle guarantees.
+
+OpenClaw owner web/API settings: [coverage and API](docs/openclaw-owner-settings.md).
+Settings completeness requirements: [contributing](CONTRIBUTING.md).

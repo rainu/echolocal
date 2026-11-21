@@ -6,19 +6,16 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/ygelfand/echolocal/internal/config"
+	"github.com/ygelfand/echolocal/internal/feature/assistantconfig"
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
-	"github.com/ygelfand/echolocal/internal/feature/detect"
 	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	"github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/echolocal/internal/feature/tones"
-	"github.com/ygelfand/echolocal/internal/feature/voice"
 	"github.com/ygelfand/echolocal/internal/lib/wake"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
 	"github.com/ygelfand/libcountertop/pkg/settings/schema"
-	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,15 +139,14 @@ func talkTargetPage(slot int) *sharedshell.Page {
 type talkChoice struct{ id, label string }
 
 func safeTalkLabel(text, id string, index int, key string) string {
-	text = strings.TrimSpace(text)
-	if text == "" || text == id || strings.Contains(text, "agent:") {
-		return say.F(key, map[string]any{"N": index + 1})
+	return clawtalk.SafeLabel(text, id, index, key)
+}
+func nativeChoices(list []clawtalk.Choice) []talkChoice {
+	out := []talkChoice{}
+	for _, v := range list {
+		out = append(out, talkChoice{v.Value, v.Label})
 	}
-	r := []rune(text)
-	if len(r) > 48 {
-		return string(r[:48])
-	}
-	return text
+	return out
 }
 func talkPicker(title string, read func(context.Context) ([]talkChoice, error), choose func(talkChoice)) *sharedshell.Page {
 	var mu sync.Mutex
@@ -193,22 +189,8 @@ func talkPicker(title string, read func(context.Context) ([]talkChoice, error), 
 }
 func talkAgentPage(slot int) *sharedshell.Page {
 	return talkPicker(say.T("clawtalk.agent"), func(ctx context.Context) ([]talkChoice, error) {
-		var result struct {
-			Agents []struct {
-				ID, Name string
-				Identity struct{ Name string }
-			}
-		}
-		e := claw().CallTalk(ctx, "agents.list", map[string]any{}, &result)
-		var out []talkChoice
-		for i, a := range result.Agents {
-			n := a.Identity.Name
-			if n == "" {
-				n = a.Name
-			}
-			out = append(out, talkChoice{a.ID, safeTalkLabel(n, a.ID, i, "clawtalk.agent_number")})
-		}
-		return out, e
+		list, err := clawtalk.AgentChoices(ctx, claw())
+		return nativeChoices(list), err
 	}, func(v talkChoice) {
 		clawtalk.Get().Stop()
 		if saveTalk(slot, func(s *clawtalk.Slot) { s.Agent = v.id; s.AgentLabel = v.label; s.Context = ""; s.ContextLabel = "" }) == nil {
@@ -219,26 +201,8 @@ func talkAgentPage(slot int) *sharedshell.Page {
 func talkContextPage(slot int) *sharedshell.Page {
 	saved := clawtalk.Get().Store.Get(slot)
 	return talkPicker(promptText("session"), func(ctx context.Context) ([]talkChoice, error) {
-		var result struct {
-			Sessions []struct{ Key, Label, DisplayName, DerivedTitle string }
-		}
-		e := claw().CallTalk(ctx, "sessions.list", map[string]any{"agentId": saved.Agent, "limit": 40, "includeDerivedTitles": true}, &result)
-		out := []talkChoice{{"", say.T("clawtalk.new_context")}}
-		for i, s := range result.Sessions {
-			// Metadata only; no transcript/history request.
-			if !strings.HasPrefix(s.Key, "agent:"+saved.Agent+":") {
-				continue
-			}
-			n := s.Label
-			if n == "" {
-				n = s.DisplayName
-			}
-			if n == "" {
-				n = s.DerivedTitle
-			}
-			out = append(out, talkChoice{s.Key, safeTalkLabel(n, s.Key, i, "clawtalk.context_number")})
-		}
-		return out, e
+		list, err := clawtalk.SessionChoices(ctx, claw(), saved.Agent)
+		return nativeChoices(list), err
 	}, func(v talkChoice) {
 		clawtalk.Get().Stop()
 		if saveTalk(slot, func(s *clawtalk.Slot) { s.Context = v.id; s.ContextLabel = v.label; s.Resume = true }) == nil {
@@ -284,14 +248,7 @@ func talkWordRow(slot int) (menu.Row, func(int), bool) {
 			for _, modelID := range ids {
 				modelID := modelID
 				acts = append(acts, func(int) {
-					if config.Set().Wake(slot).ID(modelID) == nil {
-						slots := voice.Get().Slots()
-						for len(slots) <= slot {
-							slots = append(slots, "")
-						}
-						slots[slot] = modelID
-						voice.Get().SetSlots(slots)
-						detect.Get().Load()
+					if assistantconfig.SetWakeWord(slot, modelID) == nil {
 						shell.Get().Pop()
 					}
 				})
@@ -310,36 +267,11 @@ func saveTalk(slot int, change func(*clawtalk.Slot)) error {
 	return err
 }
 
-type talkModelProvider struct {
-	ID, Label                  string
-	Configured                 bool
-	SupportsToolCalls          *bool
-	Transports, Brains, Models []string
-	VoicesByModel              map[string][]string
-}
-type talkModelSelection struct{ Provider, Model string }
+type talkModelProvider = clawtalk.CatalogProvider
+type talkModelSelection = clawtalk.ModelSelection
 
 func talkModelChoices(providers []talkModelProvider) []talkChoice {
-	out := []talkChoice{{"", say.T("clawtalk.gateway_default")}}
-	for _, provider := range providers {
-		if provider.ID != "openai" || !provider.Configured || !containsTalkValue(provider.Transports, "webrtc") || !containsTalkValue(provider.Brains, "agent-consult") {
-			continue
-		}
-		// Advertised per-model voice profiles are the Gateway's native Live model
-		// catalogue. Never freeze a list of current model names in this client.
-		native := []string{}
-		for model, voices := range provider.VoicesByModel {
-			if len(voices) > 0 {
-				native = append(native, model)
-			}
-		}
-		sort.Strings(native)
-		for _, model := range native {
-			id, _ := json.Marshal(talkModelSelection{provider.ID, model})
-			out = append(out, talkChoice{string(id), model + " · " + provider.Label})
-		}
-	}
-	return out
+	return nativeChoices(clawtalk.ModelChoices(providers))
 }
 func containsTalkValue(list []string, value string) bool {
 	for _, v := range list {
@@ -352,15 +284,8 @@ func containsTalkValue(list []string, value string) bool {
 func talkModelPage(slot int) *sharedshell.Page {
 	saved := clawtalk.Get().Store.Get(slot)
 	return talkPicker(say.T("clawtalk.model"), func(ctx context.Context) ([]talkChoice, error) {
-		var catalog struct {
-			Realtime struct{ Providers []talkModelProvider }
-		}
-		params := map[string]any{}
-		if saved.Context != "" {
-			params["sessionKey"] = saved.Context
-		}
-		err := claw().CallTalk(ctx, "talk.catalog", params, &catalog)
-		return talkModelChoices(catalog.Realtime.Providers), err
+		list, err := clawtalk.LiveModelChoices(ctx, claw(), saved.Context)
+		return nativeChoices(list), err
 	}, func(v talkChoice) {
 		var selected talkModelSelection
 		if v.id != "" && json.Unmarshal([]byte(v.id), &selected) != nil {
@@ -394,13 +319,7 @@ func talkBuiltinToneChoices() []talkChoice {
 	}
 	return choices
 }
-func talkToneChoices() []talkChoice {
-	choices := talkBuiltinToneChoices()
-	for _, v := range tones.Get().Choices() {
-		choices = append(choices, talkChoice{v.Value, v.Label})
-	}
-	return choices
-}
+func talkToneChoices() []talkChoice { return nativeChoices(clawtalk.ToneChoices()) }
 func talkToneDetail(title string, choice talkChoice, preview, use func()) *sharedshell.Page {
 	return &sharedshell.Page{Title: title, Build: func() ([]menu.Row, []func(int)) {
 		return []menu.Row{{Label: choice.label, Hint: say.T("clawtalk.tone_preview_hint"), Kind: menu.Plain}}, []func(int){nil}

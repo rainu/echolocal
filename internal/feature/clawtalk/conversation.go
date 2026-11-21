@@ -124,17 +124,38 @@ func (m *Manager) deleteHistoryAction(generation uint64) shell.Action {
 		}, Actions: []shell.Action{
 			{Label: say.T("openclaw.action.cancel"), MinHeight: 64, Do: func() { shellfeature.Get().Pop() }},
 			{Label: say.T(key), MinHeight: 64, Role: shell.Danger, Do: func() {
-				m.mu.Lock()
-				if generation == 0 {
-					m.captions.Clear()
-				} else {
-					m.captions.Remove(generation)
-				}
-				m.uiDirty = true
-				m.mu.Unlock()
+				m.DeleteConfigurationHistory(generation)
 				shellfeature.Get().Pop()
 				shellfeature.Get().Redraw()
 			}},
 		}})
 	}}
+}
+
+// ConfigurationHistory exposes only the same bounded local cache to the owner.
+// It never requests remote transcripts and is not a Node command.
+func (m *Manager) ConfigurationHistory() []talk.Conversation {
+	calls := m.captions.Snapshot()
+	for i := range calls {
+		finals := []talk.Caption{}
+		for _, e := range calls[i].Entries {
+			if !e.Provisional {
+				e.ID = ""
+				finals = append(finals, e)
+			}
+		}
+		calls[i].Entries = finals
+	}
+	return calls
+}
+func (m *Manager) DeleteConfigurationHistory(generation uint64) {
+	m.mu.Lock()
+	if generation == 0 {
+		m.captions.Clear()
+	} else {
+		m.captions.Remove(generation)
+	}
+	m.uiDirty = true
+	m.mu.Unlock()
+	shellfeature.Get().Redraw()
 }
