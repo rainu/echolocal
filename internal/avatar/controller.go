@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/layout"
 	"io"
 	"math"
@@ -23,6 +24,13 @@ const (
 	MouthManual
 	MouthSynthetic
 	MouthMicrophone
+)
+
+// MinZoom, MaxZoom and MaxPan are renderer-scale equivalents of the shared percent bounds.
+const (
+	MinZoom = float64(config.AvatarZoomMin) / 100
+	MaxZoom = float64(config.AvatarZoomMax) / 100
+	MaxPan  = float64(config.AvatarPositionLimit) / 100
 )
 
 type Options struct {
@@ -83,9 +91,9 @@ func (c *Controller) Configure(o Options) {
 	if o.Zoom == 0 {
 		o.Zoom = 1
 	}
-	o.Zoom = math.Max(.5, math.Min(3, o.Zoom))
-	o.PanX = math.Max(-1, math.Min(1, o.PanX))
-	o.PanY = math.Max(-1, math.Min(1, o.PanY))
+	o.Zoom = math.Max(MinZoom, math.Min(MaxZoom, o.Zoom))
+	o.PanX = math.Max(-MaxPan, math.Min(MaxPan, o.PanX))
+	o.PanY = math.Max(-MaxPan, math.Min(MaxPan, o.PanY))
 	o.Pitch = math.Max(-85, math.Min(85, o.Pitch))
 	o.Fixed = math.Max(0, math.Min(1, o.Fixed))
 	o.Yaw = math.Mod(o.Yaw+180, 360)

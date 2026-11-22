@@ -46,7 +46,7 @@ func TestRendererHelper(t *testing.T) {
 				mouth = (pitch + 85) / 170
 			}
 			if mode == "zoom" {
-				mouth = zoom / 3
+				mouth = zoom / 10
 			}
 			if mode == "panX" {
 				mouth = (panX + 1) / 2
@@ -242,7 +242,7 @@ func TestYawChangesReachRunningRenderer(t *testing.T) {
 
 func TestPitchZoomBoundsAndInvalidValues(t *testing.T) {
 	c := New("", nil, func() bool { return false }, func() {})
-	for _, tc := range []struct{ p, z, wp, wz float64 }{{100, 8, 85, 3}, {-100, .1, -85, .5}, {30, 0, 30, 1}} {
+	for _, tc := range []struct{ p, z, wp, wz float64 }{{100, 10, 85, 9.99}, {20, 8, 20, 8}, {20, 9.99, 20, 9.99}, {20, 3, 20, 3}, {-100, .1, -85, .5}, {30, 0, 30, 1}} {
 		c.Configure(Options{Pitch: tc.p, Zoom: tc.z})
 		o := c.Snapshot().Options
 		if o.Pitch != tc.wp || o.Zoom != tc.wz {
@@ -266,9 +266,17 @@ func TestPitchZoomReachRenderer(t *testing.T) {
 			c.Configure(Options{Pitch: 51, Zoom: 2.4})
 			c.Start()
 			defer c.Stop()
-			eventually(t, func() bool { return math.Abs(c.Snapshot().Mouth-.8) < .001 })
+			want := .8
+			if mode == "zoom" {
+				want = .24
+			}
+			eventually(t, func() bool { return math.Abs(c.Snapshot().Mouth-want) < .001 })
 			c.Configure(Options{Pitch: -51, Zoom: .6})
-			eventually(t, func() bool { return math.Abs(c.Snapshot().Mouth-.2) < .001 })
+			want = .2
+			if mode == "zoom" {
+				want = .06
+			}
+			eventually(t, func() bool { return math.Abs(c.Snapshot().Mouth-want) < .001 })
 			if starts.Load() != 1 {
 				t.Fatal("renderer restarted")
 			}
@@ -293,10 +301,10 @@ func TestPanValidationAndScalarDelivery(t *testing.T) {
 				want = .2
 			}
 			eventually(t, func() bool { return math.Abs(c.Snapshot().Mouth-want) < .001 })
-			o.PanX = 5
-			o.PanY = -5
+			o.PanX = 6
+			o.PanY = -6
 			c.Configure(o)
-			if c.Snapshot().Options.PanX != 1 || c.Snapshot().Options.PanY != -1 {
+			if c.Snapshot().Options.PanX != 5 || c.Snapshot().Options.PanY != -5 {
 				t.Fatal("bounds")
 			}
 			before := c.Snapshot().Options
@@ -402,5 +410,23 @@ func TestViewportRectangleAndLegacyValidation(t *testing.T) {
 		if c.viewport != before {
 			t.Fatal("invalid viewport accepted", v)
 		}
+	}
+}
+
+func TestCloseUpZoomDeliveredWithoutRestart(t *testing.T) {
+	c := New("", nil, func() bool { return false }, func() {})
+	var starts atomic.Int32
+	helper(c, "zoom", &starts)
+	c.Start()
+	defer c.Stop()
+	for _, zoom := range []float64{3, 5, 9.99} {
+		c.Configure(Options{Zoom: zoom, Yaw: 25, Pitch: -15, PanX: .2, PanY: .75})
+		eventually(t, func() bool { return math.Abs(c.Snapshot().Mouth-zoom/10) < .001 })
+		if got := c.Snapshot().Options; got.Zoom != zoom || got.Yaw != 25 || got.PanY != .75 {
+			t.Fatal(got)
+		}
+	}
+	if starts.Load() != 1 {
+		t.Fatal("zoom restarted renderer", starts.Load())
 	}
 }

@@ -39,7 +39,7 @@ func TestPresentationRangesAndSharedOptions(t *testing.T) {
 		}
 	}
 	o := Options(a)
-	if o.Zoom != 3 || o.Yaw != 180 || o.Pitch != 85 || o.PanX != 1 || o.PanY != 1 {
+	if o.Zoom != 9.99 || o.Yaw != 180 || o.Pitch != 85 || o.PanX != 5 || o.PanY != 5 {
 		t.Fatal(o)
 	}
 	if a.Path != "/model.vrm" {
@@ -101,6 +101,44 @@ func TestSavedMotionReloadedByLabAndTalk(t *testing.T) {
 		}
 		if config.AvatarSection.Read().Path != "/model.vrm" {
 			t.Fatal("save changed model")
+		}
+	}
+}
+
+func TestCloseUpZoomSaveReloadAndSharedRenderer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "avatar.json")
+	config.Use(path)
+	table := NewTable()
+	row := table.MustRow("zoom")
+	if row.Min != 50 || row.Max != 999 {
+		t.Fatal("API metadata range", row)
+	}
+	for _, percent := range []int{300, 500, 999} {
+		a := config.Avatar{Path: "/model.vrm", Yaw: 30, Pitch: -15, X: -120, Y: 400, BlinkDisabled: true}
+		if err := row.Write(&a, strconv.Itoa(percent)); err != nil {
+			t.Fatal(err)
+		}
+		preview := Options(a)
+		if err := config.AvatarSection.Update(func(saved *config.Avatar) { *saved = a }); err != nil {
+			t.Fatal(err)
+		}
+		if err := SavePresentation(preview); err != nil {
+			t.Fatal(err)
+		}
+		config.Use(path)
+		saved := config.AvatarSection.Read()
+		if saved != a || row.Read(&saved) != strconv.Itoa(percent) {
+			t.Fatal("save/reload", saved, a)
+		}
+		c := avatar.New(t.TempDir(), nil, func() bool { return false }, func() {})
+		c.Configure(Options(saved))
+		if got := c.Snapshot().Options; got != preview {
+			t.Fatal("runtime clamped framing", got, preview)
+		}
+		for _, bad := range []string{"49", "1000", "999.1", "NaN", "+Inf", "-1"} {
+			if row.Write(&saved, bad) == nil || saved != a {
+				t.Fatal("invalid changed stored framing", bad, saved)
+			}
 		}
 	}
 }

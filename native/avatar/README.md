@@ -21,7 +21,7 @@ No microphone device, socket or network is opened by this helper.
 
 stdin lines: `S IDLE BLINK ANIMATION MOUTH_MODE FIXED_LEVEL MIC_LEVEL YAW_DEGREES PITCH_DEGREES ZOOM PAN_X PAN_Y`.
 Flags are 0/1, mouth mode is 0 closed / 1 fixed / 2 synthetic / 3 external
-local mic level; levels are finite 0..1. Yaw is finite -180..180 degrees and turns the complete model around its fitted center. Pitch is finite -85..85 degrees; zoom is finite 0.5..3 (1 = fitted framing). Both rotate around the fitted center; zoom is orthographic. Pan X/Y are finite -1..1 preview-size fractions, applied in screen space after zoom (positive right/down). A line is at most 120 bytes; parsing
+local mic level; levels are finite 0..1. Yaw is finite -180..180 degrees and turns the complete model around its fitted center. Pitch is finite -85..85 degrees; zoom is finite 0.5..9.99 (1 = fitted framing). Both rotate around the fitted center; zoom is orthographic. Pan X/Y are finite -5..5 preview-size fractions, applied in screen space after zoom (positive right/down). A line is at most 120 bytes; parsing
 has a per-frame input budget. Invalid state lines are ignored; oversized
 lines terminate control. EOF terminates the process. SIGTERM closes the surface.
 

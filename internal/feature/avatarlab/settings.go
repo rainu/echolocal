@@ -28,11 +28,11 @@ func NewTable() *setting.Table[config.Avatar] {
 		unit     string
 		ptr      func(*config.Avatar) *int
 	}{
-		{"zoom", 50, 300, "%", func(a *config.Avatar) *int { return &a.Zoom }},
+		{"zoom", config.AvatarZoomMin, config.AvatarZoomMax, "%", func(a *config.Avatar) *int { return &a.Zoom }},
 		{"yaw", -180, 180, "°", func(a *config.Avatar) *int { return &a.Yaw }},
 		{"pitch", -85, 85, "°", func(a *config.Avatar) *int { return &a.Pitch }},
-		{"x", -100, 100, "%", func(a *config.Avatar) *int { return &a.X }},
-		{"y", -100, 100, "%", func(a *config.Avatar) *int { return &a.Y }},
+		{"x", -config.AvatarPositionLimit, config.AvatarPositionLimit, "%", func(a *config.Avatar) *int { return &a.X }},
+		{"y", -config.AvatarPositionLimit, config.AvatarPositionLimit, "%", func(a *config.Avatar) *int { return &a.Y }},
 	} {
 		rows = append(rows, setting.Setting[config.Avatar]{Name: f.name, Kind: setting.Number, Group: "presentation", Icon: "mdi:account", Min: f.min, Max: f.max, Unit: f.unit, Read: func(a *config.Avatar) string { v := a.Presentation(); return strconv.Itoa(*f.ptr(&v)) }, Write: func(a *config.Avatar, v string) error {
 			n, e := strconv.Atoi(v)

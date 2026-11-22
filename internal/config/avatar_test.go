@@ -42,8 +42,8 @@ func TestAvatarPresentationPersistsAndBoundsLegacyStorage(t *testing.T) {
 	if e != nil || s.Get().Avatar != want {
 		t.Fatal(e, s.Get().Avatar)
 	}
-	b := Avatar{Zoom: 999, Yaw: -999, Pitch: 999, X: -999, Y: 999}.Presentation()
-	if b.Zoom != 300 || b.Yaw != -180 || b.Pitch != 85 || b.X != -100 || b.Y != 100 {
+	b := Avatar{Zoom: 1000, Yaw: -999, Pitch: 999, X: -999, Y: 999}.Presentation()
+	if b.Zoom != 999 || b.Yaw != -180 || b.Pitch != 85 || b.X != -500 || b.Y != 500 {
 		t.Fatal(b)
 	}
 	if (Avatar{}).Presentation().Zoom != 100 {

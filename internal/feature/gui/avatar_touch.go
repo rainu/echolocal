@@ -133,11 +133,11 @@ func (v *avatarView) attachAvatarTouch(w *gogui.Window) {
 						}
 						o := state.Options
 						if mode == 1 {
-							o.Zoom = math.Max(.5, math.Min(3, avatar.EffectiveZoom(origin.Zoom)*distance/span))
+							o.Zoom = math.Max(avatar.MinZoom, math.Min(avatar.MaxZoom, avatar.EffectiveZoom(origin.Zoom)*distance/span))
 						}
 						if mode == 2 {
-							o.PanX = math.Max(-1, math.Min(1, origin.PanX+(cx-centerX)/float64(vp.Size)))
-							o.PanY = math.Max(-1, math.Min(1, origin.PanY+(cy-centerY)/float64(vp.Size)))
+							o.PanX = math.Max(-avatar.MaxPan, math.Min(avatar.MaxPan, origin.PanX+(cx-centerX)/float64(vp.Size)))
+							o.PanY = math.Max(-avatar.MaxPan, math.Min(avatar.MaxPan, origin.PanY+(cy-centerY)/float64(vp.Size)))
 						}
 						if mode != 0 {
 							v.app.Configure(o)

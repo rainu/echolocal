@@ -69,3 +69,26 @@ func TestAvatarNativeMotionTogglesAndReset(t *testing.T) {
 		t.Fatal("reset", value)
 	}
 }
+
+func TestNativeCloseUpZoomSaveAndValidation(t *testing.T) {
+	value := config.Avatar{Path: "/model.vrm", Yaw: 20, Y: 75}
+	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	page := avatarPresentationPageFor(c)
+	for _, zoom := range []string{"300", "500", "999"} {
+		rows, _ := page.Build()
+		rows[0].Save(zoom)
+		rows, _ = page.Build()
+		if rows[0].Value != zoom || value.Yaw != 20 || value.Y != 75 {
+			t.Fatal("native framing", value)
+		}
+	}
+	before := value
+	for _, bad := range []string{"49", "1000", "NaN", "999.1"} {
+		rows, _ := page.Build()
+		rows[0].Save(bad)
+		rows, _ = page.Build()
+		if value != before || len(rows) != 10 || rows[9].Label == "" {
+			t.Fatal("invalid native zoom", bad, value)
+		}
+	}
+}
