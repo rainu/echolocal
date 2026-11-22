@@ -46,6 +46,21 @@ func TestNodeAvatarSharedRegistryAndPermission(t *testing.T) {
 	if _, e = call("set", `{"domain":"avatar","name":"path","value":"../bad.vrm"}`); e == nil {
 		t.Fatal("invalid path accepted")
 	}
+	for _, name := range []string{"zoom", "yaw", "pitch", "x", "y"} {
+		value := "25"
+		if name == "zoom" {
+			value = "150"
+		}
+		raw, _ := json.Marshal(map[string]string{"domain": "avatar", "name": name, "value": value})
+		if _, e = call("set", string(raw)); e != nil {
+			t.Fatal(name, e)
+		}
+		raw, _ = json.Marshal(map[string]string{"domain": "avatar", "name": name})
+		out, e = call("get", string(raw))
+		if e != nil || out.(map[string]any)["value"] != value {
+			t.Fatal(name, out, e)
+		}
+	}
 	a.SetGrants(map[string]bool{"settings": false})
 	for _, cmd := range []string{"get", "set", "discover"} {
 		if _, e = call(cmd, `{"domain":"avatar","name":"path","value":"/custom.vrm"}`); e == nil || e.Error() != "permission_denied" {

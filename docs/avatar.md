@@ -159,3 +159,81 @@ are not advertised, and compatibility with unrelated avatar applications is not
 assumed. Scene limits include fewer than 4096 nodes, 256 meshes/materials,
 500000 vertices, 128 MiB decoded texture memory, and existing morph budgets.
 Model/version/resource errors are recoverable lab states, not daemon failures.
+
+## Standalone Talk presentation and playback mouth envelope
+
+On Athena, the standalone OpenClaw Talk activation (including assistant wake-word
+routing) opens an avatar beside connection/listening/speaking/error feedback and
+an explicit Stop control. It uses the **same Talk activation, selected agent,
+session and audio lane**. Talk started inside a selected chat retains its normal
+chat view; Home Assistant routing is unchanged.
+
+The left side retains the existing recognized user and spoken assistant
+transcripts, including provisional text updates and final replacements. It uses
+the same bounded, volatile device caption cache and the same speaker-colored
+cards as regular Talk. Contributions remain newest-first. Long contributions
+wrap and scroll within the transcript area; status and the **History** / **End
+conversation** buttons remain fixed outside it. History temporarily covers the
+avatar without starting another Talk connection; returning resumes rendering.
+Rendering failures keep the transcript and both actions available. No transcript
+is added to diagnostic logs or persisted by this view.
+
+Avatar Lab's **Save presentation** persists the preview framing and the Idle
+movement, Blink and VRMA animation switches. **Front** resets and saves all five
+transforms, without resetting the selected model or motion choices. A
+**Presentation** editor with numeric fields and motion toggles is available on the device; the owner web settings and
+existing settings API expose the same fields in domain `avatar`:
+
+| Field | Unit and accepted range | Default and interpretation |
+| --- | --- | --- |
+| zoom | integer percent, 50–300 | 100: fitted model; larger enlarges |
+| yaw | integer degrees, −180–180 | 0: front; horizontal model-center rotation |
+| pitch | integer degrees, −85–85 | 0: upright; vertical model-center rotation |
+| x | integer percent, −100–100 | 0: centered; positive moves right |
+| y | integer percent, −100–100 | 0: centered; positive moves down |
+| idle | on/off | on: idle movement enabled |
+| blink | on/off | on: automatic blinking enabled |
+| animation | on/off | on: installed VRMA motion playing |
+
+All three motion switches are saved with **Save presentation** and restored in
+both Lab and standalone Talk, including after restart. Native settings, web and
+API/Node edits save immediately. **Front** only resets framing, preserving the
+motion choices. Legacy storage without motion flags keeps all three enabled;
+explicitly saved off states remain off. Storage uses inverse disabled flags to
+distinguish these states without changing legacy defaults. Mouth mode/microphone
+preview is not saved or inherited by Talk: its mouth still follows agent playback.
+
+Position is relative to the **rendering viewport width**, including vertical
+translation, independent of model orientation and zoom. Lab keeps its square
+preview; Talk uses the entire right half from the top to the bottom edge, with
+no title/footer reservation. The model name is in the left status header.
+Aspect-correct projection preserves width-relative model scale and translation
+without stretching the model; the rectangular Talk surface shows additional
+vertical space. Legacy square renderer viewports remain supported.
+Gestures preview continuously; Save rounds to integer degrees/percent. Native numeric edits and API/web writes persist immediately.
+The settings grant also covers these fields for existing Node configuration
+commands. Out-of-range, fractional and nonfinite writes are rejected. Legacy
+storage without zoom uses 100%; malformed manually edited storage is bounded
+when read for rendering. Restart retains settings. Changes are loaded on the next
+lab entry or Talk activation, not halfway through a running conversation.
+
+The mouth uses a local amplitude envelope of **StreamVoice periods successfully
+submitted to ALSA**, after stream mute and output gain. Scalar levels are scheduled
+against ALSA playback delay, after the existing jitter buffer and speaker queue;
+received text/packets do not drive animation. The Talk renderer never subscribes
+to microphone audio. Feedback sounds and media do not animate it. Silence,
+stale playback, stream drain/interruption and conversation teardown reset the
+envelope; a generation counter rejects output periods racing a drain. The bounded
+queue holds no PCM or recordings. Hardware/DSP and frame scheduling introduce
+approximately one audio/render period of timing uncertainty. This is amplitude
+animation using the model's existing compatible mouth expression, **not phoneme
+or viseme alignment**; models lacking that expression cannot show it.
+
+Renderer loading happens asynchronously and does not gate audio readiness.
+Model/graphics/renderer failure displays a localized recovery hint while Talk
+remains usable. Stop Talk, correct the model/presentation in Avatar Lab, then
+activate again. No silent model fallback or second Talk connection is created.
+Conversation completion/failure removes its temporary page, stops the owned
+renderer and releases the model snapshot, revealing the previous display.
+Existing acknowledgment/progress/readiness/error/end sounds and end phrase
+behavior use their unchanged audio paths.

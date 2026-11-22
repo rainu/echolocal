@@ -18,7 +18,7 @@ $(OUT):
 	mkdir -p "$@"
 $(OUT)/athena-window.o: athena-window.c | $(OUT)
 	$(AVATAR_CC) $(TARGET) $(WARN) -c $< -o $@
-$(OUT)/echolocal-avatar: renderer.cpp control.hpp turntable.hpp $(OUT)/athena-window.o $(wildcard vendor/*.h) vendor/SHA256SUMS | vendor-check
+$(OUT)/echolocal-avatar: renderer.cpp control.hpp turntable.hpp viewport.hpp $(OUT)/athena-window.o $(wildcard vendor/*.h) vendor/SHA256SUMS | vendor-check
 	$(AVATAR_CXX) $(CXXFLAGS) renderer.cpp $(OUT)/athena-window.o -lEGL -lGLESv3 -landroid -ldl -o $@
 	$(TOOLCHAIN)/bin/llvm-strip $@
 host-test: | $(OUT)

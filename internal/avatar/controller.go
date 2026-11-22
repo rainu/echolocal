@@ -54,6 +54,8 @@ type Controller struct {
 	viewport   Viewport
 	listen     func() (<-chan []int16, func())
 	muted      func() bool
+	output     func() float64
+	duration   time.Duration
 	redraw     func()
 	cancel     context.CancelFunc
 	input      io.WriteCloser
@@ -135,8 +137,8 @@ func (c *Controller) Start() {
 		return
 	}
 	vp := c.viewport
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
-	args := []string{model, "--display", "--seconds", "300", "--control", "--protocol", strconv.Itoa(ProtocolVersion), "--viewport", fmt.Sprintf("%d,%d,%d", vp.X, vp.Y, vp.Size)}
+	ctx, cancel := context.WithTimeout(context.Background(), c.runDuration())
+	args := []string{model, "--display", "--seconds", strconv.Itoa(int(c.runDuration() / time.Second)), "--control", "--protocol", strconv.Itoa(ProtocolVersion), "--viewport", vp.argument()}
 	if motion != "" {
 		args = append(args, "--animation", motion)
 	}
@@ -214,6 +216,7 @@ func (c *Controller) Start() {
 		if c.generation == gen {
 			stopping := c.state.Notice == "stopping"
 			c.state.Running = false
+			c.state.Mouth, c.state.RMS = 0, 0
 			previous := c.state.Notice
 			c.state.Notice = "finished"
 			if previous != "running" && previous != "starting" && previous != "stopping" {
@@ -236,6 +239,7 @@ func (c *Controller) Stop() {
 	cancel, input := c.cancel, c.input
 	if c.state.Running {
 		c.state.Notice = "stopping"
+		c.state.Mouth, c.state.RMS = 0, 0
 	}
 	c.mu.Unlock()
 	if input != nil {
@@ -308,7 +312,10 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 		case <-tick.C:
 			s := c.Snapshot()
 			muted := c.muted()
-			want := s.Options.Mouth == MouthMicrophone && !muted
+			c.mu.Lock()
+			output := c.output
+			c.mu.Unlock()
+			want := output == nil && s.Options.Mouth == MouthMicrophone && !muted
 			if want && release == nil {
 				audio, release = c.listen()
 				began = time.Now()
@@ -340,6 +347,14 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 				_ = f.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 			}
 			o := s.Options
+			if output != nil {
+				level = output()
+				if !finite(level) {
+					level = 0
+				}
+				level = math.Max(0, math.Min(1, level))
+				o.Mouth = MouthMicrophone
+			}
 			if _, err := fmt.Fprintf(stdin, "S %d %d %d %d %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n", bit(o.Idle), bit(o.Blink), bit(o.Animation), o.Mouth, o.Fixed, level, o.Yaw, o.Pitch, o.Zoom, o.PanX, o.PanY); err != nil {
 				cancel()
 				return
@@ -407,6 +422,10 @@ func (c *Controller) stats(gen uint64, line string) {
 	}
 	c.mu.Lock()
 	if gen == c.generation {
+		if c.state.Notice == "stopping" || !c.state.Running {
+			c.mu.Unlock()
+			return
+		}
 		c.state.FPS = vals[0]
 		c.state.Frames = uint64(vals[1])
 		c.state.Seconds = vals[2]
@@ -418,10 +437,25 @@ func (c *Controller) stats(gen uint64, line string) {
 }
 
 // Viewport follows the GUI's physical preview area; changes stop an old surface.
-type Viewport struct{ X, Y, Size int }
+// Size retains the square Lab/legacy CLI form. Width/Height select a rectangle.
+type Viewport struct{ X, Y, Size, Width, Height int }
+
+func (v Viewport) dimensions() (int, int) {
+	if v.Width == 0 && v.Height == 0 {
+		return v.Size, v.Size
+	}
+	return v.Width, v.Height
+}
+func (v Viewport) argument() string {
+	if v.Width == 0 && v.Height == 0 {
+		return fmt.Sprintf("%d,%d,%d", v.X, v.Y, v.Size)
+	}
+	return fmt.Sprintf("%d,%d,%d,%d", v.X, v.Y, v.Width, v.Height)
+}
 
 func (c *Controller) SetViewport(v Viewport) {
-	if v.X < 0 || v.Y < 0 || v.X+v.Size > 4096 || v.Y+v.Size > 4096 || v.Size < 128 || v.Size > 2048 {
+	w, h := v.dimensions()
+	if (v.Size != 0 && (v.Width != 0 || v.Height != 0)) || w < 128 || w > 2048 || h < 128 || h > 2048 || v.X < 0 || v.Y < 0 || v.X > 4096-w || v.Y > 4096-h {
 		return
 	}
 	c.mu.Lock()
@@ -440,4 +474,19 @@ func EffectiveZoom(z float64) float64 {
 		return 1
 	}
 	return z
+}
+
+// SetOutput binds scalar playback levels for Talk. It must be set before Start.
+// No PCM, microphone subscription or additional audio connection is involved.
+func (c *Controller) SetOutput(level func() float64, duration time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.output = level
+	c.duration = max(time.Second, min(24*time.Hour, duration))
+}
+func (c *Controller) runDuration() time.Duration {
+	if c.duration > 0 {
+		return c.duration
+	}
+	return 300 * time.Second
 }

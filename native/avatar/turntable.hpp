@@ -44,3 +44,12 @@ static std::array<float,16> avatarPan(std::array<float,16> view,float x,float y)
  for(int col=0;col<4;++col){view[col*4]+=2*x*view[col*4+3];view[col*4+1]-=2*y*view[col*4+3];}
  return view;
 }
+
+// A square reference framing, measured in viewport-width units, mapped to a
+// rectangular surface. Apply after pan so saved vertical translation keeps its
+// documented width-relative units. Equal world distances keep equal pixel sizes.
+static std::array<float,16> avatarViewportAspect(std::array<float,16> view,int w,int h) {
+ const float aspect=float(w)/float(h);
+ for(int col=0;col<4;++col) view[col*4+1]*=aspect;
+ return view;
+}

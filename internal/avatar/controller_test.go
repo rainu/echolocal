@@ -350,3 +350,57 @@ func TestCustomControllerReloadReleasesSnapshot(t *testing.T) {
 	c.Stop()
 	eventually(t, func() bool { return !c.Snapshot().Running })
 }
+
+func TestPlaybackScalarNeverListensToMicrophone(t *testing.T) {
+	var starts, listens atomic.Int32
+	var level atomic.Uint64
+	level.Store(math.Float64bits(.75))
+	c := New(t.TempDir(), func() (<-chan []int16, func()) { listens.Add(1); return nil, func() {} }, func() bool { return false }, func() {})
+	helper(c, "normal", &starts)
+	c.SetOutput(func() float64 { return math.Float64frombits(level.Load()) }, 2*time.Minute)
+	// Even selecting the old microphone mode must not attach capture in Talk.
+	c.Configure(Options{Mouth: MouthMicrophone})
+	c.Start()
+	defer c.Stop()
+	eventually(t, func() bool { return c.Snapshot().Mouth == .75 })
+	level.Store(math.Float64bits(0))
+	eventually(t, func() bool { return c.Snapshot().Mouth == 0 })
+	if listens.Load() != 0 || c.Snapshot().Blocks != 0 {
+		t.Fatal("Talk attached microphone")
+	}
+	level.Store(math.Float64bits(math.NaN()))
+	time.Sleep(70 * time.Millisecond)
+	if c.Snapshot().Mouth != 0 {
+		t.Fatal("invalid external level")
+	}
+	c.Stop()
+	eventually(t, func() bool { return !c.Snapshot().Running })
+}
+
+func TestViewportRectangleAndLegacyValidation(t *testing.T) {
+	c := New("/unused", nil, nil, func() {})
+	for _, tc := range []struct {
+		v   Viewport
+		arg string
+	}{
+		{Viewport{X: 640, Y: 80, Size: 640}, "640,80,640"},
+		{Viewport{X: 640, Width: 640, Height: 800}, "640,0,640,800"},
+		{Viewport{X: 400, Width: 400, Height: 1280}, "400,0,400,1280"},
+	} {
+		c.SetViewport(tc.v)
+		if c.viewport != tc.v || c.viewport.argument() != tc.arg {
+			t.Fatal(c.viewport, tc.arg)
+		}
+	}
+	before := c.viewport
+	for _, v := range []Viewport{
+		{Width: 640}, {Height: 800}, {Width: 127, Height: 800}, {Width: 640, Height: 2049},
+		{X: 4096, Width: 640, Height: 800}, {Y: -1, Width: 640, Height: 800},
+		{X: int(^uint(0) >> 1), Width: 640, Height: 800}, {Size: 640, Width: 640, Height: 800},
+	} {
+		c.SetViewport(v)
+		if c.viewport != before {
+			t.Fatal("invalid viewport accepted", v)
+		}
+	}
+}

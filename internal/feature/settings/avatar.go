@@ -37,3 +37,57 @@ func avatarModelPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
 		return rows, acts
 	}}
 }
+
+func AvatarPresentationPage() *sharedshell.Page {
+	return avatarPresentationPageFor(avatarlab.Controls())
+}
+
+func avatarPresentationPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
+	note := ""
+	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), "presentation"), Build: func() ([]menu.Row, []func(int)) {
+		rows := []menu.Row{}
+		acts := []func(int){}
+		for _, s := range c.Table.In("presentation") {
+			s := s
+			if s.Kind == setting.Toggle {
+				a := c.Read()
+				on, _ := setting.Boolean(s.Read(&a))
+				rows = append(rows, menu.Row{Label: s.Title(), Hint: s.OptionalText("help"), Kind: menu.Toggle, On: on})
+				acts = append(acts, func(int) {
+					// Read at activation time; the page may have been changed by API/Node.
+					a := c.Read()
+					current, _ := setting.Boolean(s.Read(&a))
+					note = ""
+					if c.ChangeRaw(s.Name, setting.OnOff(!current)) != nil {
+						note = avatar.Text(say.Chosen(), "save_failed")
+					}
+				})
+				continue
+			}
+			acts = append(acts, nil)
+			rows = append(rows, menu.Row{Label: s.Title(), Hint: s.OptionalText("help"), Value: func() string { a := c.Read(); return s.Read(&a) }(), Kind: menu.Field, Save: func(v string) {
+				note = ""
+				if c.ChangeRaw(s.Name, v) != nil {
+					note = avatar.Text(say.Chosen(), "presentation_invalid")
+				}
+			}})
+		}
+		rows = append(rows, menu.Row{Label: avatar.Text(say.Chosen(), "reset_presentation"), Kind: menu.Plain})
+		acts = append(acts, nil)
+		acts[len(acts)-1] = func(int) {
+			note = ""
+			defaults := config.Avatar{}
+			for _, row := range c.Table.In("presentation") {
+				if c.ChangeRaw(row.Name, row.Read(&defaults)) != nil {
+					note = avatar.Text(say.Chosen(), "save_failed")
+					break
+				}
+			}
+		}
+		if note != "" {
+			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
+			acts = append(acts, nil)
+		}
+		return rows, acts
+	}}
+}

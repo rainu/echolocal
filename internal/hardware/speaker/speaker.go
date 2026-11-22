@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -92,7 +93,9 @@ type Player struct {
 	bus mix.Bus
 	sum []float32
 
-	written atomic.Uint64
+	written     atomic.Uint64
+	voiceMeter  playbackMeter
+	voicePeriod float64
 }
 
 func (p *Player) Attach(s mix.Source) { p.bus.Attach(s) }
@@ -386,6 +389,7 @@ func (p *Player) Run(ctx context.Context) error {
 			return nil
 		}
 
+		epoch := p.voiceMeter.epoch()
 		p.gate(p.fill(buf))
 		if err := mix.Send(ctx, pb, buf, &p.underruns); err != nil {
 			if ctx.Err() != nil {
@@ -394,6 +398,12 @@ func (p *Player) Run(ctx context.Context) error {
 			return err
 		}
 		p.written.Add(period)
+		delay, err := pb.Delay()
+		if err == nil && delay >= 0 && delay <= Rate {
+			p.voiceMeter.offer(epoch, time.Now().Add(time.Duration(max(0, delay-period))*time.Second/Rate), p.voicePeriod)
+		} else {
+			p.voiceMeter.reset()
+		}
 	}
 }
 
@@ -452,12 +462,21 @@ func (p *Player) fill(buf []byte) bool {
 		clear(tapSum)
 	}
 
+	voiceEnergy := 0.
+	voiceSamples := 0
 	for _, part := range parts {
 		if part.Level == 0 {
 			continue
 		}
 		volume := main * float64(part.Level)
 		gain := gainFor(out, volume)
+		if part.Stream == config.StreamVoice {
+			for _, sample := range part.Samples {
+				v := float64(sample) * float64(gain) / 32768
+				voiceEnergy += v * v
+			}
+			voiceSamples += len(part.Samples)
+		}
 		if tap != nil {
 			for i, v := range part.Samples {
 				tapSum[i] += float32(v) * gain
@@ -483,6 +502,10 @@ func (p *Player) fill(buf []byte) bool {
 		t.volume = volume
 	}
 
+	p.voicePeriod = 0
+	if voiceSamples > 0 {
+		p.voicePeriod = math.Sqrt(voiceEnergy / float64(voiceSamples))
+	}
 	if tap != nil {
 		for i, v := range tapSum {
 			p.tapBuf[i] = mix.Clamp(int32(v))
@@ -590,7 +613,12 @@ func (l Lane) Play(samples []int16)         { l.p.PlayStream(l.s, samples) }
 func (l Lane) Take() []int16                { return l.p.bus.Take(l.s) }
 func (l Lane) Adjust(rewrite func([]int16)) { l.p.bus.Adjust(l.s, rewrite) }
 func (l Lane) Queued() int                  { return l.p.bus.StreamLen(l.s) / Channels }
-func (l Lane) Drain()                       { l.p.bus.ClearStream(l.s) }
+func (l Lane) Drain() {
+	l.p.bus.ClearStream(l.s)
+	if l.s == config.StreamVoice {
+		l.p.voiceMeter.reset()
+	}
+}
 
 func (p *Player) Adjust(rewrite func([]int16)) { p.bus.Adjust(config.StreamMedia, rewrite) }
 
@@ -606,6 +634,7 @@ func (p *Player) PlayVoice(mono []int16) {
 
 func (p *Player) Drain() {
 	p.bus.Clear()
+	p.voiceMeter.reset()
 
 	p.voiceMu.Lock()
 	p.voice.Reset()

@@ -5,6 +5,7 @@ package clawtalk
 import (
 	"context"
 	"errors"
+	"github.com/ygelfand/echolocal/internal/avatar"
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/feature/idle"
@@ -22,20 +23,21 @@ import (
 )
 
 type Manager struct {
-	generation  uint64
-	history     talk.History
-	captions    talk.ConversationLog
-	uiDirty     bool
-	Store       *Store
-	Controller  *talk.Controller
-	mu          sync.Mutex
-	ctx         context.Context
-	active      bool
-	cancel      context.CancelFunc
-	error       bool
-	forcedMuted bool
-	lastBackend *talk.Session
-	lastAudio   *deviceAudio
+	generation     uint64
+	history        talk.History
+	captions       talk.ConversationLog
+	uiDirty        bool
+	Store          *Store
+	Controller     *talk.Controller
+	mu             sync.Mutex
+	ctx            context.Context
+	active         bool
+	cancel         context.CancelFunc
+	error          bool
+	forcedMuted    bool
+	lastBackend    *talk.Session
+	lastAudio      *deviceAudio
+	avatarRenderer *avatar.Controller
 }
 
 var Get = sync.OnceValue(func() *Manager {
@@ -97,6 +99,7 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 	generation := m.generation
 	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio = nil, nil
+	m.avatarRenderer = nil
 	m.error = false
 	m.forcedMuted = false
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -119,6 +122,7 @@ func (m *Manager) StartOwned(slot int, haBusy bool) (uint64, error) {
 	generation := m.generation
 	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio = nil, nil
+	m.avatarRenderer = nil
 	m.error, m.forcedMuted = false, false
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
@@ -179,8 +183,14 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	sh := shellfeature.Get()
 	idle.Get().Wake()
 	if selected == nil {
-		held := sh.Hold(m.conversationPage())
-		defer held.Keep(false)
+		page := m.standalonePage()
+		held := sh.Hold(page)
+		defer func() {
+			if p, ok := page.(*AvatarPage); ok {
+				p.Finish()
+			}
+			held.Release()
+		}()
 	}
 	var v Slot
 	if selected == nil {
@@ -304,6 +314,8 @@ func (m *Manager) Mute() {
 }
 
 type Status struct {
+	Avatar                                                                      *avatar.State
+	OutputMouth                                                                 float64
 	Recent                                                                      []talk.ActivationReport
 	Decoded, SilenceSkipped, PlayoutUnderruns, PlayoutDropped, SpeakerUnderruns uint64
 	MaxReceiveGapMS, MaxPlayoutGapMS                                            int64
@@ -317,9 +329,14 @@ type Status struct {
 
 func (m *Manager) Status() Status {
 	m.mu.Lock()
-	active, b, a := m.active, m.lastBackend, m.lastAudio
+	active, b, a, renderer := m.active, m.lastBackend, m.lastAudio, m.avatarRenderer
 	m.mu.Unlock()
 	out := Status{State: m.state(), Active: active, Recent: m.history.Snapshot()}
+	if renderer != nil {
+		s := renderer.Snapshot()
+		out.Avatar = &s
+		out.OutputMouth = speaker.Get().VoiceLevel()
+	}
 	if b != nil {
 		out.Transport = b.Diagnostics()
 	}
@@ -395,6 +412,7 @@ func (m *Manager) StartSession(key string, haBusy bool) (uint64, error) {
 	generation := m.generation
 	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio = nil, nil
+	m.avatarRenderer = nil
 	m.error, m.forcedMuted = false, false
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
