@@ -76,7 +76,7 @@ func eventually(t *testing.T, condition func() bool) {
 func helper(c *Controller, mode string, starts *atomic.Int32) {
 	c.resolve = fakeAssets
 	c.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
-		if !strings.HasSuffix(path, "/echolocal-avatar") || len(args) != 11 || args[4] != "--control" || args[6] != "4" {
+		if !strings.HasSuffix(path, "/echolocal-avatar") || (len(args) != 9 && len(args) != 11) || args[4] != "--control" || args[6] != "4" {
 			panic(fmt.Sprintf("unexpected command %s %v", path, args))
 		}
 		if d, ok := ctx.Deadline(); !ok || time.Until(d) > 301*time.Second {
@@ -144,6 +144,7 @@ func TestMicrophoneMuteAndRelease(t *testing.T) {
 }
 func TestMissingAndFailingRenderer(t *testing.T) {
 	c := New(t.TempDir(), nil, func() bool { return false }, func() {})
+	c.renderer = t.TempDir() + "/echolocal-avatar" // Also absent on a device with the production helper installed.
 	c.resolve = fakeAssets
 	c.Start()
 	if c.Snapshot().Running || c.Snapshot().Notice != "missing_renderer" {
@@ -312,4 +313,40 @@ func TestPanValidationAndScalarDelivery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCustomControllerReloadReleasesSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	source := dir + "/custom.vrm"
+	os.WriteFile(source, glb(`{"extensions":{"VRM":{"specVersion":"0.0","meta":{"title":"Custom"}}}}`), 0600)
+	var starts atomic.Int32
+	c := New(dir, nil, func() bool { return false }, func() {})
+	helper(c, "normal", &starts)
+	originalCommand := c.command
+	var snapshot string
+	c.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
+		snapshot = args[0]
+		return originalCommand(ctx, path, args...)
+	}
+	c.SetSource(func() string { return source })
+	for i := 0; i < 5; i++ {
+		c.Start()
+		eventually(t, func() bool { return c.Snapshot().Ready })
+		if c.Snapshot().ModelName != "Custom" {
+			t.Fatal("wrong model")
+		}
+		c.Stop()
+		eventually(t, func() bool { return !c.Snapshot().Running })
+		eventually(t, func() bool { _, e := os.Stat(snapshot); return os.IsNotExist(e) })
+	}
+	c.SetSource(func() string { return dir + "/missing.vrm" })
+	c.Start()
+	if s := c.Snapshot(); s.Running || s.Notice != "custom_unavailable" {
+		t.Fatal(s)
+	}
+	c.SetSource(func() string { return "" })
+	c.Start()
+	eventually(t, func() bool { return c.Snapshot().Ready })
+	c.Stop()
+	eventually(t, func() bool { return !c.Snapshot().Running })
 }

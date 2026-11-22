@@ -7,7 +7,10 @@ import (
 	gogui "github.com/go-gui-org/go-gui/gui"
 	"github.com/ygelfand/echolocal/internal/avatar"
 	"github.com/ygelfand/echolocal/internal/component"
+	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/apps"
+	"github.com/ygelfand/echolocal/internal/feature/avatarlab"
+	"github.com/ygelfand/echolocal/internal/feature/lock"
 	"github.com/ygelfand/echolocal/internal/feature/privacy"
 	"github.com/ygelfand/echolocal/internal/feature/settings"
 	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
@@ -46,7 +49,10 @@ func extendAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	if component.Board().Codename != "athena" {
 		return
 	}
-	v := &avatarView{app: avatar.New(layout.AvatarDir, func() (<-chan []int16, func()) { return mic.Get().ListenUnleveled("avatar") }, privacy.Get().MicMuted, featureshell.Get().Redraw)}
+	c := avatar.New(layout.AvatarDir, func() (<-chan []int16, func()) { return mic.Get().ListenUnleveled("avatar") }, privacy.Get().MicMuted, featureshell.Get().Redraw)
+	c.SetSource(func() string { return config.AvatarSection.Read().Path })
+	avatarlab.Controls()
+	v := &avatarView{app: c}
 	open := func() { featureshell.Get().Push(v) }
 	apps.Get().Add(sharedapps.App{ID: "vrm-test", Name: func() string { return avatarWords("Avatar Lab", "Avatar-Labor") }, Icon: "mdi:flask", Open: open})
 	settings.RegisterAvatar(func() sharedshell.View { return v })
@@ -106,12 +112,20 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	}
 	notes := map[string]string{"timeout": avatarWords("5-minute limit reached.", "5-Minuten-Limit erreicht."), "renderer_timeout": avatarWords("Renderer did not become ready.", "Renderer wurde nicht bereit."), "assets_unavailable": avatarWords("Import a VRM with echolocal avatar import first.", "Zuerst ein VRM mit echolocal avatar import auswählen."), "starting": avatarWords("Loading avatar…", "Avatar wird geladen…"), "model_invalid": avatarWords("VRM asset rejected.", "VRM-Datei abgelehnt."), "motion_invalid": avatarWords("Animation rejected.", "Animationsdatei abgelehnt."), "gpu_failed": avatarWords("Graphics renderer unavailable.", "Grafik-Renderer nicht verfügbar."), "protocol_error": avatarWords("Renderer protocol mismatch.", "Renderer-Schnittstelle inkompatibel."), "ready": avatarWords("Ready — maximum 5 minutes per run.", "Bereit – maximal 5 Minuten pro Lauf."), "running": avatarWords("Running — controls apply live.", "Läuft – Schalter wirken sofort."), "stopping": avatarWords("Stopping…", "Wird beendet…"), "finished": avatarWords("Stopped. Start to run again.", "Beendet. Start für einen neuen Lauf."), "missing_renderer": avatarWords("Renderer is missing. Repair the EchoLocal installation.", "Renderer fehlt. EchoLocal-Installation reparieren."), "start_failed": avatarWords("Could not start renderer.", "Rendererstart fehlgeschlagen."), "renderer_failed": avatarWords("Renderer failed. Restart manually.", "Rendererfehler. Manuell neu starten.")}
 	note := notes[s.Notice]
+	if translated := avatar.Text(say.Chosen(), s.Notice); translated != "" {
+		note = translated
+	}
 	if !supported {
 		note = avatarWords("Preview needs at least 640×480.", "Vorschau benötigt mindestens 640×480.")
 	}
 	body := []gogui.View{
 		avatarRow(avatarButton("vrm-back", avatarWords("Back", "Zurück"), false, false, func() { v.app.Stop(); featureshell.Get().Pop() }), avatarText(avatarWords("Avatar Lab", "Avatar-Labor"))),
 		avatarText(note),
+		avatarRow(avatarButton("avatar-file", avatar.Text(say.Chosen(), "model"), false, false, func() {
+			v.app.Stop()
+			lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarModelPage()) })
+		})),
+		avatarText(avatar.Text(say.Chosen(), "selection")),
 		avatarRow(avatarButton("vrm-start", "Start", false, s.Running || !supported, v.app.Start), avatarButton("vrm-stop", "Stop", false, !s.Running, v.app.Stop)),
 		avatarText(fmt.Sprintf("%s %.0f° / %.0f° · %.0f %%", avatarWords("Rotation", "Drehung"), s.Options.Yaw, s.Options.Pitch, avatar.EffectiveZoom(s.Options.Zoom)*100)),
 		avatarText(fmt.Sprintf("X %+.0f %% · Y %+.0f %%", s.Options.PanX*100, s.Options.PanY*100)),
