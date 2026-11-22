@@ -37,3 +37,33 @@ func avatarModelPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
 		return rows, acts
 	}}
 }
+
+func AvatarPresentationPage() *sharedshell.Page {
+	c := avatarlab.Controls()
+	note := ""
+	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), "presentation"), Build: func() ([]menu.Row, []func(int)) {
+		rows := []menu.Row{}
+		for _, s := range c.Table.In("presentation") {
+			s := s
+			rows = append(rows, menu.Row{Label: s.Title(), Hint: s.OptionalText("help"), Value: func() string { a := c.Read(); return s.Read(&a) }(), Kind: menu.Field, Save: func(v string) {
+				note = ""
+				if c.ChangeRaw(s.Name, v) != nil {
+					note = avatar.Text(say.Chosen(), "presentation_invalid")
+				}
+			}})
+		}
+		rows = append(rows, menu.Row{Label: avatar.Text(say.Chosen(), "reset_presentation"), Kind: menu.Plain})
+		acts := make([]func(int), len(rows))
+		acts[len(acts)-1] = func(int) {
+			note = ""
+			if avatarlab.SavePresentation(avatarlab.Options(config.Avatar{})) != nil {
+				note = avatar.Text(say.Chosen(), "save_failed")
+			}
+		}
+		if note != "" {
+			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
+			acts = append(acts, nil)
+		}
+		return rows, acts
+	}}
+}

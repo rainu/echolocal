@@ -1036,7 +1036,7 @@ int main(int argc, char **argv) {
     }
     need(std::isfinite(fixedMouth) && fixedMouth >= -1 && fixedMouth <= 1,
          "mouth must be -1..1");
-    need(seconds > 0 && seconds <= 1200, "duration must be 1..1200 seconds");
+    need(seconds > 0 && seconds <= 86400, "duration must be 1..86400 seconds");
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
     need(!appMode || (protocol == 4 && !wav && !demoMouth && fixedMouth < 0),

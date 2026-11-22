@@ -12,7 +12,7 @@ import (
 type nodeSettingsPolicy struct{ Group, Names string }
 
 var nodeSettingsPolicies = map[string]nodeSettingsPolicy{
-	"avatar":     {"settings", "path"},
+	"avatar":     {"settings", "path zoom yaw pitch x y"},
 	"access":     {"settings", "webdav"},
 	"youtube":    {"audio", "lounge"},
 	"alerts":     {"audio", "info success warning alert timer ring_for wake"},

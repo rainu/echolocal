@@ -12,5 +12,38 @@ func Text(lang, key string) string {
 	if words[lang] == nil {
 		lang = "en"
 	}
+	if v := presentationWords[lang][key]; v != "" {
+		return v
+	}
 	return words[lang][key]
 }
+
+var presentationWords = map[string]map[string]string{
+	"en": {
+		"presentation": "Presentation", "save_presentation": "Save presentation", "reset_presentation": "Reset presentation", "saved": "Presentation saved for Talk.", "save_failed": "Could not save presentation. Retry.", "presentation_invalid": "Enter a whole number within the displayed range.",
+		"zoom": "Zoom (%)", "yaw": "Horizontal rotation (°)", "pitch": "Vertical rotation (°)", "x": "Horizontal position (%)", "y": "Vertical position (%)",
+		"zoom_help": "50–300%; 100 = fitted view. Shared by Avatar Lab and standalone Talk.", "yaw_help": "−180–180° around the model center; 0 = front.", "pitch_help": "−85–85° around the model center; 0 = upright.", "x_help": "−100–100% of viewport width; positive moves right.", "y_help": "−100–100% of viewport width; positive moves down.",
+		"talk_fallback": "Avatar unavailable. Talk still works. Stop, then correct the model or reset presentation in Avatar Lab.",
+		"talk_loading":  "Loading avatar; audio connection continues independently.", "talk_running": "Avatar follows agent playback, not your microphone.",
+		"renderer_failed": "Avatar renderer stopped unexpectedly.", "renderer_timeout": "Avatar renderer did not become ready.", "missing_renderer": "Avatar renderer is missing.", "assets_unavailable": "No default avatar is installed.", "start_failed": "Avatar renderer could not start.", "gpu_failed": "Avatar graphics are unavailable.", "protocol_error": "Avatar renderer protocol mismatch.", "timeout": "Avatar time limit reached.", "finished": "Avatar stopped.", "stopping": "Stopping avatar…", "ready": "Avatar ready."},
+	"de": {
+		"presentation": "Darstellung", "save_presentation": "Darstellung speichern", "reset_presentation": "Darstellung zurücksetzen", "saved": "Darstellung für Talk gespeichert.", "save_failed": "Darstellung nicht gespeichert. Erneut versuchen.", "presentation_invalid": "Ganze Zahl im angezeigten Bereich eingeben.",
+		"zoom": "Zoom (%)", "yaw": "Horizontale Drehung (°)", "pitch": "Vertikale Drehung (°)", "x": "Horizontale Position (%)", "y": "Vertikale Position (%)",
+		"zoom_help": "50–300%; 100 = eingepasste Ansicht. Gemeinsam für Avatar-Labor und eigenständiges Talk.", "yaw_help": "−180–180° um die Modellmitte; 0 = vorne.", "pitch_help": "−85–85° um die Modellmitte; 0 = aufrecht.", "x_help": "−100–100% der Ansichtsbreite; positiv bewegt nach rechts.", "y_help": "−100–100% der Ansichtsbreite; positiv bewegt nach unten.",
+		"talk_fallback": "Avatar nicht verfügbar. Talk funktioniert weiter. Beenden, dann Modell korrigieren oder Darstellung im Avatar-Labor zurücksetzen.",
+		"talk_loading":  "Avatar wird geladen; Audioverbindung läuft unabhängig weiter.", "talk_running": "Avatar folgt der Agentenwiedergabe, nicht deinem Mikrofon.",
+		"renderer_failed": "Avatar-Renderer unerwartet beendet.", "renderer_timeout": "Avatar-Renderer wurde nicht bereit.", "missing_renderer": "Avatar-Renderer fehlt.", "assets_unavailable": "Kein Standardavatar installiert.", "start_failed": "Avatar-Renderer konnte nicht starten.", "gpu_failed": "Avatar-Grafik nicht verfügbar.", "protocol_error": "Avatar-Renderer inkompatibel.", "timeout": "Avatar-Zeitlimit erreicht.", "finished": "Avatar beendet.", "stopping": "Avatar wird beendet…", "ready": "Avatar bereit."},
+	"it": {
+		"presentation": "Presentazione", "save_presentation": "Salva presentazione", "reset_presentation": "Ripristina presentazione", "saved": "Presentazione salvata per Talk.", "save_failed": "Salvataggio non riuscito. Riprovare.", "presentation_invalid": "Inserire un numero intero nell’intervallo indicato.",
+		"zoom": "Zoom (%)", "yaw": "Rotazione orizzontale (°)", "pitch": "Rotazione verticale (°)", "x": "Posizione orizzontale (%)", "y": "Posizione verticale (%)",
+		"zoom_help": "50–300%; 100 = vista adattata. Condivisa tra laboratorio e Talk autonomo.", "yaw_help": "−180–180° intorno al centro; 0 = frontale.", "pitch_help": "−85–85° intorno al centro; 0 = verticale.", "x_help": "−100–100% della larghezza; positivo sposta a destra.", "y_help": "−100–100% della larghezza; positivo sposta in basso.",
+		"talk_fallback": "Avatar non disponibile. Talk funziona ancora. Terminare, poi correggere il modello o ripristinare la presentazione nel laboratorio.",
+		"talk_loading":  "Caricamento avatar; la connessione audio prosegue indipendentemente.", "talk_running": "L’avatar segue la voce dell’agente, non il microfono.",
+		"renderer_failed": "Renderer avatar terminato inaspettatamente.", "renderer_timeout": "Renderer avatar non pronto.", "missing_renderer": "Renderer avatar mancante.", "assets_unavailable": "Nessun avatar predefinito installato.", "start_failed": "Impossibile avviare il renderer avatar.", "gpu_failed": "Grafica avatar non disponibile.", "protocol_error": "Protocollo renderer avatar incompatibile.", "timeout": "Limite di tempo avatar raggiunto.", "finished": "Avatar fermato.", "stopping": "Arresto avatar…", "ready": "Avatar pronto."},
+	"vi": {
+		"presentation": "Cách hiển thị", "save_presentation": "Lưu cách hiển thị", "reset_presentation": "Đặt lại cách hiển thị", "saved": "Đã lưu cách hiển thị cho Talk.", "save_failed": "Không lưu được. Hãy thử lại.", "presentation_invalid": "Nhập số nguyên trong phạm vi hiển thị.",
+		"zoom": "Thu phóng (%)", "yaw": "Xoay ngang (°)", "pitch": "Xoay dọc (°)", "x": "Vị trí ngang (%)", "y": "Vị trí dọc (%)",
+		"zoom_help": "50–300%; 100 = vừa khung. Dùng chung cho phòng thử và Talk độc lập.", "yaw_help": "−180–180° quanh tâm mô hình; 0 = phía trước.", "pitch_help": "−85–85° quanh tâm mô hình; 0 = thẳng đứng.", "x_help": "−100–100% chiều rộng khung; dương là sang phải.", "y_help": "−100–100% chiều rộng khung; dương là xuống dưới.",
+		"talk_fallback": "Avatar không khả dụng. Talk vẫn hoạt động. Dừng, rồi sửa mô hình hoặc đặt lại cách hiển thị trong phòng thử.",
+		"talk_loading":  "Đang nạp avatar; kết nối âm thanh tiếp tục độc lập.", "talk_running": "Avatar theo tiếng phát của trợ lý, không theo micrô.",
+		"renderer_failed": "Trình dựng avatar dừng bất ngờ.", "renderer_timeout": "Trình dựng avatar chưa sẵn sàng.", "missing_renderer": "Thiếu trình dựng avatar.", "assets_unavailable": "Chưa cài avatar mặc định.", "start_failed": "Không khởi động được trình dựng avatar.", "gpu_failed": "Đồ họa avatar không khả dụng.", "protocol_error": "Giao thức trình dựng avatar không tương thích.", "timeout": "Đã hết thời gian avatar.", "finished": "Avatar đã dừng.", "stopping": "Đang dừng avatar…", "ready": "Avatar sẵn sàng."}}

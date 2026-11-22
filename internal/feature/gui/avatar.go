@@ -34,8 +34,11 @@ type avatarLabController interface {
 	SetViewport(avatar.Viewport)
 }
 type avatarView struct {
+	note           string
 	app            avatarLabController
 	dragEpoch      atomic.Uint64
+	load           func()
+	loaded         atomic.Bool
 	touchWindow    *gogui.Window
 	touchMulti     bool
 	touchSeenReset uint64
@@ -44,7 +47,12 @@ type avatarView struct {
 
 func (*avatarView) Covers() bool           { return true }
 func (*avatarView) Timeout() time.Duration { return 6 * time.Minute }
-func (v *avatarView) Close()               { v.dragEpoch.Add(1); v.touchReset.Add(1); v.app.Stop() }
+func (v *avatarView) Close() {
+	v.loaded.Store(false)
+	v.dragEpoch.Add(1)
+	v.touchReset.Add(1)
+	v.app.Stop()
+}
 func extendAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	if component.Board().Codename != "athena" {
 		return
@@ -52,8 +60,12 @@ func extendAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	c := avatar.New(layout.AvatarDir, func() (<-chan []int16, func()) { return mic.Get().ListenUnleveled("avatar") }, privacy.Get().MicMuted, featureshell.Get().Redraw)
 	c.SetSource(func() string { return config.AvatarSection.Read().Path })
 	avatarlab.Controls()
-	v := &avatarView{app: c}
-	open := func() { featureshell.Get().Push(v) }
+	v := &avatarView{app: c, load: func() { c.Configure(avatarlab.Options(config.AvatarSection.Read())) }}
+	open := func() {
+		o := avatarlab.Options(config.AvatarSection.Read())
+		c.Configure(o)
+		featureshell.Get().Push(v)
+	}
 	apps.Get().Add(sharedapps.App{ID: "vrm-test", Name: func() string { return avatarWords("Avatar Lab", "Avatar-Labor") }, Icon: "mdi:flask", Open: open})
 	settings.RegisterAvatar(func() sharedshell.View { return v })
 	o.Views = append(o.Views, func(view sharedshell.View) *screens.Screen {
@@ -88,6 +100,9 @@ func avatarRow(v ...gogui.View) gogui.View {
 	return gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: v})
 }
 func (v *avatarView) build(w *gogui.Window) gogui.View {
+	if v.load != nil && v.loaded.CompareAndSwap(false, true) {
+		v.load()
+	}
 	v.attachAvatarTouch(w)
 	if epoch := v.touchReset.Load(); v.touchSeenReset != epoch {
 		v.touchSeenReset = epoch
@@ -126,6 +141,14 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 			lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarModelPage()) })
 		})),
 		avatarText(avatar.Text(say.Chosen(), "selection")),
+		avatarRow(avatarButton("avatar-save", avatar.Text(say.Chosen(), "save_presentation"), false, false, func() {
+			if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
+				v.note = avatar.Text(say.Chosen(), "save_failed")
+			} else {
+				v.note = avatar.Text(say.Chosen(), "saved")
+			}
+		}), avatarButton("avatar-presentation", avatar.Text(say.Chosen(), "presentation"), false, false, func() { v.app.Stop(); featureshell.Get().Push(settings.AvatarPresentationPage()) })),
+		avatarText(v.note),
 		avatarRow(avatarButton("vrm-start", "Start", false, s.Running || !supported, v.app.Start), avatarButton("vrm-stop", "Stop", false, !s.Running, v.app.Stop)),
 		avatarText(fmt.Sprintf("%s %.0f° / %.0f° · %.0f %%", avatarWords("Rotation", "Drehung"), s.Options.Yaw, s.Options.Pitch, avatar.EffectiveZoom(s.Options.Zoom)*100)),
 		avatarText(fmt.Sprintf("X %+.0f %% · Y %+.0f %%", s.Options.PanX*100, s.Options.PanY*100)),
@@ -139,6 +162,11 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 				v.dragEpoch.Add(1)
 				v.touchReset.Add(1)
 			})
+			if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
+				v.note = avatar.Text(say.Chosen(), "save_failed")
+			} else {
+				v.note = avatar.Text(say.Chosen(), "saved")
+			}
 		}), avatarButton("avatar-rotate-right", "15° →", false, false, func() { option(func(o *avatar.Options) { o.Yaw += 15 }) })),
 		toggle("vrm-idle", "Idle movement", "Idle-Bewegung", s.Options.Idle, func(o *avatar.Options) { o.Idle = !o.Idle }),
 		toggle("vrm-blink", "Blink", "Blinzeln", s.Options.Blink, func(o *avatar.Options) { o.Blink = !o.Blink }),
