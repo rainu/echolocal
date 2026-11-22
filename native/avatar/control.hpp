@@ -23,8 +23,8 @@ struct RendererControl {
         i < 0 || i > 1 || b < 0 || b > 1 || a < 0 || a > 1 || m < 0 || m > 3 ||
         !std::isfinite(f) || !std::isfinite(l) || f < 0 || f > 1 || l < 0 ||
         l > 1 || !std::isfinite(y) || y < -180 || y > 180 || !std::isfinite(p) || p < -85 || p > 85 ||
-        !std::isfinite(z) || z < .5f || z > 3 || !std::isfinite(x) || x < -1 || x > 1 ||
- !std::isfinite(t) || t < -1 || t > 1)
+        !std::isfinite(z) || z < .5f || z > 9.99f || !std::isfinite(x) || x < -5 || x > 5 ||
+ !std::isfinite(t) || t < -5 || t > 5)
       return;
     idle = i;
     blink = b;

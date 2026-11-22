@@ -186,10 +186,17 @@ func TestAvatarPinchCancelScopeAndLimits(t *testing.T) {
 	w, _, c := avatarGestureFixture(t)
 	avatarTwoTouch(w, gogui.EventTouchesBegan, 900, 1000, false)
 	avatarTwoTouch(w, gogui.EventTouchesMoved, 700, 1200, false)
-	if c.state.Options.Zoom != 3 {
+	if c.state.Options.Zoom != 5 {
 		t.Fatal("upper zoom limit", c.state.Options.Zoom)
 	}
-	avatarTwoTouch(w, gogui.EventTouchesMoved, 940, 960, false)
+	avatarTwoTouch(w, gogui.EventTouchesEnded, 700, 1200, false)
+	c.state.Options.Zoom = 3
+	avatarTwoTouch(w, gogui.EventTouchesBegan, 900, 1000, false)
+	avatarTwoTouch(w, gogui.EventTouchesMoved, 700, 1200, false)
+	if c.state.Options.Zoom != 9.99 {
+		t.Fatal("upper zoom limit", c.state.Options.Zoom)
+	}
+	avatarTwoTouch(w, gogui.EventTouchesMoved, 949, 951, false)
 	if c.state.Options.Zoom != .5 {
 		t.Fatal("lower zoom limit", c.state.Options.Zoom)
 	}
@@ -333,8 +340,8 @@ func TestAvatarPanScopeCancelAndLift(t *testing.T) {
 func TestAvatarPanBounds(t *testing.T) {
 	w, _, c := avatarGestureFixture(t)
 	avatarPairXY(w, gogui.EventTouchesBegan, 850, 300, 1050, 300)
-	avatarPairXY(w, gogui.EventTouchesMoved, 2000, -2000, 2200, -2000)
-	if c.state.Options.PanX != 1 || c.state.Options.PanY != -1 {
+	avatarPairXY(w, gogui.EventTouchesMoved, 5000, -5000, 5200, -5000)
+	if c.state.Options.PanX != 5 || c.state.Options.PanY != -5 {
 		t.Fatal(c.state.Options)
 	}
 }

@@ -1,5 +1,14 @@
 package config
 
+// AvatarZoomMin and AvatarZoomMax define the shared persisted/API percent range.
+const (
+	AvatarZoomMin = 50
+	AvatarZoomMax = 999
+	// A fitted model can extend half a viewport width from center. At 999% zoom,
+	// 500% translation keeps every model point reachable without changing pan units.
+	AvatarPositionLimit = 500
+)
+
 // Avatar contains the model and shared lab/conversation presentation.
 // Integer units are degrees and percent of the square rendering viewport.
 type Avatar struct {
@@ -20,10 +29,10 @@ func (a Avatar) Presentation() Avatar {
 	if a.Zoom == 0 {
 		a.Zoom = 100
 	}
-	a.Zoom = max(50, min(300, a.Zoom))
+	a.Zoom = max(AvatarZoomMin, min(AvatarZoomMax, a.Zoom))
 	a.Yaw = max(-180, min(180, a.Yaw))
 	a.Pitch = max(-85, min(85, a.Pitch))
-	a.X = max(-100, min(100, a.X))
-	a.Y = max(-100, min(100, a.Y))
+	a.X = max(-AvatarPositionLimit, min(AvatarPositionLimit, a.X))
+	a.Y = max(-AvatarPositionLimit, min(AvatarPositionLimit, a.Y))
 	return a
 }

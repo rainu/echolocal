@@ -36,7 +36,25 @@ int main() {
   assert(std::abs((side[2] * 2 + side[10] * 4 + side[14]) - 3) < 1e-5f);
   c.parse("S 1 1 1 0 0 0 40 -70 2.5 0 0");
   assert(c.pitch == -70 && c.zoom == 2.5f && c.yaw == 40);
-  for(const char *bad:{"S 1 1 1 0 0 0 0 nan 1 0 0","S 1 1 1 0 0 0 0 86 1 0 0","S 1 1 1 0 0 0 0 0 0 0 0","S 1 1 1 0 0 0 0 0 3.1 0 0","S 1 1 1 0 0 0 0 0 0"}){c.parse(bad);assert(c.pitch == -70 && c.zoom == 2.5f && c.yaw == 40);}
+  for(const char *bad:{"S 1 1 1 0 0 0 0 nan 1 0 0","S 1 1 1 0 0 0 0 86 1 0 0","S 1 1 1 0 0 0 0 0 0 0 0","S 1 1 1 0 0 0 0 0 10 0 0","S 1 1 1 0 0 0 0 0 0"}){c.parse(bad);assert(c.pitch == -70 && c.zoom == 2.5f && c.yaw == 40);}
+  for(float zoom : {3.f, 5.f, 9.99f}) {
+    char line[120];
+    snprintf(line,sizeof(line),"S 0 0 0 0 0 0 25 -15 %.4f .2 -.3",zoom);
+    c.parse(line);
+    assert(c.zoom == zoom && c.panX == .2f && c.panY == -.3f && c.yaw == 25 && c.pitch == -15);
+    auto base = avatarOrbit(25,-15,2,5,3);
+    auto framed = avatarPan(avatarZoom(base,zoom),.2f,-.3f);
+    for(auto dim : {std::array<int,2>{640,640},{640,800},{1280,800}}) {
+      auto projected = avatarViewportAspect(framed,dim[0],dim[1]);
+      // Width-relative framing: same x/y pixel scale in Lab, Talk and future fullscreen.
+      assert(std::abs(projected[0]-base[0]*zoom) < 1e-5f);
+      assert(std::abs(projected[1]*dim[1]-base[1]*zoom*dim[0]) < .01f);
+      assert(projected[2] == base[2]);
+    }
+    for(const char *bad : {"S 0 0 0 0 0 0 0 0 10 0 0","S 0 0 0 0 0 0 0 0 9.991 0 0","S 0 0 0 0 0 0 0 0 .49 0 0","S 0 0 0 0 0 0 0 0 nan 0 0"}) {
+      c.parse(bad); assert(c.zoom == zoom && c.panX == .2f && c.panY == -.3f);
+    }
+  }
   for(float yaw:{-180.f,0.f,90.f})for(float pitch:{-85.f,0.f,85.f}) {
    auto m=avatarOrbit(yaw,pitch,2,5,3);
    for(int r=0;r<3;++r){float v=m[r]*2+m[4+r]*5+m[8+r]*3+m[12+r];assert(std::abs(v-(r==0?2:r==1?5:3))<1e-5f);}
@@ -46,7 +64,7 @@ int main() {
   assert(std::abs(tilt[6]-1)<1e-5f && std::abs(tilt[9]+1)<1e-5f);
   c.parse("S 1 1 1 0 0 0 40 -70 2.5 0.25 -0.5");
   assert(c.panX==.25f && c.panY==-.5f);
-  for(const char *bad:{"S 1 1 1 0 0 0 0 0 1 nan 0","S 1 1 1 0 0 0 0 0 1 0 inf","S 1 1 1 0 0 0 0 0 1 1.1 0","S 1 1 1 0 0 0 0 0 1 0 -1.1","S 1 1 1 0 0 0 0 0 1"}) {c.parse(bad);assert(c.panX==.25f && c.panY==-.5f);}
+  for(const char *bad:{"S 1 1 1 0 0 0 0 0 1 nan 0","S 1 1 1 0 0 0 0 0 1 0 inf","S 1 1 1 0 0 0 0 0 1 5.1 0","S 1 1 1 0 0 0 0 0 1 0 -5.1","S 1 1 1 0 0 0 0 0 1"}) {c.parse(bad);assert(c.panX==.25f && c.panY==-.5f);}
   auto m=avatarOrbit(35,20,2,5,3);
   auto moved=avatarPan(avatarZoom(m,2),.25f,-.5f);
   assert(std::abs(moved[12]-(2*m[12]+.5f))<1e-5f);
@@ -66,6 +84,8 @@ int main() {
     assert(mapped[col*4]==moved[col*4] && mapped[col*4+2]==moved[col*4+2]);
    }
   }
+  c.parse("S 0 0 0 0 0 0 12 6 9.99 -5 5");
+  assert(c.zoom == 9.99f && c.panX == -5 && c.panY == 5);
   int fds[2];
   assert(pipe(fds) == 0);
   assert(dup2(fds[0], STDIN_FILENO) >= 0);

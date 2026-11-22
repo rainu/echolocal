@@ -90,11 +90,11 @@ The scalar control contract is version 4; daemon and bundled helper are updated 
 In Avatar Lab only, one-finger dragging inside the visible running preview
 rotates horizontally and tilts vertically (180 degrees per preview width;
 pitch limited to ±85°). Diagonal drags combine both. Two fingers starting
-inside the preview choose either pinch zoom (50–300%) or screen-plane pan.
+inside the preview choose either pinch zoom (50–999%) or screen-plane pan.
 Spreading enlarges the avatar; parallel dragging moves it without rotation or
 zoom. After a 12-pixel classification threshold, gesture ownership stays fixed
 until lift, preventing spacing jitter from changing pan into zoom. Ambiguous
-movement waits for more travel (32 pixels). Pan is bounded to ±one preview width
+movement waits for more travel (32 pixels). Pan is bounded to ±five preview widths
 per axis and is independent of zoom and model orientation.
 The second finger cancels one-finger rotation. Lifting either finger ends
 pinch ownership until all fingers lift; outside-origin or three-finger gestures
@@ -186,11 +186,11 @@ existing settings API expose the same fields in domain `avatar`:
 
 | Field | Unit and accepted range | Default and interpretation |
 | --- | --- | --- |
-| zoom | integer percent, 50–300 | 100: fitted model; larger enlarges |
+| zoom | integer percent, 50–999 | 100: fitted model; larger enlarges |
 | yaw | integer degrees, −180–180 | 0: front; horizontal model-center rotation |
 | pitch | integer degrees, −85–85 | 0: upright; vertical model-center rotation |
-| x | integer percent, −100–100 | 0: centered; positive moves right |
-| y | integer percent, −100–100 | 0: centered; positive moves down |
+| x | integer percent, −500–500 | 0: centered; positive moves right |
+| y | integer percent, −500–500 | 0: centered; positive moves down |
 | idle | on/off | on: idle movement enabled |
 | blink | on/off | on: automatic blinking enabled |
 | animation | on/off | on: installed VRMA motion playing |
@@ -237,3 +237,23 @@ Conversation completion/failure removes its temporary page, stops the owned
 renderer and releases the model snapshot, revealing the previous display.
 Existing acknowledgment/progress/readiness/error/end sounds and end phrase
 behavior use their unchanged audio paths.
+
+### Extended close-up zoom contract
+
+The shared range is **50–999%**, inclusive, with unchanged 100% default.
+Lab gestures, native numeric settings, owner web/API and Node settings all use
+this range. The native control accepts scale 0.5–9.99; no consumer may clamp to
+3. Save rounds preview scale to integer percent. A saved face close-up is loaded
+unchanged on the next Lab entry and standalone Talk activation.
+
+Future fullscreen/background consumers (#47) must load
+`avatarlab.Options(config.AvatarSection.Read())` and use the same native
+zoom/pan/projection path. Do not add editor-only or 300% limits. Width-relative
+framing remains consistent; a wider viewport naturally scales the model with
+its width and a taller viewport reveals additional vertical area.
+
+At high zoom, model-centered scaling can move the head beyond the former ±100%
+translation reach. Position range is therefore extended additively to ±500%;
+units, signs, screen-space ordering and previously valid saved values are
+unchanged. The native scalar bounds are ±5. This lets a full-body model's face
+remain reachable at 999% instead of merely enlarging its torso.
