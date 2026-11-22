@@ -144,6 +144,7 @@ func TestMicrophoneMuteAndRelease(t *testing.T) {
 }
 func TestMissingAndFailingRenderer(t *testing.T) {
 	c := New(t.TempDir(), nil, func() bool { return false }, func() {})
+	c.renderer = t.TempDir() + "/echolocal-avatar" // Also absent on a device with the production helper installed.
 	c.resolve = fakeAssets
 	c.Start()
 	if c.Snapshot().Running || c.Snapshot().Notice != "missing_renderer" {

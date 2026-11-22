@@ -140,8 +140,7 @@ stops the preview before opening. Reset is explicit; failures never silently
 fall back. Correct the path/file, choose another model, or reset, then Start.
 
 Custom models must be self-contained GLB: VRM 0 (`VRM.specVersion=0.0`) or VRM 1
-(`VRMC_vrm.specVersion=1.0`), strictly below 64 MiB, with no external buffers or
-images. Paths are limited to 255 UTF-8 bytes for existing text-control parity;
+(`VRMC_vrm.specVersion=1.0`), strictly below 64 MiB, with no buffer/image URI references (including data URIs). Paths are limited to 255 UTF-8 bytes for existing text-control parity;
 relative/traversal/control-character paths and non-.vrm names are rejected.
 File access shares the owner browser's canonical-root and pinned regular-file
 opener; production root is the real filesystem `/`, with unchanged OS permissions.
