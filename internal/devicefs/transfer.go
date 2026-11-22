@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -37,49 +36,19 @@ func serveFile(w http.ResponseWriter, r *http.Request, root, name string, upload
 	}
 	switch r.Method {
 	case "GET", "HEAD":
-		resolved, err := resolve(root, name)
+		f, err := OpenRegular(root, name)
 		if err != nil {
-			directoryFailure(w, err)
+			if errors.Is(err, errUnsupported) {
+				failure(w, 409, "unsupported_file")
+			} else {
+				directoryFailure(w, err)
+			}
 			return
 		}
-		d, err := openDirectory(root, path.Dir(resolved))
-		if err != nil {
-			directoryFailure(w, err)
-			return
-		}
-		defer d.Close()
-		// O_PATH pins the inode without invoking a device's open callback.
-		// Inspect it before obtaining a readable descriptor: even an attempted
-		// open of e.g. a watchdog device must not have physical side effects.
-		pinned, err := unix.Openat(int(d.Fd()), path.Base(resolved), unix.O_PATH|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
-		if err != nil {
-			directoryFailure(w, err)
-			return
-		}
-		defer unix.Close(pinned)
-		var st unix.Stat_t
-		if err = unix.Fstat(pinned, &st); err != nil {
-			directoryFailure(w, err)
-			return
-		}
-		if st.Mode&unix.S_IFMT != unix.S_IFREG {
-			failure(w, 409, "unsupported_file")
-			return
-		}
-		fd, err := unix.Open("/proc/self/fd/"+strconv.Itoa(pinned), unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
-		if err != nil {
-			directoryFailure(w, err)
-			return
-		}
-		f := os.NewFile(uintptr(fd), name)
 		defer f.Close()
 		info, err := f.Stat()
 		if err != nil {
 			directoryFailure(w, err)
-			return
-		}
-		if !info.Mode().IsRegular() {
-			failure(w, 409, "unsupported_file")
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")

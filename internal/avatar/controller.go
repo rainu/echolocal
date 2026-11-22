@@ -49,6 +49,7 @@ type Controller struct {
 	state      State
 	dir        string
 	renderer   string
+	source     func() string
 	resolve    func(string) (AssetSet, string, string, error)
 	viewport   Viewport
 	listen     func() (<-chan []int16, func())
@@ -62,6 +63,14 @@ type Controller struct {
 
 func New(dir string, listen func() (<-chan []int16, func()), muted func() bool, redraw func()) *Controller {
 	return &Controller{dir: dir, renderer: layout.AvatarRenderer, resolve: ResolveAssets, viewport: Viewport{X: 640, Y: 80, Size: 640}, listen: listen, muted: muted, redraw: redraw, command: exec.CommandContext, state: State{Options: Options{Idle: true, Blink: true, Animation: true, Fixed: .5, Zoom: 1}, Notice: "ready"}}
+}
+
+// SetSource is configured during GUI initialization. Changes are read at Start;
+// a running model remains stable until Stop/Start, with its loaded name visible.
+func (c *Controller) SetSource(source func() string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.source = source
 }
 func (c *Controller) Snapshot() State { c.mu.Lock(); defer c.mu.Unlock(); return c.state }
 func (c *Controller) Configure(o Options) {
@@ -94,9 +103,33 @@ func (c *Controller) Start() {
 		c.mu.Unlock()
 		return
 	}
-	assets, model, motion, err := c.resolve(c.dir)
+	var assets AssetSet
+	var model, motion string
+	var err error
+	cleanup := func() {}
+	custom := ""
+	if c.source != nil {
+		custom = c.source()
+	}
+	if custom != "" {
+		assets, model, motion, cleanup, err = ResolveCustom("/", c.dir, custom)
+	} else {
+		assets, model, motion, err = c.resolve(c.dir)
+	}
+	started := false
+	defer func() {
+		if !started {
+			cleanup()
+		}
+	}()
 	if err != nil {
 		c.state.Notice = "assets_unavailable"
+		if custom != "" {
+			c.state.ModelName = ""
+			c.state.Credit = ""
+			c.state.Ready = false
+			c.state.Notice = err.Error()
+		}
 		c.mu.Unlock()
 		c.redraw()
 		return
@@ -138,6 +171,7 @@ func (c *Controller) Start() {
 		c.redraw()
 		return
 	}
+	started = true
 	c.generation++
 	gen := c.generation
 	opts := c.state.Options
@@ -161,6 +195,7 @@ func (c *Controller) Start() {
 	})
 	go c.feed(ctx, gen, stdin, cancel)
 	go func() {
+		defer cleanup()
 		scan := bufio.NewScanner(stdout)
 		scan.Buffer(make([]byte, 4096), 4096)
 		for scan.Scan() {

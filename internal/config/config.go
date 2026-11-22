@@ -11,6 +11,8 @@ import (
 type Config struct {
 	schema.Shared
 
+	Avatar Avatar `json:"avatar"`
+
 	Device     Device     `json:"-"`
 	Speaker    Speaker    `json:"speaker"`
 	Volume     Volume     `json:"volume"`

@@ -111,3 +111,52 @@ orthographic zoom scales screen-plane coordinates without modifying depth.
 IPC versioning is independent of the GLSL language version: both shaders remain
 `#version 300 es` for the Athena GLES3 GPU. Native host protocol tests do not
 compile GPU shaders; verify a rendered frame on the target after shader changes.
+
+## Custom model selection (Athena)
+
+**Avatar Lab → Model file** selects one persistent `avatar/path` setting. The
+same field is under **Display → Avatar Lab** in the owner HTTPS web UI and in
+settings discovery/API, ESPHome controls, and the permission-gated Node settings
+commands. This is an absolute path **on the Echo**, not on the browser computer.
+Only the existing settings grant is used; no new file-reading Node command is
+added. The setting is preserved across EchoLocal service restarts.
+
+Upload a model through the existing **Files** filesystem browser into a writable
+device directory, or use the existing authenticated WebDAV interface. Enter the
+full destination path, including the `.vrm` filename, in the model field. Managed
+Files assets can also be selected using their existing device-side path; there
+is no additional uploader, public model endpoint, or network model downloader.
+The existing CLI asset import remains available for the default model/motion.
+
+Example local configuration: `echod ctl settings avatar.path /data/local/tmp/avatar.vrm`.
+The owner configuration endpoint is `PUT /api/v1/settings/avatar/path` with
+`{"value":"/data/local/tmp/avatar.vrm"}`; GET reads the same field. Empty `value`
+or **Use default avatar** restores the installed default catalog selection and
+its animation. No setting change preserves the previous behavior and catalog;
+no bundled model is overwritten. Stop/Start reloads the selected model. Changes
+from any settings surface apply on the next Start, not midway through a run;
+the model name/credit identify the actually loaded model. The native file editor
+stops the preview before opening. Reset is explicit; failures never silently
+fall back. Correct the path/file, choose another model, or reset, then Start.
+
+Custom models must be self-contained GLB: VRM 0 (`VRM.specVersion=0.0`) or VRM 1
+(`VRMC_vrm.specVersion=1.0`), strictly below 64 MiB, with no external buffers or
+images. Paths are limited to 255 UTF-8 bytes for existing text-control parity;
+relative/traversal/control-character paths and non-.vrm names are rejected.
+File access shares the owner browser's canonical-root and pinned regular-file
+opener; production root is the real filesystem `/`, with unchanged OS permissions.
+Symlinks follow that existing policy, cannot escape a restricted test root, and
+special files are rejected before any device open callback is invoked.
+
+Before parsing, the file is copied to one 0600 snapshot that is immediately
+unlinked and held open only for the renderer lifetime. Neither model replacement
+nor restart accumulates model copies. Stop, renderer failure, startup failure,
+and parent exit release the snapshot; a crash also releases its anonymous inode.
+The renderer sees only that snapshot, never the configurable source path.
+The default VRMA is reused when valid; custom selection does not import motion.
+Compatible humanoid names/rigs are necessary for retargeting. Existing rendering
+limitations above still apply: full MToon, spring bones and expression overrides
+are not advertised, and compatibility with unrelated avatar applications is not
+assumed. Scene limits include fewer than 4096 nodes, 256 meshes/materials,
+500000 vertices, 128 MiB decoded texture memory, and existing morph budgets.
+Model/version/resource errors are recoverable lab states, not daemon failures.
