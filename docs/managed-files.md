@@ -134,7 +134,7 @@ curl --fail-with-body --user owner --upload-file asset.bin \
 
 ## Optional managed asset API
 
-The **Managed assets** tab and `/api/v1/files` share the real persistent flat
+The **Managed assets** tab and `/api/v1/files` share the real persistent managed
 directory `layout.StateDir + "/user-files"` (0700, files 0600). The normal browser's
 **Show upload directory** shortcut opens that physical directory, not a virtual
 filesystem.
@@ -146,13 +146,15 @@ filesystem.
 | `GET /api/v1/files/{name}` | Attachment download with range support |
 | `DELETE /api/v1/files/{name}` | 204; asset UI confirms deletion |
 
-Only this managed API enforces 128 MiB/file, 512 MiB total and 256 files, with a
+The managed API and WebDAV share 128 MiB/file, 512 MiB total and 256 files/folders, with a
 128 MiB free-space reserve. Capacity is min(quota remaining, OS-available bytes,
 total free bytes minus reserve); OS-reserved blocks are not subtracted twice.
 One managed upload at a time, with a five-minute deadline.
 
-Managed names are 1–128 ASCII letters/digits/spaces/dots/dashes/underscores, without
-a leading dot or outer spaces. No folders, overwrite or automatic activation.
+Managed relative paths support UTF-8 names (255 bytes/component, 1024 bytes/path,
+16 components). Reserved `.upload-*`/`.dav-*` names and control characters are
+rejected. The API remains create-only; the [WebDAV adapter](managed-webdav.md)
+adds folders, replacement, rename, properties and locking in the same store.
 Traversal, symlinks and special files are rejected in this **managed** API, unlike
 normal symlink navigation in the separate filesystem browser. Complete files are
 synced and atomically published; failed transfers are removed and managed crash
@@ -161,13 +163,13 @@ to older software leaves them intact.
 
 Metadata: `{"name":"sample.bin","size":3,"modified":"2026-01-01T00:00:00Z"}`.
 Inventory has `directory`, `files`, `usedBytes`, `availableBytes`, `budgetBytes`,
-`maxFileBytes` and `maxFiles`. Managed errors additionally include invalid_name
+`maxFileBytes` and `maxFiles` and `entries` (files plus folders). Managed errors additionally include invalid_name
 (400) and unsafe_entry (409). Refresh after uncertain outcomes. The managed quota
 is not a device-wide filesystem sandbox.
 
 ## Consumer contract
 
-Consumers discover with `files.Get().List()`, select by stable flat filename and
+Consumers discover with `files.Get().List()`, select by relative managed path and
 stream through `Open(name)`, closing the descriptor. Inject the same process
 store, never concatenate untrusted names or accept request-selected managed
 roots. Validate formats and atomically import into feature-owned storage there.

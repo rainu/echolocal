@@ -41,7 +41,7 @@ func (s *Store) Handler() http.Handler {
 			return
 		}
 		name := strings.TrimPrefix(path, "/")
-		if !ValidName(name) {
+		if !ValidPath(name) {
 			fail(w, 400, "invalid_name")
 			return
 		}

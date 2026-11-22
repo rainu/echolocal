@@ -14,7 +14,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unicode/utf8"
 )
 
 const (
@@ -46,10 +45,11 @@ type View struct {
 	Budget    int64      `json:"budgetBytes"`
 	MaxFile   int64      `json:"maxFileBytes"`
 	MaxFiles  int        `json:"maxFiles"`
+	Entries   int        `json:"entries"`
 }
 
 // Store owns a pinned directory descriptor. The parent path is trusted
-// application layout, never request input. Its contents are flat, regular files.
+// application layout, never request input. Its contents form a bounded managed tree.
 type Store struct {
 	path                     string
 	once                     sync.Once
@@ -59,24 +59,20 @@ type Store struct {
 	upload                   sync.Mutex // at most one transfer, nonblocking admission
 	free                     func() (int64, error)
 	budget, maxFile, reserve int64
+	entryCount               int
+	dav                      *davState
 }
 
 func New(path string) *Store {
-	return &Store{path: path, budget: BudgetBytes, maxFile: MaxFileBytes, reserve: ReserveBytes}
+	return &Store{path: path, budget: BudgetBytes, maxFile: MaxFileBytes, reserve: ReserveBytes, dav: newDAVState()}
 }
-func ValidName(name string) bool {
-	if len(name) == 0 || len(name) > 128 || !utf8.ValidString(name) || name[0] == '.' || strings.TrimSpace(name) != name {
-		return false
-	}
-	for _, c := range name {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-' || c == '_' || c == ' ') {
-			return false
-		}
-	}
-	return true
-}
+func ValidName(name string) bool { return validComponent(name) }
 func (s *Store) init() error {
 	s.once.Do(func() {
+		if err := recoverTree(s.path); err != nil {
+			s.err = err
+			return
+		}
 		if err := os.MkdirAll(s.path, 0700); err != nil {
 			s.err = err
 			return
@@ -112,6 +108,7 @@ func (s *Store) init() error {
 				}
 			}
 		}
+		s.err = s.loadProps()
 	})
 	return s.err
 }
@@ -147,27 +144,29 @@ func (s *Store) usableBytes() (int64, error) {
 }
 func (s *Store) view() (View, error) {
 	v := View{Directory: s.path, Files: []Metadata{}, Budget: s.budget, MaxFile: s.maxFile, MaxFiles: MaxFiles}
-	entries, err := s.entries()
+	s.entryCount = 0
+	err := s.scan(".", func(n string, e os.FileInfo) error {
+		s.entryCount++
+		if s.entryCount > MaxFiles {
+			return ErrFull
+		}
+		if e.Mode().IsRegular() {
+			v.Files = append(v.Files, Metadata{n, e.Size(), e.ModTime().UTC()})
+			v.Used += e.Size()
+		}
+		return nil
+	})
 	if err != nil {
 		return v, err
 	}
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".upload-") {
-			continue
-		}
-		if !ValidName(e.Name()) || !e.Mode().IsRegular() {
-			return v, ErrBoundary
-		}
-		v.Files = append(v.Files, Metadata{e.Name(), e.Size(), e.ModTime().UTC()})
-		v.Used += e.Size()
-	}
+	v.Entries = s.entryCount
 	slices.SortFunc(v.Files, func(a, b Metadata) int { return strings.Compare(a.Name, b.Name) })
 	free, err := s.usableBytes()
 	if err != nil {
 		return v, err
 	}
 	v.Available = max(int64(0), min(s.budget-v.Used, free))
-	if len(v.Files) >= MaxFiles {
+	if s.entryCount >= MaxFiles {
 		v.Available = 0
 	}
 	return v, nil
@@ -184,7 +183,7 @@ func (s *Store) List() (View, error) {
 // Open returns only a regular, non-symlink file inside the pinned root.
 // Caller must Close. Deletion after Open does not invalidate its descriptor.
 func (s *Store) Open(name string) (*os.File, Metadata, error) {
-	if !ValidName(name) {
+	if !ValidPath(name) {
 		return nil, Metadata{}, ErrName
 	}
 	if err := s.init(); err != nil {
@@ -192,18 +191,10 @@ func (s *Store) Open(name string) (*os.File, Metadata, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// os.Root resolves internal symlinks even with O_NOFOLLOW supplied.
-	// Use an atomic no-follow openat relative to its pinned directory instead.
-	dir, err := s.root.Open(".")
+	f, err := s.openTree(name)
 	if err != nil {
 		return nil, Metadata{}, err
 	}
-	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
-	dir.Close()
-	if err != nil {
-		return nil, Metadata{}, err
-	}
-	f := os.NewFile(uintptr(fd), name)
 	st, err := f.Stat()
 	if err != nil || !st.Mode().IsRegular() {
 		f.Close()
@@ -212,22 +203,36 @@ func (s *Store) Open(name string) (*os.File, Metadata, error) {
 	return f, Metadata{name, st.Size(), st.ModTime().UTC()}, nil
 }
 func (s *Store) Delete(name string) error {
-	if !ValidName(name) {
+	if !s.upload.TryLock() {
+		return ErrBusy
+	}
+	defer s.upload.Unlock()
+
+	if !ValidPath(name) {
 		return ErrName
 	}
 	if err := s.init(); err != nil {
 		return err
 	}
+	release, err := s.apiLock(name)
+	if err != nil {
+		return err
+	}
+	defer release()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st, err := s.root.Lstat(name)
+	st, err := s.statTree(name)
 	if err != nil {
 		return err
 	}
 	if !st.Mode().IsRegular() {
 		return ErrBoundary
 	}
-	return s.root.Remove(name)
+	if err = s.root.Remove(name); err != nil {
+		return err
+	}
+	delete(s.dav.props, name)
+	return s.saveProps()
 }
 func (s *Store) Upload(name string, size int64, body io.Reader) (Metadata, error) {
 	return s.UploadContext(context.Background(), name, size, body)
@@ -239,7 +244,7 @@ func (s *Store) UploadContext(ctx context.Context, name string, size int64, body
 		return Metadata{}, err
 	}
 
-	if !ValidName(name) {
+	if !ValidPath(name) {
 		return Metadata{}, ErrName
 	}
 	if size < 0 {
@@ -255,8 +260,19 @@ func (s *Store) UploadContext(ctx context.Context, name string, size int64, body
 	if err := s.init(); err != nil {
 		return Metadata{}, err
 	}
+	release, lockErr := s.apiLock(name)
+	if lockErr != nil {
+		return Metadata{}, lockErr
+	}
+	defer release()
 	s.mu.Lock()
-	_, err := s.root.Lstat(name)
+	parent, _, err := s.parent(name)
+	if err != nil {
+		s.mu.Unlock()
+		return Metadata{}, err
+	}
+	parent.Close()
+	_, err = s.root.Lstat(name)
 	if err == nil {
 		s.mu.Unlock()
 		return Metadata{}, ErrExists
@@ -270,7 +286,7 @@ func (s *Store) UploadContext(ctx context.Context, name string, size int64, body
 	if err != nil {
 		return Metadata{}, err
 	}
-	if len(v.Files) >= MaxFiles || size > v.Available {
+	if s.entryCount >= MaxFiles || size > v.Available {
 		return Metadata{}, ErrFull
 	}
 	// Random temporary names are never accepted by the public name validator.
@@ -318,6 +334,11 @@ func (s *Store) UploadContext(ctx context.Context, name string, size int64, body
 	if free < 0 {
 		return Metadata{}, ErrFull
 	}
+	parent, _, err = s.parent(name)
+	if err != nil {
+		return Metadata{}, err
+	}
+	parent.Close()
 	// Link is atomic and never overwrites an existing name (including symlinks).
 	if err = s.root.Link(temp, name); err != nil {
 		if errors.Is(err, fs.ErrExist) {
