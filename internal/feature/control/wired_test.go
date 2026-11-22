@@ -13,6 +13,7 @@ import (
 
 var coverage = settingtest.Shared.With(settingtest.Coverage{
 	Rows: map[string]string{
+		"Avatar.Path":               "avatar.path",
 		"Microphone.Gain":           "microphone.gain",
 		"Microphone.Leveling":       "microphone.leveling",
 		"Microphone.Mixing":         "microphone.mixing",
