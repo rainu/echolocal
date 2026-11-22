@@ -62,6 +62,9 @@ func (s *Store) openTree(n string) (*os.File, error) {
 		fd, e := syscall.Openat(int(d.Fd()), c, flags, 0)
 		d.Close()
 		if e != nil {
+			if errors.Is(e, syscall.ENOTDIR) {
+				return nil, fs.ErrNotExist
+			}
 			if errors.Is(e, syscall.ELOOP) {
 				return nil, ErrBoundary
 			}
@@ -81,6 +84,17 @@ func (s *Store) parent(n string) (*os.File, string, error) {
 		return nil, "", ErrName
 	}
 	d, e := s.openTree(path.Dir(n))
+	if e == nil {
+		st, se := d.Stat()
+		if se != nil {
+			d.Close()
+			return nil, "", se
+		}
+		if !st.IsDir() {
+			d.Close()
+			return nil, "", fs.ErrNotExist
+		}
+	}
 	return d, path.Base(n), e
 }
 func (s *Store) statTree(n string) (os.FileInfo, error) {

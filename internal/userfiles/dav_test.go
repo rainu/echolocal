@@ -428,3 +428,20 @@ func TestDAVTaggedConditionsAndLockDeletion(t *testing.T) {
 		t.Fatal(w.Body)
 	}
 }
+
+func TestDAVContentTypeMatchesMetadata(t *testing.T) {
+	s := testStore(t)
+	h := s.DAVHandler()
+	mustDAV(t, h, "PUT", "/note.txt", "text", nil, 201)
+	w := mustDAV(t, h, "GET", "/note.txt", "", nil, 200)
+	ctype := w.Header().Get("Content-Type")
+	if !strings.HasPrefix(w.Header().Get("Content-Disposition"), "attachment") {
+		t.Fatal(w.Header())
+	}
+	p := mustDAV(t, h, "PROPFIND", "/note.txt", `<propfind xmlns="DAV:"><prop><getcontenttype/></prop></propfind>`, map[string]string{"Depth": "0"}, 207)
+	if !strings.Contains(p.Body.String(), ctype) {
+		t.Fatal("GET metadata content-type mismatch", ctype, p.Body)
+	}
+	mustDAV(t, h, "PUT", "/note.txt/child", "data", nil, 409)
+	mustDAV(t, h, "MKCOL", "/note.txt/dir", "", nil, 409)
+}

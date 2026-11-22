@@ -356,7 +356,6 @@ func (s *Store) serveDAV(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	if r.Method == "GET" || r.Method == "HEAD" {
-		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(n)}))
 		h.ServeHTTP(w, r)
 		return
