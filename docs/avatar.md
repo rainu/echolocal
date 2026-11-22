@@ -168,9 +168,10 @@ an explicit Stop control. It uses the **same Talk activation, selected agent,
 session and audio lane**. Talk started inside a selected chat retains its normal
 chat view; Home Assistant routing is unchanged.
 
-Avatar Lab's **Save presentation** persists the preview framing. **Front** resets
-and saves all five transforms, without resetting the selected model. A numeric
-**Presentation** editor is available on the device; the owner web settings and
+Avatar Lab's **Save presentation** persists the preview framing and the Idle
+movement, Blink and VRMA animation switches. **Front** resets and saves all five
+transforms, without resetting the selected model or motion choices. A
+**Presentation** editor with numeric fields and motion toggles is available on the device; the owner web settings and
 existing settings API expose the same fields in domain `avatar`:
 
 | Field | Unit and accepted range | Default and interpretation |
@@ -180,6 +181,17 @@ existing settings API expose the same fields in domain `avatar`:
 | pitch | integer degrees, −85–85 | 0: upright; vertical model-center rotation |
 | x | integer percent, −100–100 | 0: centered; positive moves right |
 | y | integer percent, −100–100 | 0: centered; positive moves down |
+| idle | on/off | on: idle movement enabled |
+| blink | on/off | on: automatic blinking enabled |
+| animation | on/off | on: installed VRMA motion playing |
+
+All three motion switches are saved with **Save presentation** and restored in
+both Lab and standalone Talk, including after restart. Native settings, web and
+API/Node edits save immediately. **Front** only resets framing, preserving the
+motion choices. Legacy storage without motion flags keeps all three enabled;
+explicitly saved off states remain off. Storage uses inverse disabled flags to
+distinguish these states without changing legacy defaults. Mouth mode/microphone
+preview is not saved or inherited by Talk: its mouth still follows agent playback.
 
 Position is relative to the **square viewport width**, independent of model
 orientation and zoom. Lab and Talk use the same viewport geometry, so saved

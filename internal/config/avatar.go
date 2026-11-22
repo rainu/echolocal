@@ -3,12 +3,16 @@ package config
 // Avatar contains the model and shared lab/conversation presentation.
 // Integer units are degrees and percent of the square rendering viewport.
 type Avatar struct {
-	Path  string `json:"path"`
-	Zoom  int    `json:"zoom,omitempty"`
-	Yaw   int    `json:"yaw,omitempty"`
-	Pitch int    `json:"pitch,omitempty"`
-	X     int    `json:"x,omitempty"`
-	Y     int    `json:"y,omitempty"`
+	// Disabled flags preserve the legacy default: all three motions enabled.
+	IdleDisabled      bool   `json:"idle_disabled,omitempty"`
+	BlinkDisabled     bool   `json:"blink_disabled,omitempty"`
+	AnimationDisabled bool   `json:"animation_disabled,omitempty"`
+	Path              string `json:"path"`
+	Zoom              int    `json:"zoom,omitempty"`
+	Yaw               int    `json:"yaw,omitempty"`
+	Pitch             int    `json:"pitch,omitempty"`
+	X                 int    `json:"x,omitempty"`
+	Y                 int    `json:"y,omitempty"`
 }
 
 // Presentation makes legacy zero zoom usable and bounds hand-edited storage.

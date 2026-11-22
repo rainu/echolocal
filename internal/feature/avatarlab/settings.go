@@ -43,6 +43,27 @@ func NewTable() *setting.Table[config.Avatar] {
 			return nil
 		}})
 	}
+
+	for _, f := range []struct {
+		name     string
+		disabled func(*config.Avatar) *bool
+	}{
+		{"idle", func(a *config.Avatar) *bool { return &a.IdleDisabled }},
+		{"blink", func(a *config.Avatar) *bool { return &a.BlinkDisabled }},
+		{"animation", func(a *config.Avatar) *bool { return &a.AnimationDisabled }},
+	} {
+		rows = append(rows, setting.Setting[config.Avatar]{Name: f.name, Kind: setting.Toggle, Group: "presentation", Icon: "mdi:account",
+			Read: func(a *config.Avatar) string { return setting.OnOff(!*f.disabled(a)) },
+			Write: func(a *config.Avatar, v string) error {
+				on, ok := setting.Boolean(v)
+				if !ok {
+					return errors.New(avatar.Text(say.Chosen(), "motion_invalid"))
+				}
+				*f.disabled(a) = !on
+				return nil
+			},
+		})
+	}
 	return setting.NewTable("avatar", []setting.Group{"model", "presentation"}, rows, setting.Messages{
 		Text: func(k string) string {
 			if key, ok := presentationMessage(k); ok {
@@ -97,7 +118,7 @@ func presentationMessage(k string) (string, bool) {
 	if k == "avatar.group.presentation" {
 		return "presentation", true
 	}
-	for _, name := range []string{"zoom", "yaw", "pitch", "x", "y"} {
+	for _, name := range []string{"zoom", "yaw", "pitch", "x", "y", "idle", "blink", "animation"} {
 		if k == "avatar.setting."+name || k == "avatar.entity."+name {
 			return name, true
 		}
@@ -111,15 +132,20 @@ func presentationMessage(k string) (string, bool) {
 // Options always reads the same presentation used by the owner settings API.
 func Options(a config.Avatar) avatar.Options {
 	a = a.Presentation()
-	return avatar.Options{Idle: true, Blink: true, Animation: true, Zoom: float64(a.Zoom) / 100, Yaw: float64(a.Yaw), Pitch: float64(a.Pitch), PanX: float64(a.X) / 100, PanY: float64(a.Y) / 100}
+	return avatar.Options{Idle: !a.IdleDisabled, Blink: !a.BlinkDisabled, Animation: !a.AnimationDisabled, Zoom: float64(a.Zoom) / 100, Yaw: float64(a.Yaw), Pitch: float64(a.Pitch), PanX: float64(a.X) / 100, PanY: float64(a.Y) / 100}
 }
 func SavePresentation(o avatar.Options) error {
-	return config.AvatarSection.Update(func(a *config.Avatar) {
-		a.Zoom = int(math.Round(avatar.EffectiveZoom(o.Zoom) * 100))
-		a.Yaw = int(math.Round(o.Yaw))
-		a.Pitch = int(math.Round(o.Pitch))
-		a.X = int(math.Round(o.PanX * 100))
-		a.Y = int(math.Round(o.PanY * 100))
-		*a = a.Presentation()
-	})
+	return config.AvatarSection.Update(func(a *config.Avatar) { applyPresentation(a, o) })
+}
+
+func applyPresentation(a *config.Avatar, o avatar.Options) {
+	a.IdleDisabled = !o.Idle
+	a.BlinkDisabled = !o.Blink
+	a.AnimationDisabled = !o.Animation
+	a.Zoom = int(math.Round(avatar.EffectiveZoom(o.Zoom) * 100))
+	a.Yaw = int(math.Round(o.Yaw))
+	a.Pitch = int(math.Round(o.Pitch))
+	a.X = int(math.Round(o.PanX * 100))
+	a.Y = int(math.Round(o.PanY * 100))
+	*a = a.Presentation()
 }

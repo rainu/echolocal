@@ -50,3 +50,21 @@ func TestAvatarPresentationPersistsAndBoundsLegacyStorage(t *testing.T) {
 		t.Fatal("legacy zoom")
 	}
 }
+
+func TestAvatarMotionPersistence(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "state.json")
+	s, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for mask := 0; mask < 8; mask++ {
+		want := Avatar{Zoom: 125, Yaw: 15, IdleDisabled: mask&1 != 0, BlinkDisabled: mask&2 != 0, AnimationDisabled: mask&4 != 0}
+		if err = s.Update(func(c *Config) { c.Avatar = want }); err != nil {
+			t.Fatal(err)
+		}
+		s, err = Load(p)
+		if err != nil || s.Get().Avatar != want {
+			t.Fatal("motion persistence", mask, err, s.Get().Avatar)
+		}
+	}
+}
