@@ -36,7 +36,11 @@ This is **not a full RFC 4918 class-1/2 server**; no DAV compliance header.
   PUT /api/v1/settings/access/webdav with {"value":"on"} or {"value":"off"}.
 - Endpoint https://<device>/api/v1/webdav/ uses the existing trusted owner TLS
   certificate. Do not disable verification to accommodate a client. No HTTP
-  fallback, anonymous share, Node setting, shell or filesystem exposure.
+  fallback, anonymous share, shell or arbitrary filesystem exposure.
+- OpenClaw Node settings discovery/get/set/import/export expose access/webdav
+  as an on/off toggle under the existing settings grant. They use the same bound
+  setting and cancellation path as native and owner web/API controls. Owner
+  password and all other access/credential fields remain excluded.
 - Existing owner password through HTTP Basic (username such as owner), or owner
   bearer/cookie session. Basic failures share the existing throttle. Existing
   password fields stay redacted; no new credential API.
@@ -83,4 +87,11 @@ tested commit. Linux evidence is not Windows evidence. Synthetic browser or HTTP
 tests are not Explorer/WebClient certification. No Windows client was tested at
 this decision's creation, so that acceptance criterion remains open.
 
-## Settings coverage inventory\n\n| Bound field | Persisted source | Device | Web | Owner API | Node |\n| --- | --- | --- | --- | --- | --- |\n| access/webdav | frontend.webdav (default false) | Network/Web access toggle | Network/Web access toggle | GET/PUT /api/v1/settings/access/webdav | Explicitly excluded; owner administration only |\n\nThe endpoint and port are fixed, credentials are the existing protected owner\npassword, and store limits are shared constants rather than separate settings.\n
+## Settings coverage inventory
+
+| Bound field | Persisted source | Device | Web | Owner API | Node |
+| --- | --- | --- | --- | --- | --- |
+| access/webdav | frontend.webdav (default false) | Network/Web access toggle | Network/Web access toggle | GET/PUT /api/v1/settings/access/webdav | Discovery/get/set/import/export; settings grant |
+
+The endpoint and port are fixed, credentials are the existing protected owner
+password, and store limits are shared constants rather than separate settings.
