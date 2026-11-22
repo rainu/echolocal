@@ -57,7 +57,7 @@ func NewTable() *setting.Table[config.Avatar] {
 			Write: func(a *config.Avatar, v string) error {
 				on, ok := setting.Boolean(v)
 				if !ok {
-					return errors.New(avatar.Text(say.Chosen(), "motion_invalid"))
+					return errors.New(avatar.Text(say.Chosen(), "toggle_invalid"))
 				}
 				*f.disabled(a) = !on
 				return nil
