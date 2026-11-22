@@ -430,3 +430,18 @@ func TestCloseUpZoomDeliveredWithoutRestart(t *testing.T) {
 		t.Fatal("zoom restarted renderer", starts.Load())
 	}
 }
+
+func TestMissingBackgroundDoesNotBlockAvatar(t *testing.T) {
+	var starts atomic.Int32
+	c := New(t.TempDir(), nil, func() bool { return false }, func() {})
+	helper(c, "normal", &starts)
+	c.SetBackground(func() string { return "/not-present-background.png" })
+	c.Start()
+	defer c.Stop()
+	eventually(t, func() bool { return c.Snapshot().Ready })
+	if s := c.Snapshot(); s.BackgroundNotice != "background_unavailable" || !s.Running {
+		t.Fatal(s)
+	}
+	c.Stop()
+	eventually(t, func() bool { return !c.Snapshot().Running })
+}

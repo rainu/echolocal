@@ -16,6 +16,7 @@ var coverage = settingtest.Shared.With(settingtest.Coverage{
 		"Avatar.IdleDisabled":       "avatar.idle",
 		"Avatar.BlinkDisabled":      "avatar.blink",
 		"Avatar.AnimationDisabled":  "avatar.animation",
+		"Avatar.Background":         "avatar.background",
 		"Avatar.Path":               "avatar.path",
 		"Avatar.Zoom":               "avatar.zoom",
 		"Avatar.Yaw":                "avatar.yaw",

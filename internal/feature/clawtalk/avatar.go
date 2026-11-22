@@ -91,6 +91,7 @@ func (m *Manager) standalonePage() sharedshell.View {
 	}
 	c := avatar.New(layout.AvatarDir, nil, func() bool { return false }, shellfeature.Get().Redraw)
 	c.SetSource(func() string { return config.AvatarSection.Read().Path })
+	c.SetBackground(func() string { return config.AvatarSection.Read().Background })
 	c.Configure(avatarlab.Options(config.AvatarSection.Read()))
 	c.SetOutput(speaker.Get().VoiceLevel, 24*time.Hour)
 	m.mu.Lock()

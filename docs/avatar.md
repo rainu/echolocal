@@ -257,3 +257,37 @@ translation reach. Position range is therefore extended additively to ±500%;
 units, signs, screen-space ordering and previously valid saved values are
 unchanged. The native scalar bounds are ±5. This lets a full-body model's face
 remain reachable at 999% instead of merely enlarging its torso.
+
+### Saved background and fullscreen composition
+
+The shared native/web/owner API field is avatar.background. Use Files or
+WebDAV to upload a PNG or JPEG, then enter its full **device path**, not a path
+on the browser computer. Empty restores the existing default background.
+Changing or clearing the image never resets model selection, zoom, rotation,
+position or motion toggles. Changes apply on the next Lab Start, fullscreen
+preview or standalone conversation activation, and survive restart.
+
+Images use **centered cover** within the avatar panel: preserve aspect ratio,
+fill the panel and crop surplus edges symmetrically. Transparent PNG pixels
+show the normal default clear color. The avatar is rendered in front. The
+fullscreen preview and conversation share both panel geometry and the native
+background/projection path; neither adds a separate camera or transform.
+
+The Lab fullscreen preview uses the current (including unsaved) placement,
+with exactly the standalone conversation's right-half, full-height viewport.
+Its left half contains an explicit touch exit and visual-only notice rather
+than conversation controls. It never starts Talk, opens a microphone, sends a
+message or places a call. Lab mouth-source options cannot enable preview
+capture. Exit restores the previous lab options and running/stopped state.
+Use Save presentation to persist placement for the next actual conversation.
+The session-specific chat Live Talk view is unchanged.
+
+Limits: 8 MiB encoded, 4096 pixels per side and 4 megapixels decoded. Only PNG
+and JPEG are accepted. File access uses the existing pinned-regular-file policy;
+no permissions or roots are expanded. A bounded immutable encoded snapshot is
+header-checked before full decode, then converted to a texture of at most 2048
+pixels per side. One temporary RGBA snapshot is unlinked immediately and its
+descriptor released on stop; no permanent imported copies accumulate. Invalid
+selection is rejected without losing the previous setting. Files subsequently
+removed, made unreadable or corrupted fall back to the default background with
+a localized recovery message, without blocking Talk.

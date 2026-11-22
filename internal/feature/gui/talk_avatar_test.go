@@ -189,3 +189,23 @@ func TestTalkAvatarUsesEntireRightHalf(t *testing.T) {
 	}
 	check(root)
 }
+
+func TestBackgroundRecoveryKeepsTalkStopVisible(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de", "it", "vi"} {
+		say.Use(lang)
+		p := captionTestPage(func() ([]menu.Row, []func(int)) {
+			return []menu.Row{
+				{Label: say.T("clawtalk.state.listening"), Hint: say.T("clawtalk.end_hint")},
+				{Label: say.T("clawtalk.mic_live"), Hint: say.T("clawtalk.caption_hint")},
+			}, nil
+		}, func() {}, func() {}, avatar.State{Running: true, Ready: true, Notice: "running", BackgroundNotice: "background_unavailable"})
+		w := gogui.NewWindow(gogui.WindowCfg{State: new(int), Width: 800, Height: 480})
+		root := w.TestRender(func(w *gogui.Window) gogui.View { return talkAvatarView(w, p) })
+		stop := avatarCaptionShape(t, root, "talk-avatar-stop")
+		if stop.Height < 64 || stop.Y+stop.Height > 480.5 {
+			t.Fatal(lang, "background notice hides stop", stop)
+		}
+	}
+}
