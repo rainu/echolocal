@@ -21,19 +21,11 @@ func (s *Store) Handler() http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		// Cookie auth is SameSite=Strict. Additionally reject cross-origin writes,
 		// including authenticated requests from a different origin.
-		if r.Method != "GET" && r.Method != "HEAD" {
-			if origin := r.Header.Get("Origin"); origin != "" {
-				u, err := url.Parse(origin)
-				if err != nil || u.Scheme != "https" || u.Host != r.Host {
-					fail(w, 403, "cross_origin")
-					return
-				}
-			}
-			if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-				fail(w, 403, "cross_origin")
-				return
-			}
+		if !sameOrigin(r) {
+			fail(w, 403, "cross_origin")
+			return
 		}
+
 		path := r.URL.Path
 		if path == "" || path == "/" {
 			if r.Method != "GET" {
@@ -49,7 +41,7 @@ func (s *Store) Handler() http.Handler {
 			return
 		}
 		name := strings.TrimPrefix(path, "/")
-		if !ValidName(name) {
+		if !ValidPath(name) {
 			fail(w, 400, "invalid_name")
 			return
 		}
@@ -75,7 +67,7 @@ func (s *Store) Handler() http.Handler {
 			rc := http.NewResponseController(w)
 			_ = rc.SetReadDeadline(time.Now().Add(5 * time.Minute))
 			defer rc.SetReadDeadline(time.Time{})
-			m, err := s.Upload(name, r.ContentLength, r.Body)
+			m, err := s.UploadContext(r.Context(), name, r.ContentLength, r.Body)
 			if err != nil {
 				httpFail(w, err)
 				return
@@ -121,4 +113,21 @@ func httpFail(w http.ResponseWriter, err error) {
 	default:
 		fail(w, 500, "transfer_failed")
 	}
+}
+
+// sameOrigin applies to DAV metadata methods as well as browser writes.
+func sameOrigin(r *http.Request) bool {
+	if r.Method == "GET" || r.Method == "HEAD" {
+		return true
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil || u.Scheme != "https" || u.Host != r.Host {
+			return false
+		}
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		return false
+	}
+	return true
 }

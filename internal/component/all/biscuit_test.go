@@ -63,6 +63,7 @@ var registered = []string{
 	"follow_up_2",
 	"free_space",
 	"frontend_password",
+	"frontend_webdav",
 	"hardware_board",
 	"hardware_color",
 	"headphone_output",

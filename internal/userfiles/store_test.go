@@ -72,7 +72,7 @@ func TestRoundTripAndRestart(t *testing.T) {
 }
 func TestInvalidNames(t *testing.T) {
 	s := testStore(t)
-	for _, name := range []string{"", "..", ".hidden", "../state.json", "/etc/passwd", "a/b", "a\\b", "a\x00b", "a\nb", "a%2fb", "a:b", " x", "x ", strings.Repeat("x", 129), "é"} {
+	for _, name := range []string{"", "..", "../state.json", "/etc/passwd", "a\\b", "a\x00b", "a\nb", ".upload-x", ".dav-properties", "a//b", "a/./b", "a/../b", strings.Repeat("x", 256)} {
 		if ValidName(name) {
 			t.Errorf("accepted %q", name)
 		}
@@ -327,7 +327,7 @@ func TestHTTPTransferErrors(t *testing.T) {
 	}{
 		{"PUT", "/too-big", "", 65, 413}, {"PUT", "/unknown", "", -1, 411},
 		{"PUT", "/short", "x", 2, 400}, {"GET", "/missing", "", 0, 404},
-		{"POST", "/x", "", 0, 405}, {"GET", "/a%2fb", "", 0, 400},
+		{"POST", "/x", "", 0, 405}, {"GET", "/a%2fb", "", 0, 404},
 	} {
 		r := httptest.NewRequest(tc.method, "https://device.invalid"+tc.path, strings.NewReader(tc.body))
 		r.ContentLength = tc.length

@@ -1,7 +1,7 @@
 package devicefs
 
 import (
-	"crypto/rand"
+	"context"
 	"errors"
 	"io"
 	"mime"
@@ -30,7 +30,7 @@ func sameOrigin(r *http.Request) bool {
 	site := r.Header.Get("Sec-Fetch-Site")
 	return site == "" || site == "same-origin" || site == "none"
 }
-func serveFile(w http.ResponseWriter, r *http.Request, root, name string, uploads *sync.Mutex) {
+func serveFile(w http.ResponseWriter, r *http.Request, root, name string, uploads *sync.Mutex, guards ...func(string) (func(), error)) {
 	if name == "/" {
 		failure(w, 400, "invalid_path")
 		return
@@ -85,6 +85,7 @@ func serveFile(w http.ResponseWriter, r *http.Request, root, name string, upload
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(name)}))
 		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
+		releaseNamespace(r)
 		// No managed-area or download-size restriction: the owner can download any
 		// OS-readable regular file, including system/configuration files.
 		http.ServeContent(w, r, path.Base(name), info.ModTime(), f)
@@ -106,6 +107,14 @@ func serveFile(w http.ResponseWriter, r *http.Request, root, name string, upload
 			return
 		}
 		defer uploads.Unlock()
+		if len(guards) > 0 && guards[0] != nil {
+			release, e := guards[0](name)
+			if e != nil {
+				davFailure(w, e)
+				return
+			}
+			defer release()
+		}
 		parent, err := resolve(root, path.Dir(name))
 		if err != nil {
 			directoryFailure(w, err)
@@ -120,7 +129,7 @@ func serveFile(w http.ResponseWriter, r *http.Request, root, name string, upload
 		rc := http.NewResponseController(w)
 		_ = rc.SetReadDeadline(time.Now().Add(5 * time.Minute))
 		defer rc.SetReadDeadline(time.Time{})
-		entry, err := upload(d, path.Base(name), r.ContentLength, r.Body)
+		entry, err := uploadContext(r.Context(), d, path.Base(name), r.ContentLength, r.Body)
 		if err != nil {
 			transferFailure(w, err)
 			return
@@ -150,73 +159,7 @@ var errAtomic = errors.New("atomic_publication_unsupported")
 // bytes and atomically publishes without replacement. No whole-file RAM buffer or
 // cross-filesystem move, remount, chmod of existing files or directory creation.
 func upload(d *os.File, name string, size int64, body io.Reader) (Entry, error) {
-	if len(name) > 255 || name == "." || name == ".." {
-		return Entry{}, unix.ENAMETOOLONG
-	}
-	var st unix.Stat_t
-	err := unix.Fstatat(int(d.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW)
-	if err == nil {
-		return Entry{}, errExists
-	}
-	if !errors.Is(err, unix.ENOENT) {
-		return Entry{}, err
-	}
-	free, err := capacity(d)
-	if err != nil {
-		return Entry{}, err
-	}
-	if size > free {
-		return Entry{}, errFull
-	}
-	temp := ".echolocal-upload-" + rand.Text()
-	fd, err := unix.Openat(int(d.Fd()), temp, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0600)
-	if err != nil {
-		return Entry{}, err
-	}
-	f := os.NewFile(uintptr(fd), temp)
-	defer f.Close()
-	defer unix.Unlinkat(int(d.Fd()), temp, 0)
-	n, err := io.CopyBuffer(f, io.LimitReader(body, size+1), make([]byte, 64<<10))
-	if err != nil {
-		return Entry{}, err
-	}
-	if n != size {
-		return Entry{}, io.ErrUnexpectedEOF
-	}
-	if err = f.Sync(); err != nil {
-		return Entry{}, err
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return Entry{}, err
-	}
-	if err = f.Close(); err != nil {
-		return Entry{}, err
-	}
-	// Recheck after staging: concurrent external writes must not leave a
-	// successfully published upload spending the documented free-space reserve.
-	if _, err = capacity(d); err != nil {
-		return Entry{}, err
-	}
-	var stat unix.Statfs_t
-	if err = unix.Fstatfs(int(d.Fd()), &stat); err != nil {
-		return Entry{}, err
-	}
-	if int64(stat.Bfree)*int64(stat.Bsize) < ReserveBytes {
-		return Entry{}, errFull
-	}
-	err = unix.Renameat2(int(d.Fd()), temp, int(d.Fd()), name, unix.RENAME_NOREPLACE)
-	if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EOPNOTSUPP) {
-		err = unix.Linkat(int(d.Fd()), temp, int(d.Fd()), name, 0)
-		if errors.Is(err, unix.EOPNOTSUPP) || errors.Is(err, unix.EPERM) {
-			err = errAtomic
-		}
-	}
-	if err != nil {
-		return Entry{}, err
-	}
-	_ = d.Sync()
-	return Entry{Name: name, Kind: "file", Size: info.Size(), Modified: info.ModTime().UTC(), Mode: info.Mode().String()}, nil
+	return uploadContext(context.Background(), d, name, size, body)
 }
 func transferFailure(w http.ResponseWriter, err error) {
 	switch {

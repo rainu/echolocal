@@ -12,6 +12,7 @@ import (
 type nodeSettingsPolicy struct{ Group, Names string }
 
 var nodeSettingsPolicies = map[string]nodeSettingsPolicy{
+	"access":     {"settings", "webdav"},
 	"youtube":    {"audio", "lounge"},
 	"alerts":     {"audio", "info success warning alert timer ring_for wake"},
 	"apps":       {"settings", "order dock"},

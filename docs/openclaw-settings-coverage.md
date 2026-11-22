@@ -19,6 +19,14 @@ Generated from fresh, isolated registry initialization for every board in board.
 
 312 distinct registered bound pairs across the eight variants; 273 reviewed safe pairs and 39 intentional exclusions. 24 reviewed safe pairs were blocked by the old domain/type filters. All those safe pairs now use the same resolver, discovery and parser validation; hardware and build availability still apply.
 
+## Issue #39 follow-up
+
+Owner-requested access/webdav is now a reviewed toggle with the settings grant,
+including discovery/get/set/import/export. It uses the same persisted frontend
+field and transfer-cancellation path as the owner API and native UI. No other
+access field is allowed; access/password remains excluded. The historical
+board counts above predate this addition.
+
 ## Safe settings: before/after matrix
 
 Every field listed below is supported after the change where registered, fitted and granted. The compact root discovery lists domains/names/grants; select a domain for full details. Formats, numeric ranges and canonical choice values come from its bound table through that live detail query. Required grants always include settings; the table lists the additional group. Empty dynamic choice lists are readable but not writable. No pair/triple/list field kind was found in these registered tables; toggle, number, choice and reviewed text are covered.
@@ -125,6 +133,7 @@ Credential/authority names are deliberately not enumerated in agent-facing docum
 | Changes remote call authorization; local administration only. | 1 |
 | Changes unattended call acceptance; local administration only. | 1 |
 | Changes unattended camera acceptance; local administration only. | 1 |
+| Enables a persistent file protocol; owner administration only. | 1 |
 | Enables a persistent camera network server; local administration only. | 1 |
 | Exposes microphone audio through a persistent camera server; local administration only. | 1 |
 | Selects dashboard identity; local administration only. | 1 |

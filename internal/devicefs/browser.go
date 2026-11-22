@@ -49,8 +49,8 @@ type Listing struct {
 func Handler() http.Handler { return handler("/") }
 
 // handler takes a trusted root only for isolated fixture tests, never from HTTP.
-func handler(root string) http.Handler {
-	var uploads sync.Mutex
+func handler(root string) http.Handler { return NewService(root, "").Handler() }
+func handlerShared(root string, uploads *sync.Mutex, guard func(string) (func(), error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -77,7 +77,7 @@ func handler(root string) http.Handler {
 		}
 		name = path.Clean(name)
 		if r.URL.Path == "/file" {
-			serveFile(w, r, root, name, &uploads)
+			serveFile(w, r, root, name, uploads, guard)
 			return
 		}
 		if r.URL.Path != "" && r.URL.Path != "/" {
