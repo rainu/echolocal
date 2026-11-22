@@ -6,6 +6,7 @@ static double stamp = 1;
 static double now() { return stamp; }
 #include "control.hpp"
 #include "turntable.hpp"
+#include "viewport.hpp"
 int main() {
   RendererControl c(true);
   c.parse("S 1 0 1 1 0.7 0 90 0 1 0 0");
@@ -51,6 +52,20 @@ int main() {
   assert(std::abs(moved[12]-(2*m[12]+.5f))<1e-5f);
   assert(std::abs(moved[13]-(2*m[13]+1))<1e-5f);
   assert(moved[2]==m[2] && moved[0]==2*m[0]);
+  int x=0,y=0,w=0,h=0;
+  assert(avatarParseViewport("640,80,640",x,y,w,h) && x==640 && y==80 && w==640 && h==640);
+  assert(avatarParseViewport("640,0,640,800",x,y,w,h) && x==640 && y==0 && w==640 && h==800);
+  for(const char *bad:{"640,0,640,","640,0,640,800,x","640,0,640,0","-1,0,640,800","4096,0,640,800","0,0,999999999999999999,800","0,0,128,128junk"}) {
+   assert(!avatarParseViewport(bad,x,y,w,h));
+   assert(x==640 && y==0 && w==640 && h==800);
+  }
+  for(auto dimensions: {std::array<int,2>{640,800},{400,1280},{800,400},{640,640}}) {
+   auto mapped=avatarViewportAspect(moved,dimensions[0],dimensions[1]);
+   for(int col=0;col<4;++col) {
+    assert(std::abs(mapped[col*4+1]*dimensions[1]-moved[col*4+1]*dimensions[0])<.001f);
+    assert(mapped[col*4]==moved[col*4] && mapped[col*4+2]==moved[col*4+2]);
+   }
+  }
   int fds[2];
   assert(pipe(fds) == 0);
   assert(dup2(fds[0], STDIN_FILENO) >= 0);

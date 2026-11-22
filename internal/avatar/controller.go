@@ -138,7 +138,7 @@ func (c *Controller) Start() {
 	}
 	vp := c.viewport
 	ctx, cancel := context.WithTimeout(context.Background(), c.runDuration())
-	args := []string{model, "--display", "--seconds", strconv.Itoa(int(c.runDuration() / time.Second)), "--control", "--protocol", strconv.Itoa(ProtocolVersion), "--viewport", fmt.Sprintf("%d,%d,%d", vp.X, vp.Y, vp.Size)}
+	args := []string{model, "--display", "--seconds", strconv.Itoa(int(c.runDuration() / time.Second)), "--control", "--protocol", strconv.Itoa(ProtocolVersion), "--viewport", vp.argument()}
 	if motion != "" {
 		args = append(args, "--animation", motion)
 	}
@@ -437,10 +437,25 @@ func (c *Controller) stats(gen uint64, line string) {
 }
 
 // Viewport follows the GUI's physical preview area; changes stop an old surface.
-type Viewport struct{ X, Y, Size int }
+// Size retains the square Lab/legacy CLI form. Width/Height select a rectangle.
+type Viewport struct{ X, Y, Size, Width, Height int }
+
+func (v Viewport) dimensions() (int, int) {
+	if v.Width == 0 && v.Height == 0 {
+		return v.Size, v.Size
+	}
+	return v.Width, v.Height
+}
+func (v Viewport) argument() string {
+	if v.Width == 0 && v.Height == 0 {
+		return fmt.Sprintf("%d,%d,%d", v.X, v.Y, v.Size)
+	}
+	return fmt.Sprintf("%d,%d,%d,%d", v.X, v.Y, v.Width, v.Height)
+}
 
 func (c *Controller) SetViewport(v Viewport) {
-	if v.X < 0 || v.Y < 0 || v.X+v.Size > 4096 || v.Y+v.Size > 4096 || v.Size < 128 || v.Size > 2048 {
+	w, h := v.dimensions()
+	if (v.Size != 0 && (v.Width != 0 || v.Height != 0)) || w < 128 || w > 2048 || h < 128 || h > 2048 || v.X < 0 || v.Y < 0 || v.X > 4096-w || v.Y > 4096-h {
 		return
 	}
 	c.mu.Lock()

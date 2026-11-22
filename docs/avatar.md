@@ -203,10 +203,14 @@ explicitly saved off states remain off. Storage uses inverse disabled flags to
 distinguish these states without changing legacy defaults. Mouth mode/microphone
 preview is not saved or inherited by Talk: its mouth still follows agent playback.
 
-Position is relative to the **square viewport width**, independent of model
-orientation and zoom. Lab and Talk use the same viewport geometry, so saved
-framing is reproducible. Gestures preview continuously; Save rounds to integer
-degrees/percent. Native numeric edits and API/web writes persist immediately.
+Position is relative to the **rendering viewport width**, including vertical
+translation, independent of model orientation and zoom. Lab keeps its square
+preview; Talk uses the entire right half from the top to the bottom edge, with
+no title/footer reservation. The model name is in the left status header.
+Aspect-correct projection preserves width-relative model scale and translation
+without stretching the model; the rectangular Talk surface shows additional
+vertical space. Legacy square renderer viewports remain supported.
+Gestures preview continuously; Save rounds to integer degrees/percent. Native numeric edits and API/web writes persist immediately.
 The settings grant also covers these fields for existing Node configuration
 commands. Out-of-range, fractional and nonfinite writes are rejected. Legacy
 storage without zoom uses 100%; malformed manually edited storage is bounded

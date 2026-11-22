@@ -163,3 +163,29 @@ func TestTalkAvatarPartialFinalAndFailureCaptions(t *testing.T) {
 		t.Fatal("caption did not update", got)
 	}
 }
+
+func TestTalkAvatarUsesEntireRightHalf(t *testing.T) {
+	for _, size := range [][2]int{{1280, 800}, {800, 480}, {801, 481}, {800, 1280}} {
+		v := talkAvatarViewport(size[0], size[1])
+		if v.X != size[0]/2 || v.Y != 0 || v.Width != size[0]-v.X || v.Height != size[1] || v.Size != 0 {
+			t.Fatal("margins or square crop", size, v)
+		}
+	}
+	p := captionTestPage(func() ([]menu.Row, []func(int)) { return []menu.Row{{Label: "state"}, {Label: "mic"}}, nil }, func() {}, func() {}, avatar.State{Ready: true, Running: true, Notice: "running", ModelName: "Synthetic model"})
+	w := gogui.NewWindow(gogui.WindowCfg{State: new(int), Width: 1280, Height: 800})
+	root := w.TestRender(func(w *gogui.Window) gogui.View { return talkAvatarView(w, p) })
+	canvas := avatarCaptionShape(t, root, "talk-avatar-canvas")
+	if canvas.X != 640 || canvas.Y != 0 || canvas.Width != 640 || canvas.Height != 800 {
+		t.Fatal("right half not edge-to-edge", canvas)
+	}
+	var check func(*gogui.Layout)
+	check = func(n *gogui.Layout) {
+		if n.Shape != nil && n.Shape.TC != nil && n.Shape.X >= 640 {
+			t.Fatal("text still reserves avatar space")
+		}
+		for i := range n.Children {
+			check(&n.Children[i])
+		}
+	}
+	check(root)
+}

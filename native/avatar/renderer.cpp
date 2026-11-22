@@ -5,6 +5,7 @@
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
 #include "turntable.hpp"
+#include "viewport.hpp"
 #include "vendor/json.hpp"
 #include "vendor/stb_image.h"
 #include <EGL/egl.h>
@@ -1013,13 +1014,7 @@ int main(int argc, char **argv) {
         if (a == "--protocol")
           protocol = std::stoi(argv[++i]);
         else if (a == "--viewport") {
-          char extra;
-          int size;
-          need(sscanf(argv[++i], "%d,%d,%d%c", &px, &py, &size, &extra) == 3 &&
-                   px >= 0 && py >= 0 && size >= 128 && size <= 2048 &&
-                   px <= 4096 - size && py <= 4096 - size,
-               "invalid viewport");
-          w = h = size;
+          need(avatarParseViewport(argv[++i],px,py,w,h),"invalid viewport");
         } else if (a == "--seconds")
           seconds = std::stod(argv[++i]);
         else if (a == "--out")
@@ -1136,10 +1131,10 @@ int main(int argc, char **argv) {
         if (controls.ended)
           break;
         M view =
-            avatarPan(avatarZoom(mul(vp, avatarOrbit(appMode ? controls.yaw : 0,
+            avatarViewportAspect(avatarPan(avatarZoom(mul(vp, avatarOrbit(appMode ? controls.yaw : 0,
                               appMode ? controls.pitch * (scene.legacy ? -1 : 1) : 0,
                               (lo[0] + hi[0]) * .5f, (lo[1] + hi[1]) * .5f,
-                              (lo[2] + hi[2]) * .5f)), appMode ? controls.zoom : 1), appMode ? controls.panX : 0, appMode ? controls.panY : 0);
+                              (lo[2] + hi[2]) * .5f)), appMode ? controls.zoom : 1), appMode ? controls.panX : 0, appMode ? controls.panY : 0),w,h);
         glUniformMatrix4fv(glGetUniformLocation(prog, "vp"), 1, GL_FALSE,
                            view.data());
         double frame = now(), t = frame - start;

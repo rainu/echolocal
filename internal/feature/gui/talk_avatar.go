@@ -11,6 +11,7 @@ import (
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"strings"
 )
 
 func extendTalkAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
@@ -25,14 +26,21 @@ func extendTalkAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) 
 
 func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 	width, height := w.WindowSize()
-	size := min(width/2, height-100)
-	if size >= 128 {
-		p.Start(avatar.Viewport{X: width / 2, Y: 80, Size: size})
+	if width/2 >= 128 && height >= 128 {
+		p.Start(talkAvatarViewport(width, height))
 	}
 	s := p.Renderer.Snapshot()
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
 	rows, _ := p.Build()
-	header := []gogui.View{avatarText(p.Title)}
+	title := p.Title
+	if s.ModelName != "" {
+		name := []rune(strings.Join(strings.Fields(s.ModelName), " "))
+		if len(name) > 40 {
+			name = append(name[:40], '…')
+		}
+		title += " · " + string(name)
+	}
+	header := []gogui.View{avatarText(title)}
 	for i := 0; i < min(2, len(rows)); i++ {
 		header = append(header, avatarText(rows[i].Label))
 		if i == 0 && rows[i].Hint != "" {
@@ -70,7 +78,7 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 		actions = append(actions, talkAvatarAction(id, a.Label, a.Do, i == len(p.Actions)-1))
 	}
 	left := gogui.Column(gogui.ContainerCfg{
-		ID: "talk-avatar-left", Width: float32(width) / 2, Height: float32(height), Sizing: gogui.FixedFixed,
+		ID: "talk-avatar-left", Width: float32(width / 2), Height: float32(height), Sizing: gogui.FixedFixed,
 		Padding: gogui.PadAll(20), Spacing: gogui.SpacingSmall,
 		Content: []gogui.View{
 			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-status", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: header}),
@@ -78,8 +86,8 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 			gogui.Row(gogui.ContainerCfg{ID: "talk-avatar-actions", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: actions}),
 		},
 	})
-	right := gogui.Column(gogui.ContainerCfg{Width: float32(width) / 2, Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(16), Content: []gogui.View{avatarText(s.ModelName)}})
-	return gogui.Row(gogui.ContainerCfg{Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{left, right}})
+	right := gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-canvas", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Spacing: gogui.NoSpacing, Width: float32(width - width/2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding})
+	return gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Spacing: gogui.NoSpacing, Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{left, right}})
 }
 
 func talkAvatarHint(text string) gogui.View {
@@ -105,4 +113,9 @@ func talkAvatarAction(id, label string, do func(), stop bool) gogui.View {
 			e.Window.InvalidateLayout()
 		},
 	})
+}
+
+// No title strip, footer reservation or square crop on the avatar half.
+func talkAvatarViewport(width, height int) avatar.Viewport {
+	return avatar.Viewport{X: width / 2, Y: 0, Width: width - width/2, Height: height}
 }
