@@ -17,33 +17,72 @@ import (
 
 // AvatarPage owns only rendering. It reuses the one existing Talk controller,
 // audio lane and status page, never a second transport or microphone listener.
+type avatarRenderer interface {
+	Snapshot() avatar.State
+	Start()
+	Stop()
+	SetViewport(avatar.Viewport)
+}
+
 type AvatarPage struct {
 	*CaptionPage
-	Renderer *avatar.Controller
-	once     sync.Once
+	Renderer avatarRenderer
+	started  bool
+	epoch    uint64
 	mu       sync.Mutex
 	closed   bool
 }
 
 func (p *AvatarPage) Keeps() bool { return true }
+
+// Close is a visibility notification, not conversation teardown: a temporary
+// cover must release its surface but must not permanently disable this page.
 func (p *AvatarPage) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.started = false
+	p.epoch++
+	p.Renderer.Stop()
+}
+func (p *AvatarPage) Finish() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.closed = true
+	p.started = false
+	p.epoch++
 	p.Renderer.Stop()
 }
 func (p *AvatarPage) Start(v avatar.Viewport) {
-	p.once.Do(func() {
-		go func() {
+	p.mu.Lock()
+	if p.closed || p.started {
+		p.mu.Unlock()
+		return
+	}
+	p.started = true
+	p.epoch++
+	epoch := p.epoch
+	p.mu.Unlock()
+	go func() {
+		// A previously covered native process may still be retiring. Do not overlap
+		// its surface or consume the only start attempt while Stop is asynchronous.
+		deadline := time.Now().Add(3 * time.Second)
+		for p.Renderer.Snapshot().Running {
 			p.mu.Lock()
-			defer p.mu.Unlock()
-			if p.closed {
+			retired := p.closed || p.epoch != epoch
+			p.mu.Unlock()
+			if retired || time.Now().After(deadline) {
 				return
 			}
-			p.Renderer.SetViewport(v)
-			p.Renderer.Start()
-		}()
-	})
+			time.Sleep(20 * time.Millisecond)
+		}
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.closed || p.epoch != epoch {
+			return
+		}
+		p.Renderer.SetViewport(v)
+		p.Renderer.Start()
+	}()
 }
 func (m *Manager) standalonePage() sharedshell.View {
 	captions := m.conversationPage()

@@ -29,7 +29,10 @@ func extendTalkAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) 
 			rows, _ := p.Build()
 			body := []gogui.View{avatarText("OpenClaw")}
 			for i := 0; i < min(2, len(rows)); i++ {
-				body = append(body, avatarText(rows[i].Label), avatarText(rows[i].Hint))
+				body = append(body, avatarText(rows[i].Label))
+				if i == 0 {
+					body = append(body, avatarText(rows[i].Hint))
+				}
 			}
 			note := text("talk_loading")
 			if s.Ready && s.Running {

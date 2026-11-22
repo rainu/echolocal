@@ -183,8 +183,14 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	sh := shellfeature.Get()
 	idle.Get().Wake()
 	if selected == nil {
-		held := sh.Hold(m.standalonePage())
-		defer held.Release()
+		page := m.standalonePage()
+		held := sh.Hold(page)
+		defer func() {
+			if p, ok := page.(*AvatarPage); ok {
+				p.Finish()
+			}
+			held.Release()
+		}()
 	}
 	var v Slot
 	if selected == nil {

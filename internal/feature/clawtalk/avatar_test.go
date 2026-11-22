@@ -6,6 +6,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/avatar"
 	shellfeature "github.com/ygelfand/echolocal/internal/feature/shell"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
+	"sync"
 	"testing"
 	"time"
 )
@@ -26,6 +27,7 @@ func TestStandaloneAvatarReleaseRestoresPreviousScreen(t *testing.T) {
 	if s.Top() != page {
 		t.Fatal("explicit stop control must own the activation")
 	}
+	page.Finish()
 	held.Release()
 	if s.Top() != previous || !page.closed {
 		t.Fatal("temporary surface leaked")
@@ -35,5 +37,50 @@ func TestStandaloneAvatarReleaseRestoresPreviousScreen(t *testing.T) {
 	time.Sleep(30 * time.Millisecond)
 	if renderer.Snapshot().Running {
 		t.Fatal("late render start")
+	}
+}
+
+type fakeAvatar struct {
+	mu     sync.Mutex
+	state  avatar.State
+	starts int
+}
+
+func (f *fakeAvatar) Snapshot() avatar.State      { f.mu.Lock(); defer f.mu.Unlock(); return f.state }
+func (f *fakeAvatar) Start()                      { f.mu.Lock(); defer f.mu.Unlock(); f.starts++; f.state.Running = true }
+func (f *fakeAvatar) Stop()                       { f.mu.Lock(); defer f.mu.Unlock(); f.state.Running = false }
+func (f *fakeAvatar) SetViewport(avatar.Viewport) {}
+func TestAvatarTemporaryCoverResumesButFinishedPageCannotRestart(t *testing.T) {
+	renderer := &fakeAvatar{}
+	p := &AvatarPage{Renderer: renderer}
+	wait := func(want int) {
+		t.Helper()
+		end := time.Now().Add(time.Second)
+		for time.Now().Before(end) {
+			renderer.mu.Lock()
+			n := renderer.starts
+			renderer.mu.Unlock()
+			if n == want {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatal("renderer start count", want)
+	}
+	v := avatar.Viewport{X: 640, Y: 80, Size: 640}
+	p.Start(v)
+	wait(1)
+	p.Start(v)
+	time.Sleep(10 * time.Millisecond)
+	wait(1)
+	p.Close()
+	p.Start(v)
+	wait(2)
+	p.Finish()
+	p.Start(v)
+	time.Sleep(20 * time.Millisecond)
+	wait(2)
+	if renderer.Snapshot().Running {
+		t.Fatal("finished surface retained")
 	}
 }
