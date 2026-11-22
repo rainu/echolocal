@@ -168,6 +168,16 @@ an explicit Stop control. It uses the **same Talk activation, selected agent,
 session and audio lane**. Talk started inside a selected chat retains its normal
 chat view; Home Assistant routing is unchanged.
 
+The left side retains the existing recognized user and spoken assistant
+transcripts, including provisional text updates and final replacements. It uses
+the same bounded, volatile device caption cache and the same speaker-colored
+cards as regular Talk. Contributions remain newest-first. Long contributions
+wrap and scroll within the transcript area; status and the **History** / **End
+conversation** buttons remain fixed outside it. History temporarily covers the
+avatar without starting another Talk connection; returning resumes rendering.
+Rendering failures keep the transcript and both actions available. No transcript
+is added to diagnostic logs or persisted by this view.
+
 Avatar Lab's **Save presentation** persists the preview framing and the Idle
 movement, Blink and VRMA animation switches. **Front** resets and saves all five
 transforms, without resetting the selected model or motion choices. A

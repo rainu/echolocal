@@ -32,13 +32,7 @@ func extendTalkCaptions(look *widgets.UI, o *screens.Options, _ func() *screens.
 			for i, r := range rows {
 				user := r.Label == say.T("clawtalk.caption_user")
 				if r.Hint != "" && (user || r.Label == say.T("clawtalk.caption_assistant")) {
-					st := gogui.CurrentTheme().TextStyleDef
-					st.Color = gogui.White
-					body = append(body, gogui.Column(gogui.ContainerCfg{
-						ID: fmt.Sprintf("talk-caption-%d", i), Sizing: gogui.FillFit,
-						Padding: gogui.PaddingMedium, Radius: gogui.RadiusMedium, Color: captionColor(user),
-						Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: r.Hint, TextStyle: st, Mode: gogui.TextModeWrap})},
-					}))
+					body = append(body, captionCard(fmt.Sprintf("talk-caption-%d", i), r.Hint, user))
 				} else {
 					var tap func(int)
 					if i < len(taps) {
@@ -49,5 +43,17 @@ func extendTalkCaptions(look *widgets.UI, o *screens.Options, _ func() *screens.
 			}
 			return gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: body})
 		}, Foot: func(w *gogui.Window) gogui.View { return look.Toolkit.ActionBar(w, p.Actions, look.Palette()) }}
+	})
+}
+
+// captionCard keeps the same readable speaker colors in regular Talk, history
+// and the standalone avatar conversation. Text is display-only, never markup.
+func captionCard(id, text string, user bool) gogui.View {
+	st := gogui.CurrentTheme().TextStyleDef
+	st.Color = gogui.White
+	return gogui.Column(gogui.ContainerCfg{
+		ID: id, Sizing: gogui.FillFit,
+		Padding: gogui.PaddingMedium, Radius: gogui.RadiusMedium, Color: captionColor(user),
+		Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})},
 	})
 }
