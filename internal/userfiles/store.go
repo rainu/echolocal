@@ -61,6 +61,8 @@ type Store struct {
 	budget, maxFile, reserve int64
 	entryCount               int
 	dav                      *davState
+	statHook                 func(string) (os.FileInfo, error)
+	canonicalHook            func(string) (string, error)
 }
 
 func New(path string) *Store {

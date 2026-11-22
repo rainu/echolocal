@@ -184,3 +184,8 @@ file command.
 
 See [managed WebDAV subset](managed-webdav.md) for the off-by-default protocol,
 configuration, client restrictions and interoperability verification status.
+
+
+## WebDAV device-tree parity (owner clarification, issue #39)
+
+WebDAV now exports the same actual device filesystem as the Device filesystem tab, starting at `/`, not the managed asset inventory. Both share the device-file transfer backend and target-filesystem limits; the managed asset API retains its own quotas. See [device WebDAV](managed-webdav.md) for capabilities, URL/settings display and scope.

@@ -137,7 +137,7 @@ func (s *Store) checkDAVIf(r *http.Request, n string) (int, error) {
 		name := "/" + n
 		if g.resource != "" {
 			u, e := url.Parse(g.resource)
-			if e != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Host != r.Host || u.Scheme != "https" || !strings.HasPrefix(u.Path, DAVPrefix+"/") {
+			if e != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || !(u.Host == r.Host || s.canonicalHook != nil && sameHTTPSAuthority(u.Host, r.Host)) || u.Scheme != "https" || !strings.HasPrefix(u.Path, DAVPrefix+"/") {
 				return 412, ErrName
 			}
 			name = strings.TrimPrefix(u.Path, DAVPrefix)
@@ -146,8 +146,19 @@ func (s *Store) checkDAVIf(r *http.Request, n string) (int, error) {
 		rel := strings.TrimPrefix(name, "/")
 		if rel == "" {
 			rel = "."
-		} else if !ValidPath(rel) {
+		} else if s.canonicalHook == nil && !ValidPath(rel) {
 			return 412, ErrName
+		}
+		if s.canonicalHook != nil {
+			var e error
+			name, e = s.canonicalHook(name)
+			if e != nil {
+				return 412, e
+			}
+			rel = strings.TrimPrefix(name, "/")
+			if rel == "" {
+				rel = "."
+			}
 		}
 		s.mu.Lock()
 		fi, e := s.statTree(rel)
@@ -209,6 +220,13 @@ func (s *Store) checkDAVIf(r *http.Request, n string) (int, error) {
 	}
 	recursive := r.Method == "DELETE" || r.Method == "COPY" || r.Method == "MOVE"
 	for _, target := range targets {
+		if s.canonicalHook != nil {
+			var e error
+			target, e = s.canonicalHook(target)
+			if e != nil {
+				return 412, e
+			}
+		}
 		for token, v := range l.active {
 			relevant := lockCovers(v.details, target) || (recursive && strings.HasPrefix(v.details.Root, strings.TrimSuffix(target, "/")+"/"))
 			if !relevant {

@@ -35,13 +35,14 @@ type componentFrontend struct{ *webapi.API }
 func (c componentFrontend) Restore(cfg config.Config) { c.API.Restore(cfg.Frontend) }
 
 var get = sync.OnceValue(func() *webapi.API {
+	fs := devicefs.NewService("/", layout.StateDir+"/webdav-properties.json")
 	pages := map[string]http.Handler{
 		"alarms":     alarm.Get().Handler(alerts.Get().Tones),
 		"call":       call.Get().Handler(discovery.Get().Peers),
 		"broadcast":  broadcast.Get().WebHandler(),
 		"files":      files.Get().Handler(),
-		"webdav":     files.Get().DAVHandler(),
-		"filesystem": devicefs.Handler(),
+		"webdav":     fs.DAVHandler(),
+		"filesystem": fs.Handler(),
 		"voices":     voicematch.Get().Handler(householdPeople),
 	}
 	input := &textentry.Controller{}

@@ -96,6 +96,13 @@ type requestLocks struct {
 }
 
 func (l requestLocks) Create(now time.Time, d webdav.LockDetails) (string, error) {
+	if l.s.canonicalHook != nil {
+		var e error
+		d.Root, e = l.s.canonicalHook(d.Root)
+		if e != nil {
+			return "", e
+		}
+	}
 	if l.method != "LOCK" && (l.method == "DELETE" || l.method == "MOVE" || l.method == "COPY") {
 		l.s.mu.Lock()
 		fi, e := l.s.statTree(strings.TrimPrefix(d.Root, "/"))

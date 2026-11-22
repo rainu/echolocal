@@ -1,120 +1,118 @@
-# Managed-file WebDAV (RFC 4918 classes 1 and 2)
+# Device filesystem over WebDAV (issue #39)
 
-Issue #39 owner clarification supersedes the earlier flat transfer-subset design.
-The requirement is standard WebDAV clients, not just individually tested curl
-methods. This implementation uses `golang.org/x/net/webdav` v0.60.0 (BSD-3-Clause,
-already in the application dependency graph), with a constrained shared store
-and explicit fixes for its missing shared locks, complete If-header evaluation,
-lockdiscovery, MOVE overwrite default, write preconditions, XML namespace
-validation and failure-safe publication. No dependency cache is patched.
+## Owner clarification
 
-## Protocol decision
+The endpoint must expose **the same actual device filesystem as the web file
+browser**, starting at `/`. The former managed-only adapter and empty managed
+root were not the intended scope. No user files are moved or migrated: the
+managed asset directory remains at its existing physical location and is now
+reachable as part of the real tree.
 
-| Candidate | Evidence and constrained-device trade-off |
-| --- | --- |
-| WebDAV | Existing HTTPS listener, owner authentication and Go dependency; Linux and Windows clients exist. RFC 4918 classes 1/2 cover ordinary file operations. Certificate trust and actual clients still require independent verification. |
-| SMB | Native network-drive integration, but a separate listener/authentication/session/signing stack. `hirochachacha/go-smb2` is a client, not a server; the investigated server fork uses AGPL-3.0. Greater service and maintenance footprint. |
-| SFTP | Maintained BSD-licensed `pkg/sftp`, but requires a separate SSH transport and host-key lifecycle without improving native Windows Explorer support. No shell is needed or exposed by DAV. |
+## Connection and controls
+
+- HTTPS URL: `https://<device>/api/v1/webdav/` (existing HTTPS port).
+- KDE/Dolphin: `webdavs://owner@<device>:443/api/v1/webdav/`.
+- Username `owner`; existing EchoLocal admin password. Passwords are never put
+  into the displayed/copied URL, connection-info response or examples.
+- Default-off `access/webdav` uses the existing native/web/owner API and Node
+  settings grant. Device Web access and web Network settings show the complete
+  connection address **only while enabled**. The web view also provides copying,
+  folder path and login guidance.
+- Owner-authenticated `GET /api/v1/webdav-info` reports enabled state, URL, path,
+  root and username. Its native address comes from trusted device address state,
+  not a request Host header. It is informational, not a new writable setting.
+- Disabling denies new DAV requests and cancels running transfers; ordinary web
+  filesystem access stays independent. No new listener, anonymous share, shell,
+  remount or change to Node grants is introduced.
+
+## Shared filesystem backend
+
+The web filesystem API and DAV share one device-filesystem service, safe pinned
+directory/file opens, upload implementation, free-space policy and mutation
+admission. Normal symlinks resolve as in the browser. Locks use canonical paths,
+so an alias cannot bypass a lock through the browser upload route or DAV.
+Metadata for special entries may be listed, but devices, pipes and sockets are
+never opened as ordinary downloads or upload destinations. A pinned O_PATH
+descriptor is inspected before opening a regular file for reading.
+
+Web uploads remain create-only. DAV adds standard explicit replacement,
+collections, COPY/MOVE, deletion and properties for OS-writable resources. The
+device filesystem's permissions and read-only mounts are respected; no remount,
+permission editor, executable content handler or arbitrary root selector exists.
+Deleting/moving/replacing the exported root itself is prohibited. Mutation of a
+symlink entry is rejected instead of unexpectedly deleting its target; browsing
+and regular-file downloads through normal symlinks work.
+
+There is **no managed-area 512 MiB/256-entry quota on the device filesystem**.
+Uploads/COPY file contents share the browser's 128 MiB per-file and 128 MiB
+physical free-space reserve on the selected target filesystem. Downloads do not
+have that upload-size bound. One admitted mutation and a five-minute request
+read deadline prevent competing or stalled writes from monopolizing resources.
+
+## RFC 4918 classes 1 and 2
+
+OPTIONS advertises `DAV: 1, 2`. Supported operations are PROPFIND, PROPPATCH,
+MKCOL, GET/HEAD/ranges, PUT, DELETE, COPY/MOVE, LOCK/refresh/UNLOCK. Shared and
+exclusive locks, full tagged/untagged If list evaluation, Not and ETag conditions,
+HTTP write preconditions, default Overwrite semantics and lockdiscovery reuse the
+tested protocol engine. Equivalent HTTPS authorities with default port 443 are
+accepted without enabling cross-server COPY/MOVE.
+
+PROPFIND supports Depth 0/1. Unbounded recursion is rejected with the standard
+`propfind-finite-depth` error: blindly crawling `/proc`, mounts and symlink cycles
+is not appropriate for a device-root export. A directory listing is bounded to
+65,536 entries; oversized responses fail rather than silently pretending the
+folder is empty. Control XML is bounded to 64 KiB and property/listing responses
+to 4 MiB. Collection COPY is bounded and rejects repeated directory inodes.
+Unrelated DAV ACL/versioning/calendar/synchronization extensions are not claimed.
+
+Dead properties persist in application-owned metadata, not arbitrary xattrs or
+sidecars in every device directory; the total is bounded to 1 MiB. Locks are
+volatile across process restart, bounded to one hour and 512 active locks;
+clients must reacquire them after restart.
+
+## Publication and recovery limits
+
+Uploads stage in the destination filesystem, sync complete bytes and publish
+atomically. A failed/cancelled PUT never truncates its old destination. The API
+keeps create-only publication; DAV replacement is explicit and checks the old
+destination's admission identity. Optimized io.Copy paths cannot bypass byte
+accounting. Regular-file replacement rollback requires safe hard-link support;
+unsupported atomic publication fails rather than using an unsafe fallback.
+
+Namespace writes isolate in-process readers and journal affected destinations
+for request-error rollback. COPY/MOVE failure preserves existing destinations;
+cross-filesystem MOVE is not converted into a destructive copy/delete fallback.
+There is **no whole-device snapshot** or recursive device-root copy. Process/power
+failure can leave hidden staging/recovery entries in affected directories;
+ordinary protocol requests cannot address them. Do not recursively clean the
+whole device or describe this as a full filesystem backup/ACID power-loss journal.
+External local writers/admin filesystem changes are outside this in-process
+coordination and may invalidate application-owned state, as with any root file
+manager. Keep test cleanup restricted to exact test-owned paths.
+
+## Verification
+
+Keep receipts tied to the exact app/library/build commits. Include fixture
+browser/DAV parity, symlinks/special-file safety, alias locks, byte identity,
+replacement/COPY/MOVE/properties, abort/disable behavior, read-only mounts and
+conditional address rendering/copying. Run mutating conformance clients
+**sequentially** against a fresh isolated fixture, not against the live device
+root and not in parallel against one store.
+
+Linux litmus and davtest evidence is separate from actual KDE/Windows client
+evidence. The old davtest source may need
+`PERL_NET_HTTPS_SSL_SOCKET_CLASS=IO::Socket::SSL`; expected execution-probe
+failures must not be mistaken for missing DAV support or actual script execution.
+The device's existing certificate/trust configuration is unchanged. A public-key
+pin test does not establish default CA/hostname trust or Windows compatibility.
+
+Protocol decision remains WebDAV over existing owner HTTPS. SMB would introduce
+a separate session/authentication/signing/listener stack (the investigated
+Go SMB client is not a server; its investigated server fork is AGPL). SFTP adds
+SSH transport/host-key lifecycle without native Explorer support. The existing
+BSD-licensed Go WebDAV dependency is the smaller fit; this is not a NAS stack.
 
 References: [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918),
-[Go WebDAV](https://pkg.go.dev/golang.org/x/net/webdav),
-[SMB client](https://github.com/hirochachacha/go-smb2),
-[SMB server fork](https://github.com/macos-fuse-t/go-smb2),
-[SFTP](https://github.com/pkg/sftp). Library licensing and repository activity are
-not a security audit or a resource measurement.
-
-## Configuration and authority
-
-- URL: `https://<device>/api/v1/webdav/`; existing HTTPS port and certificate.
-- Opt-in setting `access/webdav`, persisted as `frontend.webdav`, default off.
-  Device Network/Web access, web Network settings, owner settings API, and
-  OpenClaw Node settings discovery/get/set/import/export share this value.
-  The Node requires its existing `settings` grant. Password and other access
-  credentials remain excluded from Node access and redacted in owner API reads.
-- HTTP Basic with the existing owner password (username such as `owner`), or
-  existing owner bearer/cookie sessions. No anonymous access or second password.
-- Turning off rejects new requests and cancels running transfers; cancellation
-  is checked before publication. Other owner web/API routes remain independent.
-- This endpoint exposes only the common managed tree, never the separate
-  full-device owner filesystem browser. No arbitrary root setting or shell.
-- Client certificate trust must be configured explicitly. No HTTP fallback or
-  generic certificate-verification bypass is introduced.
-
-## Operations and consistency
-
-OPTIONS advertises `DAV: 1, 2` and `MS-Author-Via: DAV`. Supported operations:
-PROPFIND (Depth 0/1/infinity, allprop/propname/explicit properties), PROPPATCH,
-MKCOL, GET/HEAD, PUT, DELETE, COPY, MOVE, LOCK and UNLOCK. GET supports ranges and
-HTTP cache validators. Files are attachment downloads, not executable content.
-
-- Collections, UTF-8 names and nested paths are supported. Up to 255 bytes per
-  component, 1024 bytes per relative path, and 16 components; no empty components,
-  traversal, backslashes, control characters, symlinks or special files.
-  `.upload-*` and `.dav-*` names are reserved; other dotfiles are supported.
-- PUT atomically replaces a file, including chunked requests within quotas.
-  HTTP If-Match/If-None-Match/If-Unmodified-Since and DAV If conditions protect
-  writes. Existing destination replacement follows DAV Overwrite semantics;
-  MOVE defaults to T as required by RFC 4918. Recursive self-destinations fail.
-- Dead properties are persisted atomically, copied/moved/deleted with resources,
-  and limited to 1 MiB for the whole store. Control XML is limited to 64 KiB;
-  property/listing responses are buffered with a 4 MiB cap.
-- Exclusive and shared write locks, depth 0/infinity, refresh, lockdiscovery and
-  lock-token conditions are supported. Tokens are unpredictable absolute URIs.
-  Timeout is bounded to one hour; at most 512 active locks. Locks are volatile
-  and lost on process restart; clients must reacquire them. DELETE removes
-  locks rooted in the deleted subtree; MOVE removes source-rooted locks rather
-  than moving them. API writes honor DAV locks as well.
-- Tagged and untagged If lists implement AND inside lists, OR between lists for
-  a resource, and AND between tagged resource groups. Both state tokens and
-  ETags, including Not, are evaluated; all affected locks must be authorized.
-
-## Common store and bounds
-
-There is one canonical `user-files` tree. Managed `/api/v1/files` inventory lists
-all regular files recursively with relative names; its file download/upload/
-delete endpoints accept those paths. Web uploads remain create-only and target
-the root, whereas DAV provides explicit replacement/collection operations.
-Consumers keep using the same `Store.List/Open` entry points.
-
-Shared limits: 128 MiB per file, 512 MiB content, 256 total files **and folders**,
-128 MiB physical free-space reserve, one admitted mutation, and a five-minute
-write read-deadline. The API's `entries` count includes directories; `files`
-contains only regular files. Metadata/staging are not public resources.
-
-Every DAV mutation uses a disk-backed hard-linked snapshot under the same
-trusted state-directory parent. Unchanged file contents are not duplicated;
-all writes go to new inodes. Reads continue against the current complete tree.
-Only successful operations publish the entire new namespace under the shared
-mutex. A two-rename journal recovers to the whole old or new tree after a crash.
-Existing open downloads retain their old descriptors. Failed uploads/COPY/MOVE
-do not truncate or delete existing destinations. Capacity is checked before
-writing and before publication; no file-sized RAM buffers are used.
-
-The process owns one Store instance for this path. Direct owner filesystem
-writes are an administrative escape hatch and, as documented separately, are
-not governed by managed-file quotas/locks. Do not concurrently modify this
-application-owned tree through that separate administrative endpoint.
-
-## Verification and acceptance
-
-The original curl-only transfer-subset evidence is insufficient for client
-compatibility. Current receipts must name the tested commit and distinguish:
-
-- Store/API/DAV regressions and race checks, including atomic failure, quota,
-  namespace/symlink boundaries, properties/restart, lock/API parity, interrupted
-  transfers, complete tagged conditions and journal recovery.
-- Linux `litmus` suites basic/copymove/props/locks/http and `davtest` discovery/
-  upload/cleanup. davtest's script-execution probes are **not** a feature: script
-  payloads remain inert attachments; text/HTML echo matches are not execution.
-- The stock davtest source loads obsolete Net::SSL. On the test workstation,
-  `PERL_NET_HTTPS_SSL_SOCKET_CLASS=IO::Socket::SSL` selects the maintained backend.
-  Certificate trust is separate from DAV capability detection.
-- Synthetic loopback conformance tests are separate from real Echo TLS/device
-  tests. A TLS-fixture skip of HTTP Expect/100-continue is not a passed test.
-- Windows Explorer/WebClient interoperability is still unverified until an
-  actual Windows client is tested with an appropriate trusted certificate.
-  Class 1/2 support is not a claim for unrelated DAV extensions (ACL, versioning,
-  calendar/address-book or synchronization protocols).
-
-Owner acceptance and missing actual Windows evidence remain prerequisites for
-merging/closing #39. No automatic merge or issue closure.
+[Go WebDAV](https://pkg.go.dev/golang.org/x/net/webdav).
+Both implementation PRs remain unmerged until owner acceptance.

@@ -98,6 +98,9 @@ func (s *Store) parent(n string) (*os.File, string, error) {
 	return d, path.Base(n), e
 }
 func (s *Store) statTree(n string) (os.FileInfo, error) {
+	if s.statHook != nil {
+		return s.statHook(n)
+	}
 	f, e := s.openTree(n)
 	if e != nil {
 		return nil, e
