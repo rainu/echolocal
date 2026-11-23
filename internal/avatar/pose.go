@@ -36,6 +36,7 @@ type PoseState struct {
 	Saved                  []SavedPose
 	Name, Error            string
 	CanUndo, CanRedo       bool
+	UndoCount, RedoCount   int
 	undo, redo             []poseEdit
 	grouping, grouped      bool
 	readFailed             bool
@@ -95,7 +96,8 @@ func (c *Controller) PoseSnapshot() PoseState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	s := c.pose
-	s.CanUndo, s.CanRedo = len(s.undo) > 0, len(s.redo) > 0
+	s.UndoCount, s.RedoCount = len(s.undo), len(s.redo)
+	s.CanUndo, s.CanRedo = s.UndoCount > 0, s.RedoCount > 0
 	s.undo, s.redo = nil, nil
 	s.Joints = append([]Joint(nil), s.Joints...)
 	s.Rotations = copyRotations(s.Rotations)

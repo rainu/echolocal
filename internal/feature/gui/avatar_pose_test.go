@@ -3,6 +3,7 @@
 package gui
 
 import (
+	"fmt"
 	gogui "github.com/go-gui-org/go-gui/gui"
 	"github.com/ygelfand/echolocal/internal/avatar"
 	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
@@ -229,5 +230,26 @@ func TestPoseJointDropdownScrollsFullRig(t *testing.T) {
 	avatarSwipe(w, target.X+target.Width/2, target.Y+target.Height/2, target.X+target.Width/2, target.Y+target.Height/2)
 	if c.pose.Selected != len(avatar.PoseBoneNames)-1 {
 		t.Fatal("last bone not selectable", c.pose.Selected)
+	}
+}
+
+func TestPoseHistoryCountLabels(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de"} {
+		say.Use(lang)
+		w, _, c := poseGUIFixture(t)
+		for _, counts := range [][2]int{{0, 0}, {3, 0}, {2, 1}, {0, 3}, {100, 0}} {
+			c.pose.UndoCount, c.pose.RedoCount = counts[0], counts[1]
+			c.pose.CanUndo, c.pose.CanRedo = counts[0] > 0, counts[1] > 0
+			w.InvalidateLayout()
+			root := w.TestRender(nil)
+			for i, label := range []string{avatarWords("Undo", "Rückgängig"), avatarWords("Redo", "Wiederholen")} {
+				if poseTextShape(root, fmt.Sprintf("%s (%d)", label, counts[i])) == nil {
+					t.Fatalf("%s: missing updated count %s (%d)", lang, label, counts[i])
+				}
+			}
+		}
+		featureshell.Get().Pop()
 	}
 }

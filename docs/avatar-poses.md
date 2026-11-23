@@ -68,3 +68,5 @@ top-left origin, projected using the same matrix as the skinned mesh. Both
 sides reject invalid IDs, extra fields, non-finite numbers and out-of-range
 values. K HIDDEN makes the Lab surface transparent while the full-width native keyboard
 is open, without restarting rendering or losing the draft pose. Talk never uses this command. The native overlay owns no input or external resources.
+
+Undo and Redo buttons show the number of available in-session history steps, including zero. One continuous joint-handle drag counts as one step.

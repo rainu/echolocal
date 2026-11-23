@@ -129,7 +129,7 @@ func (v *avatarView) poseControls() []gogui.View {
 		v.touchReset.Add(1)
 	}), avatarText(v.poseHint()), poseJointDropdown(c, p))
 	body = append(body,
-		avatarRow(avatarButton("pose-undo", avatarWords("Undo", "Rückgängig"), false, !p.CanUndo, func() { action("undo", "") }), avatarButton("pose-redo", avatarWords("Redo", "Wiederholen"), false, !p.CanRedo, func() { action("redo", "") })),
+		avatarRow(avatarButton("pose-undo", fmt.Sprintf("%s (%d)", avatarWords("Undo", "Rückgängig"), p.UndoCount), false, !p.CanUndo, func() { action("undo", "") }), avatarButton("pose-redo", fmt.Sprintf("%s (%d)", avatarWords("Redo", "Wiederholen"), p.RedoCount), false, !p.CanRedo, func() { action("redo", "") })),
 		avatarButton("pose-reset-joint", avatarWords("Reset selected joint", "Gewähltes Gelenk zurücksetzen"), false, p.Selected < 0 || v.poseCamera, func() { action("reset-joint", "") }))
 	axes := []gogui.View{}
 	for i, name := range []string{"X · " + avatarWords("red", "rot"), "Y · " + avatarWords("green", "grün"), "Z · " + avatarWords("blue", "blau")} {

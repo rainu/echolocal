@@ -211,3 +211,42 @@ func TestPoseCorruptStoreAndLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPoseHistorySnapshotCounts(t *testing.T) {
+	c := poseController(t)
+	check := func(undo, redo int) {
+		t.Helper()
+		s := c.PoseSnapshot()
+		if s.UndoCount != undo || s.RedoCount != redo || s.CanUndo != (undo > 0) || s.CanRedo != (redo > 0) {
+			t.Fatalf("history counts: got %d/%d, want %d/%d", s.UndoCount, s.RedoCount, undo, redo)
+		}
+	}
+	check(0, 0)
+	c.PoseAction("begin-edit", "")
+	c.RotateJoint(7, 2, 10)
+	c.RotateJoint(7, 2, 20)
+	check(1, 0)
+	c.PoseAction("end-edit", "")
+	c.RotateJoint(7, 2, 25)
+	check(2, 0)
+	c.PoseAction("undo", "")
+	check(1, 1)
+	c.PoseAction("undo", "")
+	check(0, 2)
+	c.PoseAction("undo", "")
+	check(0, 2)
+	c.PoseAction("redo", "")
+	check(1, 1)
+	c.RotateJoint(7, 2, 30)
+	check(2, 0)
+	c.PoseAction("reset-joint", "")
+	check(3, 0)
+	c.PoseAction("reset-joint", "")
+	check(3, 0)
+	for i := 0; i < 150; i++ {
+		c.RotateJoint(7, 0, float64(i%80))
+	}
+	check(poseHistoryLimit, 0)
+	c.loadPoses(c.pose.Model)
+	check(0, 0)
+}
