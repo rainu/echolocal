@@ -91,3 +91,27 @@ func avatarPresentationPageFor(c *setting.Controls[config.Avatar]) *sharedshell.
 		return rows, acts
 	}}
 }
+
+func AvatarBackgroundPage() *sharedshell.Page {
+	c := avatarlab.Controls()
+	note := ""
+	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), "background"), Build: func() ([]menu.Row, []func(int)) {
+		text := func(k string) string { return avatar.Text(say.Chosen(), k) }
+		save := func(v string) {
+			note = ""
+			if e := c.ChangeRaw("background", v); e != nil {
+				note = e.Error()
+			}
+		}
+		rows := []menu.Row{
+			{Label: text("background"), Value: c.Read().Background, Kind: menu.Field, Save: save},
+			{Label: text("background_reset"), Kind: menu.Plain},
+		}
+		acts := []func(int){nil, func(int) { save("") }}
+		if note != "" {
+			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
+			acts = append(acts, nil)
+		}
+		return rows, acts
+	}}
+}

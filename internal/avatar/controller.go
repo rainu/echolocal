@@ -49,6 +49,7 @@ type State struct {
 	FPS, Mouth, RMS, Seconds, WorkMS float64
 	Frames, Blocks, Gaps             uint64
 	Muted                            bool
+	BackgroundNotice                 string
 	Ready                            bool
 	ModelName, Credit                string
 }
@@ -57,6 +58,7 @@ type Controller struct {
 	state      State
 	dir        string
 	renderer   string
+	background func() string
 	source     func() string
 	resolve    func(string) (AssetSet, string, string, error)
 	viewport   Viewport
@@ -81,6 +83,11 @@ func (c *Controller) SetSource(source func() string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.source = source
+}
+func (c *Controller) SetBackground(source func() string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.background = source
 }
 func (c *Controller) Snapshot() State { c.mu.Lock(); defer c.mu.Unlock(); return c.state }
 func (c *Controller) Configure(o Options) {
@@ -126,6 +133,21 @@ func (c *Controller) Start() {
 	} else {
 		assets, model, motion, err = c.resolve(c.dir)
 	}
+	backgroundNotice := ""
+	backgroundPath := ""
+	if c.background != nil {
+		backgroundPath = c.background()
+	}
+	if backgroundPath != "" && err == nil {
+		file, release, e := ResolveBackground("/", c.dir, backgroundPath)
+		if e != nil {
+			backgroundNotice = e.Error()
+		} else {
+			original := cleanup
+			cleanup = func() { release(); original() }
+			backgroundPath = file
+		}
+	}
 	started := false
 	defer func() {
 		if !started {
@@ -149,6 +171,9 @@ func (c *Controller) Start() {
 	args := []string{model, "--display", "--seconds", strconv.Itoa(int(c.runDuration() / time.Second)), "--control", "--protocol", strconv.Itoa(ProtocolVersion), "--viewport", vp.argument()}
 	if motion != "" {
 		args = append(args, "--animation", motion)
+	}
+	if backgroundPath != "" && backgroundNotice == "" {
+		args = append(args, "--background", backgroundPath)
 	}
 	cmd := c.command(ctx, c.renderer, args...)
 	cmd.WaitDelay = 2 * time.Second
@@ -185,7 +210,7 @@ func (c *Controller) Start() {
 	c.generation++
 	gen := c.generation
 	opts := c.state.Options
-	c.state = State{Options: opts, Running: true, Notice: "starting", ModelName: assets.Name, Credit: assets.Credit}
+	c.state = State{Options: opts, Running: true, Notice: "starting", BackgroundNotice: backgroundNotice, ModelName: assets.Name, Credit: assets.Credit}
 	c.cancel = cancel
 	c.input = stdin
 	c.mu.Unlock()
@@ -400,6 +425,15 @@ func (c *Controller) stats(gen uint64, line string) {
 		c.redraw()
 		return
 	}
+	if line == "AVATAR_BACKGROUND_ERROR" {
+		c.mu.Lock()
+		if gen == c.generation {
+			c.state.BackgroundNotice = "background_invalid"
+		}
+		c.mu.Unlock()
+		c.redraw()
+		return
+	}
 	if strings.HasPrefix(line, "AVATAR_ERROR=") {
 		code := strings.TrimPrefix(line, "AVATAR_ERROR=")
 		switch code {
@@ -497,4 +531,9 @@ func (c *Controller) runDuration() time.Duration {
 		return c.duration
 	}
 	return 300 * time.Second
+}
+
+// ConversationViewport is shared by standalone Talk and its visual-only preview.
+func ConversationViewport(width, height int) Viewport {
+	return Viewport{X: width / 2, Y: 0, Width: width - width/2, Height: height}
 }

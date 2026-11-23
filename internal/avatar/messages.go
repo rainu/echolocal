@@ -12,6 +12,9 @@ func Text(lang, key string) string {
 	if words[lang] == nil {
 		lang = "en"
 	}
+	if v := backgroundWords[lang][key]; v != "" {
+		return v
+	}
 	if v := presentationWords[lang][key]; v != "" {
 		return v
 	}
@@ -51,3 +54,54 @@ var presentationWords = map[string]map[string]string{
 		"talk_fallback": "Avatar không khả dụng. Talk vẫn hoạt động. Dừng, rồi sửa mô hình hoặc đặt lại cách hiển thị trong phòng thử.",
 		"talk_loading":  "Đang nạp avatar; kết nối âm thanh tiếp tục độc lập.", "talk_running": "Avatar theo tiếng phát của trợ lý, không theo micrô.",
 		"renderer_failed": "Trình dựng avatar dừng bất ngờ.", "renderer_timeout": "Trình dựng avatar chưa sẵn sàng.", "missing_renderer": "Thiếu trình dựng avatar.", "assets_unavailable": "Chưa cài avatar mặc định.", "start_failed": "Không khởi động được trình dựng avatar.", "gpu_failed": "Đồ họa avatar không khả dụng.", "protocol_error": "Giao thức trình dựng avatar không tương thích.", "timeout": "Đã hết thời gian avatar.", "finished": "Avatar đã dừng.", "stopping": "Đang dừng avatar…", "ready": "Avatar sẵn sàng."}}
+
+var backgroundWords = map[string]map[string]string{
+	"en": {
+		"background":             "Background image",
+		"background_help":        "Upload a PNG or JPEG using Files or WebDAV and enter its full path on the Echo, not this computer. Maximum 8 MiB, 4096 pixels per side and 4 megapixels decoded. Centered cover: preserve aspect ratio, crop edges to fill the avatar panel. Transparent pixels show the default. Applied on next Start; framing is unchanged.",
+		"background_reset":       "Restore default background",
+		"background_example":     "/data/local/tmp/background.png",
+		"fullscreen":             "Fullscreen preview",
+		"preview_only":           "Visual only — no Talk, call, messages or microphone. The right panel uses the exact conversation framing. Exit restores your lab controls; Save presentation to keep placement for Talk.",
+		"preview_exit":           "Exit preview",
+		"background_invalid":     "Image rejected. Use a complete PNG/JPEG within 8 MiB, 4096 pixels per side and 4 megapixels. The default background is used.",
+		"background_unavailable": "Cannot read background. Check the full device path and file permissions, select another file or clear the setting. The default background is used.",
+		"background_storage":     "Cannot prepare background. Free device storage and retry. The default background is used.",
+	},
+	"de": {
+		"background":             "Hintergrundbild",
+		"background_help":        "PNG oder JPEG über Dateien oder WebDAV hochladen und den vollständigen Pfad auf dem Echo eingeben, nicht auf diesem Computer. Maximal 8 MiB, 4096 Pixel je Seite und 4 Megapixel dekodiert. Zentriert füllend: Seitenverhältnis bleibt erhalten, Ränder werden zugeschnitten. Transparente Pixel zeigen den Standard. Gilt beim nächsten Start; die Platzierung bleibt unverändert.",
+		"background_reset":       "Standardhintergrund wiederherstellen",
+		"background_example":     "/data/local/tmp/hintergrund.png",
+		"fullscreen":             "Vollbildvorschau",
+		"preview_only":           "Nur visuell – kein Talk, Anruf, Nachrichten oder Mikrofon. Rechts ist exakt der spätere Gesprächsausschnitt. Beenden stellt die Laborsteuerung wieder her; Darstellung speichern übernimmt die Platzierung für Talk.",
+		"preview_exit":           "Vorschau beenden",
+		"background_invalid":     "Bild abgelehnt. Vollständiges PNG/JPEG bis 8 MiB, 4096 Pixel je Seite und 4 Megapixel verwenden. Der Standardhintergrund wird verwendet.",
+		"background_unavailable": "Hintergrund nicht lesbar. Vollständigen Gerätepfad und Dateirechte prüfen, andere Datei wählen oder Einstellung leeren. Der Standardhintergrund wird verwendet.",
+		"background_storage":     "Hintergrund kann nicht vorbereitet werden. Gerätespeicher freigeben und erneut versuchen. Der Standardhintergrund wird verwendet.",
+	},
+	"it": {
+		"background":             "Immagine di sfondo",
+		"background_help":        "Caricare PNG o JPEG tramite File o WebDAV e inserire il percorso completo su Echo, non su questo computer. Massimo 8 MiB, 4096 pixel per lato e 4 megapixel decodificati. Riempimento centrato: proporzioni mantenute e bordi ritagliati. I pixel trasparenti mostrano lo sfondo predefinito. Applicato al prossimo avvio; posizione invariata.",
+		"background_reset":       "Ripristina sfondo predefinito",
+		"background_example":     "/data/local/tmp/sfondo.png",
+		"fullscreen":             "Anteprima a schermo intero",
+		"preview_only":           "Solo visiva: nessun Talk, chiamata, messaggio o microfono. Il pannello destro usa l’inquadratura esatta della conversazione. Uscire ripristina i controlli; salvare la presentazione conserva la posizione per Talk.",
+		"preview_exit":           "Esci dall’anteprima",
+		"background_invalid":     "Immagine rifiutata. Usare PNG/JPEG completo entro 8 MiB, 4096 pixel per lato e 4 megapixel. Viene usato lo sfondo predefinito.",
+		"background_unavailable": "Sfondo non leggibile. Verificare percorso completo e permessi sul dispositivo, scegliere un altro file o cancellare l’impostazione. Viene usato lo sfondo predefinito.",
+		"background_storage":     "Impossibile preparare lo sfondo. Liberare spazio sul dispositivo e riprovare. Viene usato lo sfondo predefinito.",
+	},
+	"vi": {
+		"background":             "Ảnh nền",
+		"background_help":        "Tải PNG hoặc JPEG lên bằng Tệp hoặc WebDAV rồi nhập đường dẫn đầy đủ trên Echo, không phải máy tính này. Tối đa 8 MiB, 4096 pixel mỗi cạnh và 4 megapixel sau giải mã. Lấp đầy ở giữa: giữ tỷ lệ, cắt mép để vừa khung avatar. Pixel trong suốt hiển thị nền mặc định. Áp dụng lần Bắt đầu tiếp theo; giữ nguyên vị trí.",
+		"background_reset":       "Khôi phục nền mặc định",
+		"background_example":     "/data/local/tmp/nen.png",
+		"fullscreen":             "Xem trước toàn màn hình",
+		"preview_only":           "Chỉ hình ảnh — không Talk, gọi, nhắn tin hoặc micrô. Khung bên phải dùng đúng bố cục cuộc trò chuyện. Thoát khôi phục điều khiển phòng thử; lưu cách hiển thị để giữ vị trí cho Talk.",
+		"preview_exit":           "Thoát xem trước",
+		"background_invalid":     "Ảnh bị từ chối. Dùng PNG/JPEG hoàn chỉnh tối đa 8 MiB, 4096 pixel mỗi cạnh và 4 megapixel. Sử dụng nền mặc định.",
+		"background_unavailable": "Không đọc được nền. Kiểm tra đường dẫn đầy đủ và quyền tệp trên thiết bị, chọn tệp khác hoặc xóa cài đặt. Sử dụng nền mặc định.",
+		"background_storage":     "Không chuẩn bị được nền. Giải phóng bộ nhớ thiết bị và thử lại. Sử dụng nền mặc định.",
+	},
+}

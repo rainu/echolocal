@@ -842,6 +842,60 @@ void main(){vec4 c=color;if(textured==1)c*=texture(image,texcoord);if(c.a<cutoff
   need(ok, "shader link failed");
   return p;
 }
+
+// Backgrounds arrive only as bounded, validated straight-alpha RGBA snapshots.
+// The default clear color remains visible beneath transparent pixels.
+struct Background {
+ GLuint texture=0, prog=0, vao=0;
+ int width=0,height=0;
+ explicit Background(const char *name) {
+  if (!name) return;
+  FILE *f=fopen(name,"rb");
+  if (!f) {puts("AVATAR_BACKGROUND_ERROR");return;}
+  unsigned char header[12];
+  bool ok=fread(header,1,12,f)==12 && memcmp(header,"BG01",4)==0;
+  auto u32=[](const unsigned char *b)->uint32_t{return uint32_t(b[0]) | (uint32_t(b[1])<<8) | (uint32_t(b[2])<<16) | (uint32_t(b[3])<<24);};
+  if(ok){width=int(u32(header+4));height=int(u32(header+8));}
+  ok=ok && width>0 && width<=2048 && height>0 && height<=2048;
+  std::vector<unsigned char> pixels;
+  if(ok){pixels.resize(size_t(width)*height*4);ok=fread(pixels.data(),1,pixels.size(),f)==pixels.size() && fgetc(f)==EOF;}
+  fclose(f);
+  if(!ok){puts("AVATAR_BACKGROUND_ERROR");return;}
+  const char *vs=R"(#version 300 es
+precision highp float;
+out vec2 uv;
+void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));uv=vec2(p.x,1.-p.y);gl_Position=vec4(p*2.-1.,0.,1.);})";
+  const char *fs=R"(#version 300 es
+precision highp float;
+in vec2 uv;uniform sampler2D image;uniform vec2 crop;out vec4 outColor;
+void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
+  GLuint v=shader(GL_VERTEX_SHADER,vs),fshader=shader(GL_FRAGMENT_SHADER,fs);
+  prog=glCreateProgram();glAttachShader(prog,v);glAttachShader(prog,fshader);glLinkProgram(prog);
+  glDeleteShader(v);glDeleteShader(fshader);
+  GLint linked=0;glGetProgramiv(prog,GL_LINK_STATUS,&linked);
+  need(linked,"background shader link failed");
+  glGenVertexArrays(1,&vao);
+  glGenTextures(1,&texture);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);
+  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+  glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+  if(glGetError()!=GL_NO_ERROR){glDeleteTextures(1,&texture);texture=0;puts("AVATAR_BACKGROUND_ERROR");}
+ }
+ void draw(int w,int h) {
+  if(!texture)return;
+  float imageAspect=float(width)/height,viewAspect=float(w)/h;
+  float cx=1,cy=1;if(imageAspect>viewAspect)cx=viewAspect/imageAspect;else cy=imageAspect/viewAspect;
+  glUseProgram(prog);glUniform1i(glGetUniformLocation(prog,"image"),0);
+  glUniform2f(glGetUniformLocation(prog,"crop"),cx,cy);
+  glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glDisable(GL_CULL_FACE);
+  glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+  glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);glBindVertexArray(vao);
+  glDrawArrays(GL_TRIANGLES,0,3);
+  glDisable(GL_BLEND);glDepthMask(GL_TRUE);glEnable(GL_DEPTH_TEST);
+ }
+ ~Background(){if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
+};
+
 struct EGL {
   EGLDisplay display = EGL_NO_DISPLAY;
   EGLContext context = EGL_NO_CONTEXT;
@@ -998,7 +1052,7 @@ int main(int argc, char **argv) {
     double seconds = 5;
     bool show = false, idle = true, demoMouth = false, appMode = false;
     float fixedMouth = -1;
-    const char *out = nullptr, *wav = nullptr, *animation = nullptr;
+    const char *out = nullptr, *wav = nullptr, *animation = nullptr, *background = nullptr;
     for (int i = 2; i < argc; i++) {
       std::string a = argv[i];
       if (a == "--control")
@@ -1021,6 +1075,8 @@ int main(int argc, char **argv) {
           out = argv[++i];
         else if (a == "--wav")
           wav = argv[++i];
+        else if (a == "--background")
+          background = argv[++i];
         else if (a == "--animation")
           animation = argv[++i];
         else if (a == "--mouth")
@@ -1049,6 +1105,7 @@ int main(int argc, char **argv) {
       stage = "motion_invalid";
       Motion motion(animation, scene);
       stage = "gpu_failed";
+      Background backdrop(background);
       GLuint prog = program();
       glUseProgram(prog);
       glUniform1i(glGetUniformLocation(prog, "image"), 0);
@@ -1160,6 +1217,8 @@ int main(int argc, char **argv) {
         scene.morphs(mouth, (appMode ? controls.blink : idle) ? blink : 0);
         glClearColor(.035f, .045f, .07f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        backdrop.draw(w,h);
+        glUseProgram(prog);
         for (int pass = 0; pass < 2; pass++) {
           for (auto &p : scene.parts) {
             auto &node = scene.d->nodes[p.node];

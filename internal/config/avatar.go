@@ -16,6 +16,7 @@ type Avatar struct {
 	IdleDisabled      bool   `json:"idle_disabled,omitempty"`
 	BlinkDisabled     bool   `json:"blink_disabled,omitempty"`
 	AnimationDisabled bool   `json:"animation_disabled,omitempty"`
+	Background        string `json:"background,omitempty"`
 	Path              string `json:"path"`
 	Zoom              int    `json:"zoom,omitempty"`
 	Yaw               int    `json:"yaw,omitempty"`

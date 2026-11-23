@@ -34,6 +34,8 @@ type avatarLabController interface {
 	SetViewport(avatar.Viewport)
 }
 type avatarView struct {
+	retiring       atomic.Pointer[avatar.Controller]
+	resume         atomic.Bool
 	note           string
 	app            avatarLabController
 	dragEpoch      atomic.Uint64
@@ -48,6 +50,7 @@ type avatarView struct {
 func (*avatarView) Covers() bool           { return true }
 func (*avatarView) Timeout() time.Duration { return 6 * time.Minute }
 func (v *avatarView) Close() {
+	v.resume.Store(false)
 	v.loaded.Store(false)
 	v.dragEpoch.Add(1)
 	v.touchReset.Add(1)
@@ -59,6 +62,7 @@ func extendAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	}
 	c := avatar.New(layout.AvatarDir, func() (<-chan []int16, func()) { return mic.Get().ListenUnleveled("avatar") }, privacy.Get().MicMuted, featureshell.Get().Redraw)
 	c.SetSource(func() string { return config.AvatarSection.Read().Path })
+	c.SetBackground(func() string { return config.AvatarSection.Read().Background })
 	avatarlab.Controls()
 	v := &avatarView{app: c, load: func() { c.Configure(avatarlab.Options(config.AvatarSection.Read())) }}
 	open := func() {
@@ -109,6 +113,11 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 		v.touchMulti = false
 	}
 	s := v.app.Snapshot()
+	if retiring := v.retiring.Load(); v.resume.Load() && !s.Running && (retiring == nil || !retiring.Snapshot().Running) {
+		v.resume.Store(false)
+		v.app.Start()
+		s = v.app.Snapshot()
+	}
 	width, height := w.WindowSize()
 	size := min(width/2, height-100)
 	supported := width >= 640 && height >= 480
@@ -130,6 +139,9 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	if translated := avatar.Text(say.Chosen(), s.Notice); translated != "" {
 		note = translated
 	}
+	if s.BackgroundNotice != "" {
+		note += " " + avatar.Text(say.Chosen(), s.BackgroundNotice)
+	}
 	if !supported {
 		note = avatarWords("Preview needs at least 640×480.", "Vorschau benötigt mindestens 640×480.")
 	}
@@ -141,6 +153,12 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 			lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarModelPage()) })
 		})),
 		avatarText(avatar.Text(say.Chosen(), "selection")),
+		avatarRow(avatarButton("avatar-background", avatar.Text(say.Chosen(), "background"), false, false, func() {
+			v.app.Stop()
+			lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarBackgroundPage()) })
+		})),
+		avatarRow(avatarButton("avatar-fullscreen", avatar.Text(say.Chosen(), "fullscreen"), false, !supported, func() { v.openPreview() })),
+
 		avatarRow(avatarButton("avatar-save", avatar.Text(say.Chosen(), "save_presentation"), false, false, func() {
 			if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
 				v.note = avatar.Text(say.Chosen(), "save_failed")

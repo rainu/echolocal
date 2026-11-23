@@ -61,6 +61,9 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 	}
 	header = append(header, talkAvatarHint(note))
 	captions := []gogui.View{}
+	if s.BackgroundNotice != "" {
+		captions = append(captions, talkAvatarHint(text(s.BackgroundNotice)))
+	}
 	for i := 2; i < len(rows); i++ {
 		r := rows[i]
 		if r.Hint != "" && (r.Label == say.T("clawtalk.caption_user") || r.Label == say.T("clawtalk.caption_assistant")) {
@@ -86,6 +89,9 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 			gogui.Row(gogui.ContainerCfg{ID: "talk-avatar-actions", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: actions}),
 		},
 	})
+	return avatarComposition(width, height, left)
+}
+func avatarComposition(width, height int, left gogui.View) gogui.View {
 	right := gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-canvas", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Spacing: gogui.NoSpacing, Width: float32(width - width/2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding})
 	return gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Spacing: gogui.NoSpacing, Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{left, right}})
 }
@@ -117,5 +123,5 @@ func talkAvatarAction(id, label string, do func(), stop bool) gogui.View {
 
 // No title strip, footer reservation or square crop on the avatar half.
 func talkAvatarViewport(width, height int) avatar.Viewport {
-	return avatar.Viewport{X: width / 2, Y: 0, Width: width - width/2, Height: height}
+	return avatar.ConversationViewport(width, height)
 }

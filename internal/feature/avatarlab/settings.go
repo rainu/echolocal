@@ -22,6 +22,15 @@ func NewTable() *setting.Table[config.Avatar] {
 		c.Path = v
 		return nil
 	}}}
+	rows = append(rows, setting.Setting[config.Avatar]{Name: "background", Kind: setting.Text, Group: "background", Icon: "mdi:image",
+		Read: func(a *config.Avatar) string { return a.Background },
+		Write: func(a *config.Avatar, v string) error {
+			if e := avatar.ValidateBackground(v); e != nil {
+				return errors.New(avatar.Text(say.Chosen(), e.Error()))
+			}
+			a.Background = v
+			return nil
+		}})
 	for _, f := range []struct {
 		name     string
 		min, max int
@@ -64,7 +73,7 @@ func NewTable() *setting.Table[config.Avatar] {
 			},
 		})
 	}
-	return setting.NewTable("avatar", []setting.Group{"model", "presentation"}, rows, setting.Messages{
+	return setting.NewTable("avatar", []setting.Group{"model", "background", "presentation"}, rows, setting.Messages{
 		Text: func(k string) string {
 			if key, ok := presentationMessage(k); ok {
 				return avatar.Text(say.Chosen(), key)
@@ -115,6 +124,15 @@ func init() {
 }
 
 func presentationMessage(k string) (string, bool) {
+	if k == "avatar.group.background" || k == "avatar.setting.background" || k == "avatar.entity.background" {
+		return "background", true
+	}
+	if k == "avatar.reset.background" {
+		return "background_reset", true
+	}
+	if k == "avatar.example.background" {
+		return "background_example", true
+	}
 	if k == "avatar.group.presentation" {
 		return "presentation", true
 	}
