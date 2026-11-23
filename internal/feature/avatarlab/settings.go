@@ -31,6 +31,7 @@ func NewTable() *setting.Table[config.Avatar] {
 			a.Background = v
 			return nil
 		}})
+
 	for _, f := range []struct {
 		name     string
 		min, max int
@@ -73,6 +74,16 @@ func NewTable() *setting.Table[config.Avatar] {
 			},
 		})
 	}
+	rows = append(rows, setting.Setting[config.Avatar]{Name: "mouth_intensity", Kind: setting.Number, Group: "presentation", Icon: "mdi:account-voice", Min: 0, Max: config.AvatarMouthIntensityMax, Unit: "%",
+		Read: func(a *config.Avatar) string { return strconv.Itoa(a.MouthPercent()) },
+		Write: func(a *config.Avatar, v string) error {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 || n > config.AvatarMouthIntensityMax {
+				return errors.New(avatar.Text(say.Chosen(), "mouth_intensity_invalid"))
+			}
+			a.MouthIntensity = &n
+			return nil
+		}})
 	return setting.NewTable("avatar", []setting.Group{"model", "background", "presentation"}, rows, setting.Messages{
 		Text: func(k string) string {
 			if key, ok := presentationMessage(k); ok {
@@ -136,7 +147,7 @@ func presentationMessage(k string) (string, bool) {
 	if k == "avatar.group.presentation" {
 		return "presentation", true
 	}
-	for _, name := range []string{"zoom", "yaw", "pitch", "x", "y", "idle", "blink", "animation"} {
+	for _, name := range []string{"mouth_intensity", "zoom", "yaw", "pitch", "x", "y", "idle", "blink", "animation"} {
 		if k == "avatar.setting."+name || k == "avatar.entity."+name {
 			return name, true
 		}
@@ -150,13 +161,18 @@ func presentationMessage(k string) (string, bool) {
 // Options always reads the same presentation used by the owner settings API.
 func Options(a config.Avatar) avatar.Options {
 	a = a.Presentation()
-	return avatar.Options{Idle: !a.IdleDisabled, Blink: !a.BlinkDisabled, Animation: !a.AnimationDisabled, Zoom: float64(a.Zoom) / 100, Yaw: float64(a.Yaw), Pitch: float64(a.Pitch), PanX: float64(a.X) / 100, PanY: float64(a.Y) / 100}
+	return avatar.Options{MouthIntensity: float64(a.MouthPercent()) / 100, Idle: !a.IdleDisabled, Blink: !a.BlinkDisabled, Animation: !a.AnimationDisabled, Zoom: float64(a.Zoom) / 100, Yaw: float64(a.Yaw), Pitch: float64(a.Pitch), PanX: float64(a.X) / 100, PanY: float64(a.Y) / 100}
 }
 func SavePresentation(o avatar.Options) error {
 	return config.AvatarSection.Update(func(a *config.Avatar) { applyPresentation(a, o) })
 }
 
 func applyPresentation(a *config.Avatar, o avatar.Options) {
+	n := int(math.Round(o.MouthIntensity * 100))
+	n = max(0, min(config.AvatarMouthIntensityMax, n))
+	if a.MouthPercent() != n {
+		a.MouthIntensity = &n
+	}
 	a.IdleDisabled = !o.Idle
 	a.BlinkDisabled = !o.Blink
 	a.AnimationDisabled = !o.Animation

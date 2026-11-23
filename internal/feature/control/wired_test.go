@@ -13,6 +13,7 @@ import (
 
 var coverage = settingtest.Shared.With(settingtest.Coverage{
 	Rows: map[string]string{
+		"Avatar.MouthIntensity":     "avatar.mouth_intensity",
 		"Avatar.IdleDisabled":       "avatar.idle",
 		"Avatar.BlinkDisabled":      "avatar.blink",
 		"Avatar.AnimationDisabled":  "avatar.animation",

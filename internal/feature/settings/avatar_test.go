@@ -42,7 +42,7 @@ func TestAvatarNativeMotionTogglesAndReset(t *testing.T) {
 	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
 	page := avatarPresentationPageFor(c)
 	rows, acts := page.Build()
-	if len(rows) != 9 {
+	if len(rows) != 10 {
 		t.Fatal("missing presentation controls", len(rows))
 	}
 	for i, name := range []string{"idle", "blink", "animation"} {
@@ -87,8 +87,33 @@ func TestNativeCloseUpZoomSaveAndValidation(t *testing.T) {
 		rows, _ := page.Build()
 		rows[0].Save(bad)
 		rows, _ = page.Build()
-		if value != before || len(rows) != 10 || rows[9].Label == "" {
+		if value != before || len(rows) != 11 || rows[10].Label == "" {
 			t.Fatal("invalid native zoom", bad, value)
 		}
+	}
+}
+
+func TestNativeMouthIntensityEditAndReset(t *testing.T) {
+	value := config.Avatar{}
+	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	page := avatarPresentationPageFor(c)
+	for _, v := range []string{"0", "15", "100"} {
+		rows, _ := page.Build()
+		rows[8].Save(v)
+		rows, _ = page.Build()
+		if rows[8].Value != v {
+			t.Fatal(rows[8])
+		}
+	}
+	rows, _ := page.Build()
+	rows[8].Save("101")
+	rows, _ = page.Build()
+	if rows[8].Value != "100" || len(rows) != 11 {
+		t.Fatal("validation", rows)
+	}
+	_, acts := page.Build()
+	acts[9](0)
+	if value.MouthPercent() != 50 {
+		t.Fatal("reset", value)
 	}
 }

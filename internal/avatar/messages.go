@@ -12,6 +12,9 @@ func Text(lang, key string) string {
 	if words[lang] == nil {
 		lang = "en"
 	}
+	if v := mouthWords[lang][key]; v != "" {
+		return v
+	}
 	if v := backgroundWords[lang][key]; v != "" {
 		return v
 	}
@@ -104,4 +107,11 @@ var backgroundWords = map[string]map[string]string{
 		"background_unavailable": "Không đọc được nền. Kiểm tra đường dẫn đầy đủ và quyền tệp trên thiết bị, chọn tệp khác hoặc xóa cài đặt. Sử dụng nền mặc định.",
 		"background_storage":     "Không chuẩn bị được nền. Giải phóng bộ nhớ thiết bị và thử lại. Sử dụng nền mặc định.",
 	},
+}
+
+var mouthWords = map[string]map[string]string{
+	"en": {"mouth_intensity": "Speech mouth intensity (%)", "mouth_intensity_help": "0–100%; default 50%. 0 = closed, 100 = original strength. Visual agent playback only; audio volume and microphone are unchanged.", "mouth_intensity_invalid": "Enter a whole number from 0 to 100.", "speech_preview": "Speech preview (silent)", "speech_preview_help": "Repeating mouth preview from a synthesized speech recording, with pauses. No sound, microphone or agent connection. Adjust live, then Save presentation for Talk.", "mouth_reset": "Reset mouth intensity (50%)"},
+	"de": {"mouth_intensity": "Mundintensität bei Sprache (%)", "mouth_intensity_help": "0–100%; Standard 50%. 0 = geschlossen, 100 = bisherige Stärke. Nur visuelle Agentenwiedergabe; Lautstärke und Mikrofon bleiben unverändert.", "mouth_intensity_invalid": "Ganze Zahl von 0 bis 100 eingeben.", "speech_preview": "Sprachvorschau (lautlos)", "speech_preview_help": "Wiederholte Mundvorschau aus einer synthetischen Sprachaufnahme mit Pausen. Kein Ton, Mikrofon oder Agentenverbindung. Live anpassen, dann Darstellung für Talk speichern.", "mouth_reset": "Mundintensität zurücksetzen (50%)"},
+	"it": {"mouth_intensity": "Intensità della bocca durante il parlato (%)", "mouth_intensity_help": "0–100%; predefinito 50%. 0 = chiusa, 100 = intensità originale. Solo voce dell’agente nell’avatar; volume e microfono invariati.", "mouth_intensity_invalid": "Inserire un numero intero da 0 a 100.", "speech_preview": "Anteprima parlato (silenziosa)", "speech_preview_help": "Anteprima ripetuta da una registrazione vocale sintetica, con pause. Nessun suono, microfono o connessione agente. Regolare dal vivo e salvare la presentazione per Talk.", "mouth_reset": "Ripristina intensità bocca (50%)"},
+	"vi": {"mouth_intensity": "Cường độ miệng khi nói (%)", "mouth_intensity_help": "0–100%; mặc định 50%. 0 = đóng, 100 = cường độ ban đầu. Chỉ hình ảnh tiếng trợ lý; không đổi âm lượng hoặc micrô.", "mouth_intensity_invalid": "Nhập số nguyên từ 0 đến 100.", "speech_preview": "Xem trước lời nói (không tiếng)", "speech_preview_help": "Lặp chuyển động miệng từ bản ghi giọng tổng hợp có khoảng nghỉ. Không âm thanh, micrô hoặc kết nối trợ lý. Chỉnh trực tiếp rồi lưu cách hiển thị cho Talk.", "mouth_reset": "Đặt lại cường độ miệng (50%)"},
 }

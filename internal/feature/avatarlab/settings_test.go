@@ -4,6 +4,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/avatar"
 	"github.com/ygelfand/echolocal/internal/config"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 )
@@ -79,7 +80,7 @@ func TestMotionSettingsRoundTripAndSave(t *testing.T) {
 		}
 		saved := config.Avatar{Path: a.Path}
 		applyPresentation(&saved, o)
-		if saved != a {
+		if !reflect.DeepEqual(saved, a) {
 			t.Fatal("save lost motion or framing", mask, saved, a)
 		}
 	}
@@ -127,7 +128,7 @@ func TestCloseUpZoomSaveReloadAndSharedRenderer(t *testing.T) {
 		}
 		config.Use(path)
 		saved := config.AvatarSection.Read()
-		if saved != a || row.Read(&saved) != strconv.Itoa(percent) {
+		if !reflect.DeepEqual(saved, a) || row.Read(&saved) != strconv.Itoa(percent) {
 			t.Fatal("save/reload", saved, a)
 		}
 		c := avatar.New(t.TempDir(), nil, func() bool { return false }, func() {})
@@ -136,9 +137,50 @@ func TestCloseUpZoomSaveReloadAndSharedRenderer(t *testing.T) {
 			t.Fatal("runtime clamped framing", got, preview)
 		}
 		for _, bad := range []string{"49", "1000", "999.1", "NaN", "+Inf", "-1"} {
-			if row.Write(&saved, bad) == nil || saved != a {
+			if row.Write(&saved, bad) == nil || !reflect.DeepEqual(saved, a) {
 				t.Fatal("invalid changed stored framing", bad, saved)
 			}
+		}
+	}
+}
+
+func TestMouthIntensityMigrationZeroRestartAndReset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	config.Use(path)
+	row := NewTable().MustRow("mouth_intensity")
+	a := config.Avatar{}
+	if row.Read(&a) != "50" || Options(a).MouthIntensity != .5 {
+		t.Fatal("legacy default")
+	}
+	for _, n := range []int{0, 10, 50, 100} {
+		if err := row.Write(&a, strconv.Itoa(n)); err != nil {
+			t.Fatal(err)
+		}
+		if err := config.AvatarSection.Update(func(v *config.Avatar) { *v = a }); err != nil {
+			t.Fatal(err)
+		}
+		config.Use(path)
+		saved := config.AvatarSection.Read()
+		if saved.MouthIntensity == nil || *saved.MouthIntensity != n || Options(saved).MouthIntensity != float64(n)/100 {
+			t.Fatal("restart", saved)
+		}
+		if err := SavePresentation(Options(saved)); err != nil {
+			t.Fatal(err)
+		}
+		config.Use(path)
+		saved = config.AvatarSection.Read()
+		if row.Read(&saved) != strconv.Itoa(n) {
+			t.Fatal("lab save")
+		}
+	}
+	defaults := config.Avatar{}
+	if err := row.Write(&a, row.Read(&defaults)); err != nil || a.MouthPercent() != 50 {
+		t.Fatal("reset")
+	}
+	for _, bad := range []string{"-1", "101", "1.5", "NaN", "Inf", ""} {
+		before := a
+		if row.Write(&a, bad) == nil || a != before {
+			t.Fatal("invalid", bad)
 		}
 	}
 }

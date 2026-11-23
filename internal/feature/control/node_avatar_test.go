@@ -80,6 +80,26 @@ func TestNodeAvatarSharedRegistryAndPermission(t *testing.T) {
 		}
 	}
 
+	for _, value := range []string{"0", "50", "100"} {
+		raw, _ := json.Marshal(map[string]string{"domain": "avatar", "name": "mouth_intensity", "value": value})
+		if _, e = call("set", string(raw)); e != nil {
+			t.Fatal(e)
+		}
+		out, e = call("get", `{"domain":"avatar","name":"mouth_intensity"}`)
+		if e != nil {
+			t.Fatal(e)
+		}
+		b, _ := json.Marshal(out)
+		if !strings.Contains(string(b), `"value":"`+value+`"`) {
+			t.Fatal(string(b))
+		}
+	}
+	for _, bad := range []string{"-1", "101", "0.5", "NaN"} {
+		raw, _ := json.Marshal(map[string]string{"domain": "avatar", "name": "mouth_intensity", "value": bad})
+		if _, e = call("set", string(raw)); e == nil {
+			t.Fatal("invalid mouth intensity", bad)
+		}
+	}
 	rawBackground, _ := json.Marshal(map[string]string{"domain": "avatar", "name": "background", "value": ""})
 	if _, e = call("set", string(rawBackground)); e != nil {
 		t.Fatal(e)
