@@ -693,6 +693,7 @@ struct Motion {
       map[n] = x.key();
     }
     auto &a = d->animations[0];
+    bool sourceSupported=false;
     for (size_t i = 0; i < a.channels_count; i++) {
       auto &c = a.channels[i];
       if (!c.target_node)
@@ -700,12 +701,13 @@ struct Motion {
       auto it = map.find(int(c.target_node - d->nodes));
       if (it == map.end())
         continue;
-      auto dst = scene.bones.find(it->second);
-      if (dst == scene.bones.end())
-        continue;
       if (c.target_path != cgltf_animation_path_type_rotation &&
           !(it->second == "hips" &&
             c.target_path == cgltf_animation_path_type_translation))
+        continue;
+      sourceSupported=true;
+      auto dst = scene.bones.find(it->second);
+      if (dst == scene.bones.end())
         continue;
       auto *s = c.sampler;
       need(s && s->input && s->output && s->input->count > 0 &&
@@ -754,7 +756,11 @@ struct Motion {
       }
       tracks.push_back(std::move(t));
     }
-    need(!tracks.empty() && duration > 0, "no supported humanoid tracks");
+    need(sourceSupported, "no supported humanoid tracks");
+    // A valid default motion may have no targets on an incomplete/non-humanoid
+    // model. Keep ordinary rendering/framing usable instead of rejecting it.
+    if(tracks.empty()){puts("VRMA_UNMAPPED=1");return;}
+    need(duration > 0, "no supported humanoid tracks");
     printf("VRMA_TRACKS=%zu\nVRMA_DURATION_S=%.3f\n", tracks.size(), duration);
   }
   ~Motion() {
@@ -762,7 +768,7 @@ struct Motion {
       cgltf_free(d);
   }
   void apply(Scene &scene, double seconds) {
-    if (!d)
+    if (!d || tracks.empty())
       return;
     float time = float(fmod(seconds, duration));
     for (auto &t : tracks) {

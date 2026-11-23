@@ -280,6 +280,12 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	}
 	if v.posePanel {
 		body = v.poseControls()
+		if v.look != nil && v.look.Editor.Typing(w) {
+			// The keyboard overlays this fixed workspace, unlike a normal page.
+			// Extra trailing room lets the active name field scroll above it.
+			_, panelHeight := w.WindowSize()
+			body = append(body, gogui.Column(gogui.ContainerCfg{Height: float32(panelHeight) - v.look.Editor.Top + 16, Sizing: gogui.FillFixed, Padding: gogui.NoPadding}))
+		}
 	}
 	status := avatarWords("Preview stopped", "Vorschau gestoppt")
 	if s.Running {

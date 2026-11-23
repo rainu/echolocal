@@ -17,7 +17,8 @@ Head, neck, torso, shoulders, arms, hands, hips, legs, feet, toes and finger
 segments are supported; VRM 0 thumb intermediate and VRM 1 thumb metacarpal
 names are included. Eye/jaw expression controls, matrix-only joints and rig
 creation are outside this editor. An empty/incompatible rig explains the
-limitation while ordinary framing remains available. Dense or overlapping
+limitation while ordinary framing remains available. A valid default VRMA with
+no matching target bones becomes a no-op rather than preventing model display. Dense or overlapping
 markers can be disambiguated with the previous/next joint controls.
 
 Two fingers still pan/pinch the camera. **Camera navigation** temporarily
@@ -52,5 +53,6 @@ telemetry at 10 Hz in Lab only. Coordinates are viewport-local physical pixels,
 top-left origin, projected using the same matrix as the skinned mesh. Both
 sides reject invalid IDs, extra fields, non-finite numbers and out-of-range
 values. K HIDDEN makes the Lab surface transparent while the full-width native keyboard
-is open, without restarting rendering or losing the draft pose. Talk never uses
+is open, without restarting rendering or losing the draft pose. The name field
+scrolls above the keyboard in the fixed Lab workspace. Talk never uses
 this command. The native overlay owns no input or external resources.

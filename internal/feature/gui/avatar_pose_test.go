@@ -6,7 +6,9 @@ import (
 	gogui "github.com/go-gui-org/go-gui/gui"
 	"github.com/ygelfand/echolocal/internal/avatar"
 	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
+	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 	"math"
 	"strings"
 	"testing"
@@ -90,5 +92,37 @@ func TestPosePanelLocalizationAndUnavailableRig(t *testing.T) {
 			t.Fatal(texts)
 		}
 		featureshell.Get().Pop()
+	}
+}
+
+type poseScreenSettings struct{}
+
+func (poseScreenSettings) Read() schema.Screen               { return schema.Screen{} }
+func (poseScreenSettings) Update(func(*schema.Screen)) error { return nil }
+func TestPoseNameRemainsVisibleAboveKeyboard(t *testing.T) {
+	w, v, c := poseGUIFixture(t)
+	v.look = widgets.NewUI(poseScreenSettings{})
+	v.poseName = "Visible draft"
+	root := w.TestRender(nil)
+	field := avatarCaptionShape(t, root, "pose-name")
+	scroller := avatarCaptionShape(t, root, "vrm-controls-1")
+	w.TestScroll(avatarCaptionID(t, w, "vrm-controls-1"), 0, (scroller.Y+scroller.Height/2-field.Y-field.Height/2)/gogui.CurrentTheme().ScrollMultiplier)
+	w.TestRender(nil)
+	if err := w.TestClick(avatarCaptionID(t, w, "pose-name")); err != nil {
+		t.Fatal(err)
+	}
+	w.FrameFn()
+	v.look.Editor.Top = 470
+	w.InvalidateLayout()
+	for range 5 {
+		w.FrameFn()
+	}
+	root = w.TestRender(nil)
+	field = avatarCaptionShape(t, root, "pose-name")
+	if !v.look.Editor.Typing(w) || field.Y < 178 || field.Y+field.Height > 458 {
+		t.Fatalf("name hidden behind keyboard or focus lost: y=%v height=%v typing=%v", field.Y, field.Height, v.look.Editor.Typing(w))
+	}
+	if v.poseName != "Visible draft" || c.pose.Selected != 7 {
+		t.Fatal("keyboard discarded pose/name state")
 	}
 }

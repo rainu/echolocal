@@ -106,7 +106,20 @@ func (v *avatarView) poseControls() []gogui.View {
 		avatarRow(avatarButton("pose-minus5", "−5°", false, p.Selected < 0 || v.poseCamera, func() { adjust(-5) }), avatarButton("pose-minus1", "−1°", false, p.Selected < 0 || v.poseCamera, func() { adjust(-1) }), avatarButton("pose-plus1", "+1°", false, p.Selected < 0 || v.poseCamera, func() { adjust(1) }), avatarButton("pose-plus5", "+5°", false, p.Selected < 0 || v.poseCamera, func() { adjust(5) })),
 		avatarRow(avatarButton("pose-rest", avatarWords("Rest pose", "Ruhepose"), false, false, func() { action("rest", ""); v.poseName = "" }), avatarButton("pose-revert", avatarWords("Revert edits", "Änderungen verwerfen"), false, false, func() { action("revert", ""); v.poseName = p.Name })))
 	if v.look != nil {
-		body = append(body, v.look.Input(gogui.InputCfg{ID: "pose-name", Text: v.poseName, Placeholder: avatarWords("Pose name (1–40 characters)", "Posenname (1–40 Zeichen)"), Sizing: gogui.FillFixed, Height: 56, OnTextChanged: func(s string, e gogui.EventCtx) { v.poseName = s; v.poseDelete = ""; e.Window.InvalidateLayout() }}, func() {}))
+		field := v.look.Input(gogui.InputCfg{ID: "pose-name", Text: v.poseName, Placeholder: avatarWords("Pose name (1–40 characters)", "Posenname (1–40 Zeichen)"), Sizing: gogui.FillFixed, Height: 56, OnTextChanged: func(s string, e gogui.EventCtx) { v.poseName = s; v.poseDelete = ""; e.Window.InvalidateLayout() }}, func() {})
+		body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Content: []gogui.View{field}, AmendLayout: func(ev gogui.EventCtx) {
+			top := v.look.Editor.Top
+			bottom := ev.Layout.Shape.Y + ev.Layout.Shape.Height
+			if v.look.Editor.Typing(ev.Window) && top > 0 && bottom > top-12 {
+				by := bottom - top + 20
+				id := fmt.Sprintf("vrm-controls-%d", v.section)
+				ev.Window.QueueCommand(func(w *gogui.Window) {
+					for _, resolved := range w.ResolveID(id) {
+						w.ScrollVerticalTo(resolved, w.ScrollVerticalOffset(resolved)-by)
+					}
+				})
+			}
+		}}))
 	}
 	body = append(body, avatarButton("pose-save", avatarWords("Save named pose", "Benannte Pose speichern"), true, v.poseName == "", func() { action("save", strings.TrimSpace(v.poseName)) }))
 	if p.Dirty {
