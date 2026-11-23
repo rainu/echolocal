@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-var PermissionGroups = []string{"screen", "input", "display", "settings", "audio", "alarms", "intercom", "camera", "state", "diagnostics", "maintenance", "tones", "talk"}
+var PermissionGroups = []string{"screen", "desktop", "input", "display", "settings", "audio", "alarms", "intercom", "camera", "state", "diagnostics", "maintenance", "tones", "talk"}
 
 type NodeOperation struct {
 	Command, Group string
@@ -49,12 +49,12 @@ func permissionGroup(g string) bool {
 }
 func (a *NodeAccess) granted(g string) bool {
 	v, ok := a.grants[g]
-	return permissionGroup(g) && !a.storageErr && (!ok || v)
+	return permissionGroup(g) && !a.storageErr && ((!ok && g != "desktop") || (ok && v))
 }
 func (a *NodeAccess) Granted(g string) bool { a.mu.Lock(); defer a.mu.Unlock(); return a.granted(g) }
 
 // SetGrants must remain local/admin-owned, never a Node command. Policy edits
-// cancel active work and fence results. Missing fields default on after upgrade.
+// cancel active work and fence results. Legacy fields default on after upgrade; desktop sharing always defaults off.
 func (a *NodeAccess) SetGrants(changes map[string]bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

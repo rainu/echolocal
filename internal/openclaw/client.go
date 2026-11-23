@@ -49,6 +49,7 @@ type Status struct {
 }
 
 type Client struct {
+	desktop              desktopSession
 	operatorSharedRetry  bool
 	operatorUpgradeRetry bool
 	upgradeTerminal      string

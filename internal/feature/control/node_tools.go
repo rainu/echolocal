@@ -51,6 +51,7 @@ func registerNodeTools(a *connection.NodeAccess) {
 		_ = nodeRegister(a, connection.NodeOperation{Command: name, Group: group, Run: run})
 	}
 	registerNodeScreen(a)
+	registerNodeDesktop(a)
 	registerNodeConvenience(a)
 	registerNodeSettings(a)
 	registerNodeDevice(a)

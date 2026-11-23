@@ -1,154 +1,97 @@
-# Live screen streaming: integration investigation (issue #15)
+# OpenClaw live screen sharing (issue #15)
 
-Status: **design/investigation only; no live-stream implementation or hardware
-acceptance is claimed.** Existing snapshot and bounded MP4 contracts are unchanged.
+## Contract and dependencies
 
-## Verified reference points
+OpenClaw release `2026.11.6` (`06afb10`) supports cancellation-owned
+`desktop.stream` invocations, a dedicated binary WebSocket carrier, and the
+built-in RFB/noVNC observer. H.264 and MP4 recording output is not this protocol.
+Reference upstream inspected at
+[8b17822bec4f36582bf5e15743087b32fd3460b1](https://github.com/openclaw/openclaw/tree/8b17822bec4f36582bf5e15743087b32fd3460b1).
 
-Investigated on 2026-11-23:
+The existing Android/tablet Node identity is retained. Android has no default
+`desktop.stream` admission: the operator must explicitly allow that command in
+Gateway policy and approve any same-identity capability upgrade. There is no
+platform spoofing, operator-identity reuse, additional listener, or mandatory
+upstream protocol change established by this work.
 
-- OpenClaw release `2026.11.6`, revision `06afb10`: installed desktop command
-  policy, stream broker, node desktop source, observer bridge and bundled viewer.
-- Current upstream OpenClaw source pinned at
-  [8b17822bec4f36582bf5e15743087b32fd3460b1](https://github.com/openclaw/openclaw/tree/8b17822bec4f36582bf5e15743087b32fd3460b1).
-  Upstream observations must not be mistaken for deployed runtime behavior.
-- EchoLocal accepted integration `2d93f969d43e536573f6a21002de1c80c471f115`:
-  `internal/openclaw/node.go`, `node_invoke.go`, `node_permissions.go`,
-  `internal/feature/control/node_screen.go` and existing Node command docs.
-- This documentation branch starts from the existing clean local main baseline
-  `f6b596d4b966f8124710fb2bd677427e5d4614a5`. It does not silently import the
-  integration branch's other features. Future implementation must resolve the
-  existing Node feature dependencies explicitly.
+The implementation branch includes the accepted integration dependencies (Node,
+permissions and capture features) through an integration merge. Its PR diff
+against the integration target contains only issue #15 work.
 
-## Actual OpenClaw contract
+## Local permission and user controls
 
-`desktop.stream` exists. It is a cancellable Node invocation controlling a
-separate **RFB/VNC byte stream**, not a command returning video or a video URL.
+A dedicated `desktop` permission defaults **off**, both for fresh installations
+and when upgrading old permission files. The old `screen` grant continues to
+govern screenshots and bounded recordings only. Local administrators can enable
+live sharing under OpenClaw -> Node -> Permissions. Enabling all permissions is
+also an explicit opt-in. Changing grants reconnects the same Node identity.
 
-1. An authenticated viewer requests `desktop.observe` for the selected Node.
-   The Gateway verifies current pairing generation, effective approved commands
-   and requester authority.
-2. The Gateway invokes `desktop.stream` with precisely `ticket` and
-   `attachPath`. The ticket is a one-time, short-lived bearer capability bound
-   to that Node connection and pairing generation. Neither value belongs in
-   normal diagnostics or command results.
-3. The Node opens a dedicated outbound WebSocket to the connected Gateway.
-   The attach path must remain on the enrolled Gateway origin, preserve its
-   reverse-proxy mount path and match the expected desktop attach endpoint.
-   A caller-selected destination, public listener or new pairing identity is
-   not part of this contract.
-4. The first WebSocket message is binary JSON authentication metadata:
-   `auth: "vnc-password"` or `auth: "ard-account"`, optionally
-   `vncPassword`. Subsequent messages carry the ordered RFB byte stream.
-   The installed broker accepts at most **64 KiB per attach frame**, including
-   metadata. Backpressure and stream teardown must be bounded.
-5. The Gateway authenticates the RFB server before presenting its no-auth RFB
-   handshake to the browser. Unauthenticated local RFB is not accepted by the
-   built-in desktop Node implementation.
-6. The viewer receives an RFB observer descriptor, then opens its separate
-   authenticated observer WebSocket. The Control UI uses the bundled noVNC
-   viewer. Framebuffer bytes do not travel through `node.invoke.result`.
-7. Viewer release, disconnect, revoked authority, changed pairing generation
-   and command cancellation tear down the carrier. Unused tickets expire;
-   reconnect establishes a fresh session rather than replaying an old ticket.
+Start from the OpenClaw desktop viewer. Close/release that viewer to stop.
+The device permission page also has **Stop stream**; the local administrative
+CLI exposes `node-desktop` status and `node-desktop stop`. Neither is exposed
+through remote input or as a Node plugin tool. Revoking the local desktop
+permission cancels capture and withdraws the command declaration.
 
-Reference implementation:
+The transport is **view-only**, even if a viewer requests control. RFB key,
+pointer and bounded clipboard messages are consumed without executing input or
+accessing the device clipboard. Audio and camera are not captured.
 
-- [Node desktop command](https://github.com/openclaw/openclaw/blob/8b17822bec4f36582bf5e15743087b32fd3460b1/src/node-host/desktop-stream-command.ts)
-- [Binary Node stream transport](https://github.com/openclaw/openclaw/blob/8b17822bec4f36582bf5e15743087b32fd3460b1/src/node-host/node-stream-transport.ts)
-- [Wire constants](https://github.com/openclaw/openclaw/blob/8b17822bec4f36582bf5e15743087b32fd3460b1/src/shared/node-desktop-stream.ts)
-- [Gateway command policy](https://github.com/openclaw/openclaw/blob/8b17822bec4f36582bf5e15743087b32fd3460b1/src/gateway/node-command-policy.ts)
-- [Desktop Node source](https://github.com/openclaw/openclaw/blob/8b17822bec4f36582bf5e15743087b32fd3460b1/src/gateway/desktop/node-source.ts)
-- [Attach broker](https://github.com/openclaw/openclaw/blob/8b17822bec4f36582bf5e15743087b32fd3460b1/src/gateway/desktop/node-stream-broker.ts)
+## Capture and wire implementation
 
-## Android admission and scope boundary
+- Authenticate a fresh outbound carrier using exactly the one-time ticket and
+  attach path from the current authenticated Node connection.
+- Preserve the enrolled Gateway origin and mount prefix. Reject arbitrary hosts,
+  encoded/alternate paths, mismatched/duplicated tickets and additional query
+  fields. Raw tickets and signaling never enter results or diagnostics.
+- Send binary authentication metadata first, then RFB 3.8 with a fresh ephemeral
+  eight-character VNC password. VNC challenge/response is checked in constant
+  time. TLS provides transport protection; VNC authentication is not encryption.
+- Keep every outbound/inbound WebSocket message at most 64 KiB. Process
+  fragmented RFB bytes incrementally with a bounded event channel and direct
+  backpressure; no accumulating video/frame queue.
+- Capture the actual Android composed screen with a private `screencap` process,
+  not repeated screenshot RPCs or MP4 recordings. Validate the raw Android
+  12-/16-byte header, RGBA/RGBX format, pixel dimensions and total byte count.
+- Scale to at most 640 pixels on the larger dimension, preserving aspect ratio.
+  The capture scheduler is capped at four samples/second. Tight JPEG quality 75
+  is used when the viewer advertises it with a compatible pixel format; Raw
+  true-color 8/16/32-bit fallback is available.
+- Incremental requests avoid resending unchanged pixels. Empty updates keep the
+  normal request loop alive on static screens; an inactive client cannot retain
+  capture indefinitely. Resolution is fixed for each viewer session.
+- Live streaming and MP4 recording share a busy gate. Snapshot contracts are
+  unchanged. The shared UI surface helper is not modified or closed by streaming.
 
-EchoLocal declares the existing separately paired Node as Android/tablet.
-The built-in desktop host enables desktop sharing for macOS, Linux and Windows,
-not Android. In the installed Gateway command policy:
+Each capture subprocess has a two-second deadline and bounded stdout. Explicit
+stop, permission changes, Node disconnect, requester cancellation, observer close
+and application shutdown cancel the carrier and current capture. No persistent
+encoder or surface is created. Startup reads have a 15-second deadline; writes
+have a five-second deadline; inactive RFB clients have a 45-second deadline.
+Only `desktop.stream` with `timeoutMs: 0` receives the cancellation-owned
+unbounded invocation; other commands keep the existing 30-second cap, and a
+positive explicit streaming timeout remains bounded.
 
-- Android does not receive `desktop.stream` by platform default.
-- Automatic admission of paired desktop host commands is desktop-platform-only.
-- An explicit Gateway command allow entry can admit the command on Android,
-  subject to an explicit deny, declaration and pairing approval.
-- The environment summary derives desktop availability from the effective
-  allowed `desktop.stream` command; that summary has no independent Android
-  exclusion.
+The local status contains only state, delivered-frame count and output size;
+errors use fixed strings. No credential, peer address, observer URL or raw
+signaling is logged or returned.
 
-Consequently **no mandatory upstream protocol change has been established**:
-an owner-authorized explicit allow plus an approved Android capability upgrade
-may be sufficient. This remains a source finding, not a successful live test.
+## Verification and limitations
 
-Runtime Gateway policy inspection was denied because the scheduled worker lacks
-owner authority. It was not retried through another access path. Effective
-runtime admission is therefore **unknown**, not proven absent. Gateway policy
-changes and capability approval require a separate owner-authorized step.
-Changing platform metadata to Linux, borrowing the operator connection or
-issuing a new identity would not be a valid workaround.
+Automated checks cover default-off upgrades, unchanged screenshot permission,
+strict attach-target validation, zero/positive invocation timeout semantics,
+RFB authentication/initialization, Raw pixel order, Tight JPEG decoding,
+fragmented carrier input, hostile pixel layouts/clipboard sizes, and teardown
+for local stop, revocation, disconnect, cancellation, peer close and timeout.
+Existing Node, settings and control suites remain regression gates.
 
-## Capture/codec integration gap
+Actual device, real Gateway observer and browser-viewer results must be reported
+separately in the PR. Four samples/second and the 640-pixel bound are configured
+limits, **not measured delivery rate or end-to-end latency guarantees**.
+Raw fallback consumes considerably more bandwidth than Tight JPEG. Capture and
+JPEG encoding cost CPU; there is no hardware H.264 acceleration in this RFB path.
+There is no desktop audio, clipboard, remote input, resize protocol extension
+or change to `screen.snapshot`/`screen.record`.
 
-The existing device snapshot adapter obtains a composed image. The existing
-Android recording helper emits H.264 at 15 fps and the recording adapter muxes
-it into bounded fragmented MP4. Neither is an RFB server.
-
-Sending H.264 access units, repeated MP4 recordings or base64 snapshots to the
-desktop attach socket would violate the verified RFB contract. Merely adding
-`desktop.stream` to the Node catalog would expose a nonworking capability.
-
-Two implementation paths remain to be evaluated:
-
-1. Implement a bounded, **view-only RFB producer** backed by composed display
-   capture and compatible authentication, then use the supported Node carrier.
-   This can use an in-process duplex rather than expose a network listener.
-   It must consume but never execute input/clipboard messages even if a viewer
-   asks for control. Capture quality, overlays, update encoding and CPU costs
-   need actual device measurement; repeated encoded still images returned as
-   RPC results are not a substitute.
-2. If direct hardware H.264 transport is required, extend OpenClaw's supported
-   desktop transport and receiving viewer first. This would be a separately
-   scoped upstream dependency, not an EchoLocal-only private command.
-
-The Node lifecycle currently imposes a 30-second maximum invocation timeout,
-including incoming `timeoutMs: 0`. The desktop contract uses zero for an
-unbounded invocation owned by cancellation. A narrowly scoped streaming
-lifecycle change is needed; existing bounded commands must keep their limits.
-
-## Proposed permission and lifecycle requirements
-
-These are requirements for future code, not implemented behavior:
-
-- Keep the existing Node identity, credentials and operator separation.
-- Gate declaration and every start through a dedicated local sharing decision;
-  specify upgrade defaults explicitly rather than silently enabling continuous
-  capture through an old screenshot grant.
-- Honor local denial/revocation even when the Gateway requests control.
-- Only start capture for the current authorized carrier; one bounded active
-  session initially, with explicit busy/status behavior.
-- Stop and release capture, authentication state, buffers and sockets on local
-  stop, revocation, Node disconnect, invocation cancellation, startup timeout,
-  failed authentication, viewer disconnect and application shutdown.
-- Enforce startup/idle/write deadlines and bounded queues. A slow viewer must
-  not accumulate arbitrarily old frames.
-- Return only sanitized lifecycle outcomes. Do not log tickets, observer URLs,
-  authentication metadata, connection credentials or raw signaling.
-
-## Required verification before implementation acceptance
-
-| Area | Required evidence | Current status |
-| --- | --- | --- |
-| Protocol | RFB handshake/authentication, binary metadata ordering, 64 KiB framing, hostile/fragmented messages, backpressure | Source investigation only |
-| Admission | Same Android identity, explicit effective allow, approved capability, actual Desktop picker | Blocked on owner-authorized Gateway inspection/approval |
-| Viewer | Real continuously changing display viewed through the actual OpenClaw viewer | Not performed |
-| Local policy | Denied start, revocation during capture, explicit local stop | Not implemented |
-| Cleanup | Repeated start/stop, disconnect/reconnect, cancellation, timeout, shutdown, no residual capture/encoder resources | Not implemented |
-| Performance | Sustained device CPU/RSS, frame delivery rate, resolution, end-to-end latency and memory/resource stability | Not measured |
-| Regression | Existing PNG/JPEG snapshot and bounded 15 fps MP4, separate paired connections | Existing contracts inspected; no new runtime regression test |
-
-Do not advertise a supported streaming resolution, frame rate or latency until
-measured on hardware through the actual viewer. The recording helper's 15 fps
-is not evidence for live-stream performance.
-
-No application build, deployment, capture session or device-setting change was
-performed for this investigation. Issue #15 remains incomplete and must remain
-open until a concrete implementation is tested and accepted by the owner.
+A protocol client successfully receiving frames is not proof of playback in the
+actual OpenClaw viewer. Final owner acceptance must name the tested commit;
+keep the PR draft and issue open until all required checks and acceptance.
