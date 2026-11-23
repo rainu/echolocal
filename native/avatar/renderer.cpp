@@ -1228,6 +1228,8 @@ int main(int argc, char **argv) {
                               appMode ? controls.pitch * (scene.legacy ? -1 : 1) : 0,
                               (lo[0] + hi[0]) * .5f, (lo[1] + hi[1]) * .5f,
                               (lo[2] + hi[2]) * .5f)), appMode ? controls.zoom : 1), appMode ? controls.panX : 0, appMode ? controls.panY : 0),viewW,h);
+        // Overlay drawing binds its own shader; restore the model program before updating its uniforms.
+        glUseProgram(prog);
         glUniformMatrix4fv(glGetUniformLocation(prog, "vp"), 1, GL_FALSE,
                            view.data());
         double frame = now(), t = frame - start;
