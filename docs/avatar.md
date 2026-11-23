@@ -376,7 +376,10 @@ settings. API paths remain `/api/v1/settings/avatar/FIELD`.
 
 Positive X moves right, positive Y moves down. Image fitting uses centered cover
 cropping against the actual mode's viewport. Fullscreen fills the complete panel;
-split-screen uses the right half at full panel height. Old/missing/invalid stored
+split-screen uses the right half at full panel height. Fullscreen's 100% model
+fit uses the smaller panel dimension so a wide viewport does not crop the head
+or feet by default; position units remain percentages of viewport width.
+Old/missing/invalid stored
 mode values resolve to split-screen. Missing/zero stored zoom resolves to 100.
 API writes reject invalid choices, out-of-range numbers and invalid image paths.
 

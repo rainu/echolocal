@@ -89,6 +89,10 @@ int main() {
   for (int n=0;n<100;++n){c.parse("T 1");assert(c.fullscreen);c.parse("T 0");assert(!c.fullscreen);}
   for(const char *bad:{"T 2","T -1","T 1 junk","T NaN","T 1.5"}){c.parse(bad);assert(!c.fullscreen);}
   assert(c.zoom==9.99f && c.panX==-5 && c.panY==5);
+  assert(std::abs(avatarFullscreenZoom(1,1280,800)-.625f)<.0001f);
+  assert(std::abs(avatarFullscreenZoom(2,800,480)-1.2f)<.0001f);
+  assert(avatarFullscreenZoom(1,800,1280)==1);
+  assert(avatarFullscreenZoom(1,640,640)==1);
   int fds[2];
   assert(pipe(fds) == 0);
   assert(dup2(fds[0], STDIN_FILENO) >= 0);

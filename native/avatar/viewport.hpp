@@ -24,3 +24,9 @@ static bool avatarParseViewport(const char *text,int &x,int &y,int &w,int &h) {
  x=values[0];y=values[1];w=width;h=height;
  return true;
 }
+
+// Keep 100% fitted on landscape fullscreen panels. Translation remains in
+// viewport-width units; only the model's base fit changes with aspect ratio.
+static float avatarFullscreenZoom(float zoom, int w, int h) {
+ return w>h ? zoom*float(h)/float(w) : zoom;
+}
