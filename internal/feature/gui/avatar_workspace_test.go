@@ -26,7 +26,13 @@ func TestAvatarWorkspaceSectionsAndPinnedActions(t *testing.T) {
 				v := &avatarView{app: c}
 				w := gogui.NewWindow(gogui.WindowCfg{State: new(int), Width: size[0], Height: size[1]})
 				w.SetView(v.build)
+				v.note = "saved"
 				root := w.TestRender(nil)
+				if !strings.Contains(strings.Join(avatarCaptionTexts(root), " "), avatar.Text(lang, "saved")) {
+					t.Fatal("saved feedback is not localized at render time")
+				}
+				v.note = ""
+				root = w.TestRender(nil)
 				initial := avatarCaptionShape(t, root, "avatar-save")
 				saveY := initial.Y
 				expected := [][]string{

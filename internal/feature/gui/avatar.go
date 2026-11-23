@@ -199,9 +199,9 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 					v.touchReset.Add(1)
 				})
 				if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
-					v.note = avatar.Text(say.Chosen(), "save_failed")
+					v.note = "save_failed"
 				} else {
-					v.note = avatar.Text(say.Chosen(), "saved")
+					v.note = "saved"
 				}
 			}), avatarButton("avatar-rotate-right", "15° →", false, false, func() { option(func(o *avatar.Options) { o.Yaw += 15 }) })),
 			avatarText(avatarWords("Drag to rotate, use two fingers to move, or pinch to zoom in the preview.", "In der Vorschau ziehen zum Drehen, mit zwei Fingern verschieben oder zum Zoomen zusammenziehen.")),
@@ -236,7 +236,7 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 		status = avatarWords("Preview running", "Vorschau läuft")
 	}
 	if v.note != "" {
-		status = v.note
+		status = avatar.Text(say.Chosen(), v.note)
 	}
 	controls := gogui.Column(gogui.ContainerCfg{ID: fmt.Sprintf("vrm-controls-%d", v.section), Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: body})
 	left := gogui.Column(gogui.ContainerCfg{ID: "avatar-workspace", Width: float32(width / 2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(14), Spacing: gogui.SpacingSmall, Content: []gogui.View{
@@ -247,9 +247,9 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 		avatarRow(avatarButton("vrm-start", avatarWords("Start", "Starten"), false, s.Running || !supported, v.app.Start), avatarButton("vrm-stop", avatarWords("Stop", "Stoppen"), false, !s.Running, v.app.Stop)),
 		avatarRow(avatarButton("avatar-fullscreen", avatarWords("Fullscreen", "Vollbild"), false, !supported, func() { v.openPreview() }), avatarButton("avatar-save", avatarWords("Save", "Speichern"), true, false, func() {
 			if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
-				v.note = avatar.Text(say.Chosen(), "save_failed")
+				v.note = "save_failed"
 			} else {
-				v.note = avatar.Text(say.Chosen(), "saved")
+				v.note = "saved"
 			}
 		})), avatarText(status),
 	}})
