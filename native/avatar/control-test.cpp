@@ -9,6 +9,15 @@ static double now() { return stamp; }
 #include "viewport.hpp"
 int main() {
   RendererControl c(true);
+  c.parse("K 1");assert(c.hidden);
+  for(const char *bad:{"K 2","K -1","K 0 extra"}){c.parse(bad);assert(c.hidden);}
+  c.parse("K 0");assert(!c.hidden);
+  c.parse("P 7 30 -20 90");c.parse("E 1 7 1");
+  assert(c.pose[7][0]==30 && c.pose[7][1]==-20 && c.pose[7][2]==90 && c.poseEdit && c.poseActive && c.selected==7);
+  for(const char *bad:{"P -1 0 0 0","P 54 0 0 0","P 7 nan 0 0","P 7 91 0 0","P 7 0 0 0 extra","E 1 54 1","E 2 7 1","E 1 7 2","E 0 0 0 extra"}){c.parse(bad);assert(c.pose[7][0]==30 && c.poseEdit && c.selected==7);}
+  c.parse("P 53 1 2 3");assert(c.pose[53][2]==3);
+  c.parse("E 0 -1 1");assert(!c.poseEdit && c.poseActive);
+
   c.parse("S 1 0 1 1 0.7 0 90 0 1 0 0");
   assert(c.idle && !c.blink && c.animation && c.mouth(0) == .7f);
   c.parse("S 0 1 0 3 0.5 0.8 -45 0 1 0 0");

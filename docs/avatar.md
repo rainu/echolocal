@@ -410,3 +410,8 @@ fixed; neither the frame clock nor the model/motion resources are recreated.
 The GUI and native helper share 72-pixel controls, a 24-pixel gap and a 20-pixel
 bottom inset. Transparent circular apertures in the upper native layer reveal
 normal accessible, focusable GUI controls below it. Input stays in the GUI.
+
+## Direct pose editing
+
+See [Avatar Lab pose library](avatar-poses.md) for local joint handles, camera
+navigation, model-bound named poses and current experimental limitations.

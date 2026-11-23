@@ -56,6 +56,8 @@ type State struct {
 	ModelName, Credit                string
 }
 type Controller struct {
+	pose                 PoseState
+	labOccluded          bool
 	mu                   sync.Mutex
 	state                State
 	dir                  string
@@ -233,6 +235,7 @@ func (c *Controller) Start() {
 		return
 	}
 	started = true
+	c.loadPoses(assets.Model)
 	c.generation++
 	gen := c.generation
 	opts := c.state.Options
@@ -318,6 +321,7 @@ func target(rms, floor float64) float64 {
 }
 func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser, cancel context.CancelFunc) {
 	previewStart := time.Time{}
+	var poseRevision uint64
 	tick := time.NewTicker(time.Second / 30)
 	defer tick.Stop()
 	var audio <-chan []int16
@@ -412,13 +416,27 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 				_ = f.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 			}
 			c.mu.Lock()
-			talk, full := c.talkLayout, c.fullscreen
+			talk, full, occluded := c.talkLayout, c.fullscreen, c.labOccluded
 			c.mu.Unlock()
+			if !talk {
+				if _, err := fmt.Fprintf(stdin, "K %d\n", bit(occluded)); err != nil {
+					cancel()
+					return
+				}
+			}
 			if talk {
 				if _, err := fmt.Fprintf(stdin, "T %d\n", bit(full)); err != nil {
 					cancel()
 					return
 				}
+			}
+			revision, lines := c.poseLines()
+			if revision != poseRevision {
+				if _, err := io.WriteString(stdin, lines); err != nil {
+					cancel()
+					return
+				}
+				poseRevision = revision
 			}
 			o := s.Options
 			if output != nil {
@@ -446,6 +464,9 @@ func bit(v bool) int {
 	return 0
 }
 func (c *Controller) stats(gen uint64, line string) {
+	if c.poseStats(gen, line) {
+		return
+	}
 	if strings.HasPrefix(line, "AVATAR_READY=") && line != "AVATAR_READY=4" {
 		c.mu.Lock()
 		var cancel context.CancelFunc
@@ -595,4 +616,12 @@ func (c *Controller) SetTalkMode(full bool) {
 	c.fullscreen = full
 	c.mu.Unlock()
 	c.redraw()
+}
+
+// SetLabOccluded reveals the native keyboard without stopping the renderer or
+// discarding unsaved joint edits. It is never configured by Talk.
+func (c *Controller) SetLabOccluded(hidden bool) {
+	c.mu.Lock()
+	c.labOccluded = hidden
+	c.mu.Unlock()
 }
