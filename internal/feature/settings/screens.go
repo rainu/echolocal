@@ -42,7 +42,8 @@ func root() *sharedshell.Page {
 		VolumePage:   func() sharedshell.View { return volume.Page() },
 		AboutPage:    func() sharedshell.View { return aboutPage() },
 		Sections: func() []sharedsettings.Section {
-			return []sharedsettings.Section{
+			sections := []sharedsettings.Section{
+				{Label: "openclaw.title", Picture: openclawLogo(), Page: func() sharedshell.View { return openclawPage() }},
 				{
 					Label: "settings.camera",
 					Glyph: gogui.IconCamera,
@@ -54,6 +55,10 @@ func root() *sharedshell.Page {
 					Page:  func() sharedshell.View { return voicePage() },
 				},
 			}
+			if avatarPage != nil {
+				sections = append(sections, sharedsettings.Section{Label: avatarTitle(), Glyph: gogui.IconPlay, Page: avatarPage})
+			}
+			return sections
 		},
 	})
 }
@@ -127,4 +132,11 @@ func address() string {
 		return say.T("network.address.none")
 	}
 	return l.Address.IP.String()
+}
+
+func avatarTitle() string {
+	if say.Chosen() == "de" {
+		return "Avatar-Labor"
+	}
+	return "Avatar Lab"
 }

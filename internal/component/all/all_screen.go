@@ -18,6 +18,7 @@ import (
 	_ "github.com/ygelfand/echolocal/internal/feature/homeassistant"
 	_ "github.com/ygelfand/echolocal/internal/feature/idle"
 	_ "github.com/ygelfand/echolocal/internal/feature/message"
+	_ "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	_ "github.com/ygelfand/echolocal/internal/feature/poster"
 	_ "github.com/ygelfand/echolocal/internal/feature/privacy"
 	_ "github.com/ygelfand/echolocal/internal/feature/screen"

@@ -198,3 +198,17 @@ make install-echod                # build, install and restart it on the attache
 - **echod** runs on the device: the hardware, the screen, the wake word engines, the conversation,
   and an ESPHome native API server.
 - **echolocal** is the host CLI: installing, Wi‑Fi, and offline tools for debugging the device.
+
+### Native avatars (Athena)
+
+The Athena build includes a native avatar renderer and an Avatar Lab in Settings
+and Apps. It uses the existing local microphone stream without pausing the main
+service. Models and optional VRMA motions are provisioned with
+`echolocal avatar import`; no third-party model is embedded in the distribution.
+See [native avatars and Avatar Lab](docs/avatar.md) for build, installation,
+asset management, supported rendering features and lifecycle guarantees.
+
+OpenClaw owner web/API settings: [coverage and API](docs/openclaw-owner-settings.md).
+Settings completeness requirements: [contributing](CONTRIBUTING.md).
+
+Managed owner file transfers: [web interface, API and limits](docs/managed-files.md).

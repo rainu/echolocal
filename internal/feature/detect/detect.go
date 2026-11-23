@@ -21,6 +21,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/wakeword"
 	"github.com/ygelfand/echolocal/internal/hardware/led"
 	"github.com/ygelfand/echolocal/internal/hardware/mic"
+	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/layout"
 	"github.com/ygelfand/echolocal/internal/lib/wake"
 	"github.com/ygelfand/echolocal/internal/parts"
@@ -64,7 +65,7 @@ func paused() bool {
 
 func newDetect() *Detect {
 	e := detect.New(detect.StopSlot+1, mic.Get())
-	e.Paused = paused
+	e.Paused = func() bool { return paused() || speaker.Get().Heard(config.StreamFeedback, 250*time.Millisecond) }
 
 	e.Threshold = func(slot int) float64 {
 		if slot == detect.StopSlot {

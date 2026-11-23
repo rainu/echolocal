@@ -165,6 +165,8 @@ var Get = sync.OnceValue(func() *screens.App {
 	for _, extend := range []func(*widgets.UI, *screens.Options, func() *screens.App){
 		extendAlarms,
 		extendApps,
+		extendClawApp,
+		extendAvatar, extendAvatarPreview,
 		extendCalendar,
 		extendCalls,
 		extendCameras,
@@ -177,6 +179,9 @@ var Get = sync.OnceValue(func() *screens.App {
 		extendSync,
 		extendTV,
 		extendVoiceMatch,
+		extendTalkPrompt,
+		extendTalkAvatar,
+		extendTalkCaptions,
 	} {
 		extend(look, &o, self)
 	}
