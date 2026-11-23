@@ -27,7 +27,14 @@ func extendTalkAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) 
 func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 	width, height := w.WindowSize()
 	if width/2 >= 128 && height >= 128 {
-		p.Start(talkAvatarViewport(width, height))
+		p.Start(avatar.Viewport{Width: width, Height: height})
+	}
+	if p.Fullscreen {
+		return fullscreenComposition(width, height, p.SwitchMode, func() {
+			if len(p.Actions) > 0 {
+				p.Actions[len(p.Actions)-1].Do()
+			}
+		})
 	}
 	s := p.Renderer.Snapshot()
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
@@ -80,6 +87,7 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 		}
 		actions = append(actions, talkAvatarAction(id, a.Label, a.Do, i == len(p.Actions)-1))
 	}
+	actions = append(actions, talkModeButton("talk-avatar-fullscreen", gogui.IconExpand, text("switch_fullscreen"), false, p.SwitchMode))
 	left := gogui.Column(gogui.ContainerCfg{
 		ID: "talk-avatar-left", Width: float32(width / 2), Height: float32(height), Sizing: gogui.FixedFixed,
 		Padding: gogui.PadAll(20), Spacing: gogui.SpacingSmall,
@@ -124,4 +132,35 @@ func talkAvatarAction(id, label string, do func(), stop bool) gogui.View {
 // No title strip, footer reservation or square crop on the avatar half.
 func talkAvatarViewport(width, height int) avatar.Viewport {
 	return avatar.ConversationViewport(width, height)
+}
+
+// Must match native ControlCutouts: 72px circles, 24px gap, 20px bottom inset.
+func fullscreenComposition(width, height int, switchMode, end func()) gogui.View {
+	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
+	controls := gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen-controls", Width: 168, Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Spacing: gogui.SpacingPx(24), Content: []gogui.View{
+		talkModeButton("talk-fullscreen-switch", gogui.IconColumns, text("switch_split"), false, switchMode), talkModeButton("talk-fullscreen-stop", gogui.IconPhone, text("end_talk"), true, end),
+	}})
+	return gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen", Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(0), Spacing: gogui.NoSpacing, Content: []gogui.View{
+		gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Height: float32(height - 92), Sizing: gogui.FillFixed, Padding: gogui.NoPadding}),
+		gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: []gogui.View{
+			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding}), controls,
+		}}),
+	}})
+}
+
+func talkModeButton(id, icon, label string, stop bool, do func()) gogui.View {
+	st := gogui.CurrentTheme().TextStyleIconLarge
+	st.Size = 32
+	st.Color = gogui.Hex(0xFFFFFF)
+	color := gogui.Hex(0x23383F)
+	if stop {
+		color = gogui.Hex(0x74343D)
+	}
+	return gogui.Button(gogui.ButtonCfg{ID: id, A11YCfg: gogui.A11YCfg{A11YLabel: label}, Width: 72, Height: 72, MinWidth: 72, MinHeight: 72, Sizing: gogui.FixedFixed, Radius: gogui.RadiusPx(36), Color: color,
+		Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: icon, TextStyle: st})}, OnClick: func(e gogui.EventCtx) {
+			if do != nil {
+				do()
+			}
+			e.Window.InvalidateLayout()
+		}})
 }

@@ -896,6 +896,31 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
  ~Background(){if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
 };
 
+// Two round transparent apertures expose the application's accessible controls.
+// The native layer never handles input, changes audio or owns conversation state.
+struct ControlCutouts {
+ GLuint prog=0,vao=0;
+ ControlCutouts(){
+ const char *vs=R"(#version 300 es
+void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.-1.,0.,1.);})";
+ const char *fs=R"(#version 300 es
+precision highp float;uniform vec2 center;out vec4 outColor;
+void main(){if(distance(gl_FragCoord.xy,center)>39.)discard;outColor=vec4(0.);})";
+ GLuint v=shader(GL_VERTEX_SHADER,vs),f=shader(GL_FRAGMENT_SHADER,fs);
+ prog=glCreateProgram();glAttachShader(prog,v);glAttachShader(prog,f);glLinkProgram(prog);glDeleteShader(v);glDeleteShader(f);
+ GLint linked=0;glGetProgramiv(prog,GL_LINK_STATUS,&linked);need(linked,"control shader link failed");glGenVertexArrays(1,&vao);
+ }
+ void draw(int w,int h){
+ glViewport(0,0,w,h);glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);
+ glUseProgram(prog);glBindVertexArray(vao);
+ glEnable(GL_SCISSOR_TEST);
+ for(int dx:{-48,48}){glScissor(w/2+dx-39,17,78,78);glUniform2f(glGetUniformLocation(prog,"center"),w*.5f+dx,56);glDrawArrays(GL_TRIANGLES,0,3);}
+ glDisable(GL_SCISSOR_TEST);
+ glDepthMask(GL_TRUE);glEnable(GL_DEPTH_TEST);
+ }
+ ~ControlCutouts(){if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
+};
+
 struct EGL {
   EGLDisplay display = EGL_NO_DISPLAY;
   EGLContext context = EGL_NO_CONTEXT;
@@ -1050,12 +1075,16 @@ int main(int argc, char **argv) {
          "[--mouth N]");
     int w = 640, h = 640, px = 640, py = 80, protocol = 0;
     double seconds = 5;
-    bool show = false, idle = true, demoMouth = false, appMode = false;
+    bool show = false, idle = true, demoMouth = false, appMode = false, talkLayout = false, fullscreen = false;
     float fixedMouth = -1;
-    const char *out = nullptr, *wav = nullptr, *animation = nullptr, *background = nullptr;
+    const char *out = nullptr, *wav = nullptr, *animation = nullptr, *background = nullptr, *fullBackground = nullptr;
     for (int i = 2; i < argc; i++) {
       std::string a = argv[i];
-      if (a == "--control")
+      if (a == "--talk-layout")
+        talkLayout = true;
+      else if (a == "--fullscreen")
+        fullscreen = true;
+      else if (a == "--control")
         appMode = true;
       else if (a == "--display")
         show = true;
@@ -1075,6 +1104,8 @@ int main(int argc, char **argv) {
           out = argv[++i];
         else if (a == "--wav")
           wav = argv[++i];
+        else if (a == "--fullscreen-background")
+          fullBackground = argv[++i];
         else if (a == "--background")
           background = argv[++i];
         else if (a == "--animation")
@@ -1093,6 +1124,7 @@ int main(int argc, char **argv) {
     need(!appMode || (protocol == 4 && !wav && !demoMouth && fixedMouth < 0),
          "app control cannot combine with other mouth sources");
     RendererControl controls(appMode);
+    controls.fullscreen=fullscreen;
     double begin = now();
     stage = "gpu_failed";
     void *window = show ? avatar_window_open(w, h, px, py) : nullptr;
@@ -1105,7 +1137,8 @@ int main(int argc, char **argv) {
       stage = "motion_invalid";
       Motion motion(animation, scene);
       stage = "gpu_failed";
-      Background backdrop(background);
+      Background backdrop(background), fullBackdrop(fullBackground);
+      ControlCutouts cutouts;
       GLuint prog = program();
       glUseProgram(prog);
       glUniform1i(glGetUniformLocation(prog, "image"), 0);
@@ -1187,11 +1220,16 @@ int main(int argc, char **argv) {
         controls.read();
         if (controls.ended)
           break;
+        const bool full = talkLayout && controls.fullscreen;
+        const int viewX=talkLayout && !full?w/2:0, viewW=w-viewX;
+        glViewport(viewX,0,viewW,h);
         M view =
-            avatarViewportAspect(avatarPan(avatarZoom(mul(vp, avatarOrbit(appMode ? controls.yaw : 0,
+            avatarFraming(mul(vp, avatarOrbit(appMode ? controls.yaw : 0,
                               appMode ? controls.pitch * (scene.legacy ? -1 : 1) : 0,
                               (lo[0] + hi[0]) * .5f, (lo[1] + hi[1]) * .5f,
-                              (lo[2] + hi[2]) * .5f)), appMode ? controls.zoom : 1), appMode ? controls.panX : 0, appMode ? controls.panY : 0),w,h);
+                              (lo[2] + hi[2]) * .5f)), appMode ? controls.zoom : 1, appMode ? controls.panX : 0, appMode ? controls.panY : 0,viewW,h,full);
+        // Overlay drawing binds its own shader; restore the model program before updating its uniforms.
+        glUseProgram(prog);
         glUniformMatrix4fv(glGetUniformLocation(prog, "vp"), 1, GL_FALSE,
                            view.data());
         double frame = now(), t = frame - start;
@@ -1215,9 +1253,13 @@ int main(int argc, char **argv) {
           motion.apply(scene, t);
         scene.constraints();
         scene.morphs(mouth, (appMode ? controls.blink : idle) ? blink : 0);
-        glClearColor(.035f, .045f, .07f, 1);
+        glDisable(GL_SCISSOR_TEST);
+        glClearColor(0,0,0,0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        backdrop.draw(w,h);
+        glEnable(GL_SCISSOR_TEST);glScissor(viewX,0,viewW,h);
+        glClearColor(.035f,.045f,.07f,1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        (full?fullBackdrop:backdrop).draw(viewW,h);
         glUseProgram(prog);
         for (int pass = 0; pass < 2; pass++) {
           for (auto &p : scene.parts) {
@@ -1288,6 +1330,8 @@ int main(int argc, char **argv) {
           }
         }
         glDepthMask(GL_TRUE);
+        glDisable(GL_SCISSOR_TEST);
+        if(full)cutouts.draw(w,h);
         glFinish();
         need(glGetError() == GL_NO_ERROR, "GLES rendering error");
         times.push_back((now() - frame) * 1000);

@@ -12,7 +12,7 @@ import (
 type nodeSettingsPolicy struct{ Group, Names string }
 
 var nodeSettingsPolicies = map[string]nodeSettingsPolicy{
-	"avatar":     {"settings", "path background mouth_intensity zoom yaw pitch x y idle blink animation"},
+	"avatar":     {"settings", "path background mouth_intensity zoom yaw pitch x y idle blink animation talk_mode fullscreen_background fullscreen_zoom fullscreen_yaw fullscreen_pitch fullscreen_x fullscreen_y"},
 	"access":     {"settings", "webdav"},
 	"youtube":    {"audio", "lounge"},
 	"alerts":     {"audio", "info success warning alert timer ring_for wake"},

@@ -37,6 +37,7 @@ type avatarView struct {
 	retiring       atomic.Pointer[avatar.Controller]
 	resume         atomic.Bool
 	section        int
+	fullscreen     bool
 	note           string
 	app            avatarLabController
 	dragEpoch      atomic.Uint64
@@ -63,11 +64,13 @@ func extendAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	}
 	c := avatar.New(layout.AvatarDir, func() (<-chan []int16, func()) { return mic.Get().ListenUnleveled("avatar") }, privacy.Get().MicMuted, featureshell.Get().Redraw)
 	c.SetSource(func() string { return config.AvatarSection.Read().Path })
-	c.SetBackground(func() string { return config.AvatarSection.Read().Background })
+
 	avatarlab.Controls()
-	v := &avatarView{app: c, load: func() { c.Configure(avatarlab.Options(config.AvatarSection.Read())) }}
+	v := &avatarView{app: c}
+	c.SetBackground(func() string { return config.AvatarSection.Read().Composition(v.fullscreen).Background })
+	v.load = func() { c.Configure(avatarlab.Options(config.AvatarSection.Read().Composition(v.fullscreen))) }
 	open := func() {
-		o := avatarlab.Options(config.AvatarSection.Read())
+		o := avatarlab.Options(config.AvatarSection.Read().Composition(v.fullscreen))
 		c.Configure(o)
 		featureshell.Get().Push(v)
 	}
@@ -182,15 +185,32 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	switch v.section {
 	case 0:
 		body = append(body, []gogui.View{
+			avatarRow(avatarButton("avatar-edit-mode", avatarWords("Edit other mode", "Anderen Modus bearbeiten"), false, false, func() { v.selectComposition(!v.fullscreen) })),
+			avatarRow(avatarButton("avatar-talk-default", avatar.Text(say.Chosen(), "talk_mode"), false, false, func() { v.app.Stop(); featureshell.Get().Push(settings.AvatarFullscreenPage()) })),
 			avatarRow(avatarButton("avatar-file", avatar.Text(say.Chosen(), "model"), false, false, func() {
 				v.app.Stop()
 				lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarModelPage()) })
 			})),
 			avatarRow(avatarButton("avatar-background", avatar.Text(say.Chosen(), "background"), false, false, func() {
 				v.app.Stop()
-				lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarBackgroundPage()) })
+				lock.Get().Gate().Open(func() {
+					featureshell.Get().Push(func() sharedshell.View {
+						if v.fullscreen {
+							return settings.AvatarFullscreenPage()
+						}
+						return settings.AvatarBackgroundPage()
+					}())
+				})
 			})),
-			avatarRow(avatarButton("avatar-presentation", avatar.Text(say.Chosen(), "presentation"), false, false, func() { v.app.Stop(); featureshell.Get().Push(settings.AvatarPresentationPage()) })),
+			avatarRow(avatarButton("avatar-presentation", avatar.Text(say.Chosen(), "presentation"), false, false, func() {
+				v.app.Stop()
+				featureshell.Get().Push(func() sharedshell.View {
+					if v.fullscreen {
+						return settings.AvatarFullscreenPage()
+					}
+					return settings.AvatarPresentationPage()
+				}())
+			})),
 		}...)
 	case 1:
 		body = append(body, []gogui.View{
@@ -206,7 +226,7 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 					v.dragEpoch.Add(1)
 					v.touchReset.Add(1)
 				})
-				if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
+				if err := avatarlab.SaveComposition(v.app.Snapshot().Options, v.fullscreen); err != nil {
 					v.note = "save_failed"
 				} else {
 					v.note = "saved"
@@ -246,13 +266,18 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	}
 	controls := gogui.Column(gogui.ContainerCfg{ID: fmt.Sprintf("vrm-controls-%d", v.section), Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: body})
 	left := gogui.Column(gogui.ContainerCfg{ID: "avatar-workspace", Width: float32(width / 2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(14), Spacing: gogui.SpacingSmall, Content: []gogui.View{
-		avatarRow(avatarButton("vrm-back", avatarWords("Back", "Zurück"), false, false, func() { v.app.Stop(); featureshell.Get().Pop() }), avatarHeading(avatarWords("Avatar Lab", "Avatar-Labor"))),
+		avatarRow(avatarButton("vrm-back", avatarWords("Back", "Zurück"), false, false, func() { v.app.Stop(); featureshell.Get().Pop() }), avatarHeading(func() string {
+			if v.fullscreen {
+				return avatar.Text(say.Chosen(), "fullscreen_mode")
+			}
+			return avatarWords("Split-screen", "Geteilt")
+		}())),
 		avatarRow(tab(0), tab(1)),
 		avatarRow(tab(2), tab(3)),
 		controls,
 		avatarRow(avatarButton("vrm-start", avatarWords("Start", "Starten"), false, s.Running || !supported, v.app.Start), avatarButton("vrm-stop", avatarWords("Stop", "Stoppen"), false, !s.Running, v.app.Stop)),
-		avatarRow(avatarButton("avatar-fullscreen", avatarWords("Fullscreen", "Vollbild"), false, !supported, func() { v.openPreview() }), avatarButton("avatar-save", avatarWords("Save", "Speichern"), true, false, func() {
-			if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
+		avatarRow(avatarButton("avatar-fullscreen", avatarWords("Preview", "Vorschau"), false, !supported, func() { v.openPreview() }), avatarButton("avatar-save", avatarWords("Save", "Speichern"), true, false, func() {
+			if err := avatarlab.SaveComposition(v.app.Snapshot().Options, v.fullscreen); err != nil {
 				v.note = "save_failed"
 			} else {
 				v.note = "saved"
@@ -314,4 +339,16 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 		MouseUp: func(m gogui.EventCtx) { move(m); m.Window.MouseUnlock(); end() },
 		Cancel:  func(*gogui.Window) { end() },
 	})
+}
+
+func (v *avatarView) selectComposition(full bool) {
+	if v.fullscreen == full {
+		return
+	}
+	v.app.Stop()
+	v.fullscreen = full
+	v.app.Configure(avatarlab.Options(config.AvatarSection.Read().Composition(full)))
+	v.dragEpoch.Add(1)
+	v.touchReset.Add(1)
+	v.note = ""
 }

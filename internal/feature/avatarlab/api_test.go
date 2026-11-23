@@ -186,3 +186,43 @@ func TestOwnerWebMouthIntensityContractPersists(t *testing.T) {
 		}
 	}
 }
+
+func TestFullscreenOwnerWebPersistenceAndValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	config.Use(path)
+	registry := &setting.Registry{}
+	c := &setting.Controls[config.Avatar]{Table: NewTable(), Read: config.AvatarSection.Read, Save: func(row setting.Setting[config.Avatar], v string) error {
+		return setting.Store(config.AvatarSection, row, v)
+	}}
+	registry.Add(c)
+	api := webapi.New(webapi.Options{Registry: registry, Settings: &zoomOwnerSettings{schema.Frontend{Password: "synthetic-owner"}}})
+	request := func(name, value string, auth bool) *httptest.ResponseRecorder {
+		b, _ := json.Marshal(map[string]string{"value": value})
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/avatar/"+name, strings.NewReader(string(b)))
+		req.TLS = &tls.ConnectionState{}
+		if auth {
+			req.SetBasicAuth("admin", "synthetic-owner")
+		}
+		w := httptest.NewRecorder()
+		api.Handler().ServeHTTP(w, req)
+		return w
+	}
+	if request("talk_mode", "fullscreen", false).Code != 401 {
+		t.Fatal("owner guard")
+	}
+	for name, value := range map[string]string{"talk_mode": "fullscreen", "fullscreen_zoom": "225", "fullscreen_yaw": "-30", "fullscreen_pitch": "20", "fullscreen_x": "-50", "fullscreen_y": "75"} {
+		if w := request(name, value, true); w.Code != 200 {
+			t.Fatal(name, w.Code, w.Body.String())
+		}
+	}
+	config.Use(path)
+	a := config.AvatarSection.Read()
+	if a.Mode() != "fullscreen" || a.FullscreenZoom != 225 || a.Zoom != 0 || a.Background != "" || a.FullscreenX != -50 {
+		t.Fatal("persisted independent settings", a)
+	}
+	for name, value := range map[string]string{"talk_mode": "bad", "fullscreen_zoom": "1000", "fullscreen_pitch": "86", "fullscreen_yaw": "181", "fullscreen_x": "501", "fullscreen_y": "NaN", "fullscreen_background": "/not-present.png"} {
+		if request(name, value, true).Code != 422 || config.AvatarSection.Read() != a {
+			t.Fatal("invalid mutated settings", name)
+		}
+	}
+}

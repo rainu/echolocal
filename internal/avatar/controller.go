@@ -56,23 +56,26 @@ type State struct {
 	ModelName, Credit                string
 }
 type Controller struct {
-	mu         sync.Mutex
-	state      State
-	dir        string
-	renderer   string
-	background func() string
-	source     func() string
-	resolve    func(string) (AssetSet, string, string, error)
-	viewport   Viewport
-	listen     func() (<-chan []int16, func())
-	muted      func() bool
-	output     func() float64
-	duration   time.Duration
-	redraw     func()
-	cancel     context.CancelFunc
-	input      io.WriteCloser
-	generation uint64
-	command    func(context.Context, string, ...string) *exec.Cmd
+	mu                   sync.Mutex
+	state                State
+	dir                  string
+	renderer             string
+	background           func() string
+	source               func() string
+	resolve              func(string) (AssetSet, string, string, error)
+	talkLayout           bool
+	fullscreen           bool
+	fullscreenBackground func() string
+	viewport             Viewport
+	listen               func() (<-chan []int16, func())
+	muted                func() bool
+	output               func() float64
+	duration             time.Duration
+	redraw               func()
+	cancel               context.CancelFunc
+	input                io.WriteCloser
+	generation           uint64
+	command              func(context.Context, string, ...string) *exec.Cmd
 }
 
 func New(dir string, listen func() (<-chan []int16, func()), muted func() bool, redraw func()) *Controller {
@@ -151,6 +154,17 @@ func (c *Controller) Start() {
 			backgroundPath = file
 		}
 	}
+	fullBackground := ""
+	if c.talkLayout && c.fullscreenBackground != nil {
+		if selected := c.fullscreenBackground(); selected != "" && err == nil {
+			file, release, e := ResolveBackground("/", c.dir, selected)
+			if e == nil {
+				fullBackground = file
+				original := cleanup
+				cleanup = func() { release(); original() }
+			}
+		}
+	}
 	started := false
 	defer func() {
 		if !started {
@@ -172,6 +186,15 @@ func (c *Controller) Start() {
 	vp := c.viewport
 	ctx, cancel := context.WithTimeout(context.Background(), c.runDuration())
 	args := []string{model, "--display", "--seconds", strconv.Itoa(int(c.runDuration() / time.Second)), "--control", "--protocol", strconv.Itoa(ProtocolVersion), "--viewport", vp.argument()}
+	if c.talkLayout {
+		args = append(args, "--talk-layout")
+		if c.fullscreen {
+			args = append(args, "--fullscreen")
+		}
+		if fullBackground != "" {
+			args = append(args, "--fullscreen-background", fullBackground)
+		}
+	}
 	if motion != "" {
 		args = append(args, "--animation", motion)
 	}
@@ -388,6 +411,15 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 			if f, ok := stdin.(*os.File); ok {
 				_ = f.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 			}
+			c.mu.Lock()
+			talk, full := c.talkLayout, c.fullscreen
+			c.mu.Unlock()
+			if talk {
+				if _, err := fmt.Fprintf(stdin, "T %d\n", bit(full)); err != nil {
+					cancel()
+					return
+				}
+			}
 			o := s.Options
 			if output != nil {
 				level = output()
@@ -548,4 +580,19 @@ func (c *Controller) runDuration() time.Duration {
 // ConversationViewport is shared by standalone Talk and its visual-only preview.
 func ConversationViewport(width, height int) Viewport {
 	return Viewport{X: width / 2, Y: 0, Width: width - width/2, Height: height}
+}
+
+// EnableTalkLayout allocates one full-panel surface for a conversation. Layout
+// switches change its scissor, not the process, animation clock or audio lane.
+func (c *Controller) EnableTalkLayout(background func() string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.talkLayout = true
+	c.fullscreenBackground = background
+}
+func (c *Controller) SetTalkMode(full bool) {
+	c.mu.Lock()
+	c.fullscreen = full
+	c.mu.Unlock()
+	c.redraw()
 }
