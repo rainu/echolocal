@@ -77,7 +77,7 @@ func TestPosePanelLocalizationAndUnavailableRig(t *testing.T) {
 	defer say.Use(old)
 	for _, lang := range []string{"en", "de"} {
 		say.Use(lang)
-		w, _, c := poseGUIFixture(t)
+		w, v, c := poseGUIFixture(t)
 		root := w.TestRender(nil)
 		texts := strings.Join(avatarCaptionTexts(root), " ")
 		if !strings.Contains(texts, avatarWords("Pose editing", "Pose bearbeiten")) || !strings.Contains(texts, avatarWords("Left Upper arm", "Links Oberarm")) {
@@ -87,6 +87,9 @@ func TestPosePanelLocalizationAndUnavailableRig(t *testing.T) {
 			avatarCaptionShape(t, root, id)
 		}
 		c.pose.Joints = nil
+		if !strings.Contains(v.poseHint(), avatarWords("FRAMING", "AUSSCHNITT")) {
+			t.Fatal("unsupported rig mislabeled as joint editing")
+		}
 		texts = strings.Join(avatarCaptionTexts(w.TestRender(nil)), " ")
 		if !strings.Contains(texts, avatarWords("No editable humanoid joints.", "Keine bearbeitbaren Humanoid-Gelenke.")) {
 			t.Fatal(texts)

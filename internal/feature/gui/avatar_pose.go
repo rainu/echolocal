@@ -30,6 +30,9 @@ func (v *avatarView) leavePose() {
 }
 func (v *avatarView) poseHint() string {
 	if v.posePanel {
+		if c, ok := v.app.(avatarPoseController); ok && len(c.PoseSnapshot().Joints) == 0 {
+			return avatarWords("FRAMING · no editable humanoid joints.", "AUSSCHNITT · keine bearbeitbaren Humanoid-Gelenke.")
+		}
 		if v.poseCamera {
 			return avatarWords("CAMERA · drag to orbit; two fingers to pan/pinch.", "KAMERA · Ziehen dreht; zwei Finger verschieben/zoomen.")
 		}
