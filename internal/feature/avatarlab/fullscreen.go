@@ -88,6 +88,9 @@ func fullscreenMessage(k string) (string, bool) {
 			if strings.HasPrefix(name, "fullscreen_") {
 				name = strings.TrimPrefix(name, "fullscreen_")
 				if prefix == "avatar.help." {
+					if name == "x" || name == "y" {
+						return "fullscreen_position_help", true
+					}
 					return name + "_help", true
 				}
 				if name == "background" {

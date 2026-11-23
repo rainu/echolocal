@@ -1224,10 +1224,10 @@ int main(int argc, char **argv) {
         const int viewX=talkLayout && !full?w/2:0, viewW=w-viewX;
         glViewport(viewX,0,viewW,h);
         M view =
-            avatarViewportAspect(avatarPan(avatarZoom(mul(vp, avatarOrbit(appMode ? controls.yaw : 0,
+            avatarFraming(mul(vp, avatarOrbit(appMode ? controls.yaw : 0,
                               appMode ? controls.pitch * (scene.legacy ? -1 : 1) : 0,
                               (lo[0] + hi[0]) * .5f, (lo[1] + hi[1]) * .5f,
-                              (lo[2] + hi[2]) * .5f)), full ? avatarFullscreenZoom(appMode ? controls.zoom : 1,viewW,h) : (appMode ? controls.zoom : 1)), appMode ? controls.panX : 0, appMode ? controls.panY : 0),viewW,h);
+                              (lo[2] + hi[2]) * .5f)), appMode ? controls.zoom : 1, appMode ? controls.panX : 0, appMode ? controls.panY : 0,viewW,h,full);
         // Overlay drawing binds its own shader; restore the model program before updating its uniforms.
         glUseProgram(prog);
         glUniformMatrix4fv(glGetUniformLocation(prog, "vp"), 1, GL_FALSE,

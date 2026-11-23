@@ -93,6 +93,24 @@ int main() {
   assert(std::abs(avatarFullscreenZoom(2,800,480)-1.2f)<.0001f);
   assert(avatarFullscreenZoom(1,800,1280)==1);
   assert(avatarFullscreenZoom(1,640,640)==1);
+  // Regression: a face close-up configured in the square Lab used to vanish
+  // because fullscreen scaled zoom but not the saved translation.
+  for(auto dim : {std::array<int,2>{1280,800},{800,480},{640,480},{800,1280}}) {
+    for(auto framing : {std::array<float,3>{4.68f,-.05f,1.68f},{1,0,0},{9.99f,-2,3}}) {
+      auto base=avatarOrbit(25,-15,2,5,3);
+      auto square=avatarPan(avatarZoom(base,framing[0]),framing[1],framing[2]);
+      float fit=avatarFullscreenZoom(1,dim[0],dim[1]);
+      auto full=avatarFraming(base,framing[0],framing[1],framing[2],dim[0],dim[1],true);
+      auto split=avatarFraming(base,framing[0],framing[1],framing[2],dim[0],dim[1],false);
+      assert(split==avatarViewportAspect(square,dim[0],dim[1]));
+      // All affine terms keep the same location and scale per shorter-side pixel.
+      for(int col=0;col<4;++col) {
+        assert(std::abs(full[col*4]/fit-square[col*4])<.0001f);
+        assert(std::abs(full[col*4+1]/(fit*float(dim[0])/dim[1])-square[col*4+1])<.0001f);
+        assert(full[col*4+2]==square[col*4+2]);
+      }
+    }
+  }
   int fds[2];
   assert(pipe(fds) == 0);
   assert(dup2(fds[0], STDIN_FILENO) >= 0);

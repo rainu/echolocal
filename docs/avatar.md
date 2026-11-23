@@ -372,13 +372,17 @@ settings. API paths remain `/api/v1/settings/avatar/FIELD`.
 | `fullscreen_zoom` | Integer 50–999 percent | 100 (fitted framing) |
 | `fullscreen_yaw` | Integer −180–180 degrees | 0 |
 | `fullscreen_pitch` | Integer −85–85 degrees | 0 |
-| `fullscreen_x`, `fullscreen_y` | Integer −500–500 percent of viewport width | 0 |
+| `fullscreen_x`, `fullscreen_y` | Integer −500–500 percent of the smaller fullscreen dimension | 0 |
 
 Positive X moves right, positive Y moves down. Image fitting uses centered cover
 cropping against the actual mode's viewport. Fullscreen fills the complete panel;
 split-screen uses the right half at full panel height. Fullscreen's 100% model
 fit uses the smaller panel dimension so a wide viewport does not crop the head
-or feet by default; position units remain percentages of viewport width.
+or feet by default. Fullscreen scales both zoom and translation from the square
+Lab reference by the smaller panel dimension. A saved close-up keeps its
+vertical composition when opening fullscreen; extra landscape width reveals
+more at the sides rather than moving the model offscreen. Split-screen keeps
+its existing viewport-width units.
 Old/missing/invalid stored
 mode values resolve to split-screen. Missing/zero stored zoom resolves to 100.
 API writes reject invalid choices, out-of-range numbers and invalid image paths.
