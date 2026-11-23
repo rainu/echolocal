@@ -84,7 +84,8 @@ func NewTable() *setting.Table[config.Avatar] {
 			a.MouthIntensity = &n
 			return nil
 		}})
-	return setting.NewTable("avatar", []setting.Group{"model", "background", "presentation"}, rows, setting.Messages{
+	rows = append(rows, fullscreenSettings()...)
+	return setting.NewTable("avatar", []setting.Group{"model", "background", "presentation", "fullscreen"}, rows, setting.Messages{
 		Text: func(k string) string {
 			if key, ok := presentationMessage(k); ok {
 				return avatar.Text(say.Chosen(), key)
@@ -135,6 +136,9 @@ func init() {
 }
 
 func presentationMessage(k string) (string, bool) {
+	if key, ok := fullscreenMessage(k); ok {
+		return key, true
+	}
 	if k == "avatar.group.background" || k == "avatar.setting.background" || k == "avatar.entity.background" {
 		return "background", true
 	}
@@ -182,4 +186,25 @@ func applyPresentation(a *config.Avatar, o avatar.Options) {
 	a.X = int(math.Round(o.PanX * 100))
 	a.Y = int(math.Round(o.PanY * 100))
 	*a = a.Presentation()
+}
+
+// SaveComposition writes only the selected framing and shared expression flags.
+func SaveComposition(o avatar.Options, full bool) error {
+	if !full {
+		return SavePresentation(o)
+	}
+	return config.AvatarSection.Update(func(a *config.Avatar) {
+		split := *a
+		applyPresentation(a, o)
+		a.FullscreenZoom = a.Zoom
+		a.FullscreenYaw = a.Yaw
+		a.FullscreenPitch = a.Pitch
+		a.FullscreenX = a.X
+		a.FullscreenY = a.Y
+		a.Zoom = split.Zoom
+		a.Yaw = split.Yaw
+		a.Pitch = split.Pitch
+		a.X = split.X
+		a.Y = split.Y
+	})
 }

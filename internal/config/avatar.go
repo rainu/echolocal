@@ -14,6 +14,13 @@ const (
 // Avatar contains the model and shared lab/conversation presentation.
 // Integer units are degrees and percent of the square rendering viewport.
 type Avatar struct {
+	TalkMode             string `json:"talk_mode,omitempty"`
+	FullscreenBackground string `json:"fullscreen_background,omitempty"`
+	FullscreenZoom       int    `json:"fullscreen_zoom,omitempty"`
+	FullscreenYaw        int    `json:"fullscreen_yaw,omitempty"`
+	FullscreenPitch      int    `json:"fullscreen_pitch,omitempty"`
+	FullscreenX          int    `json:"fullscreen_x,omitempty"`
+	FullscreenY          int    `json:"fullscreen_y,omitempty"`
 	// nil migrates old installations to 50%; explicit zero closes the mouth.
 	MouthIntensity *int `json:"mouth_intensity,omitempty"`
 	// Disabled flags preserve the legacy default: all three motions enabled.
@@ -48,4 +55,25 @@ func (a Avatar) MouthPercent() int {
 		return AvatarMouthIntensityDefault
 	}
 	return max(0, min(AvatarMouthIntensityMax, *a.MouthIntensity))
+}
+
+// Mode preserves split-screen for old and invalid hand-edited configurations.
+func (a Avatar) Mode() string {
+	if a.TalkMode == "fullscreen" {
+		return "fullscreen"
+	}
+	return "split_screen"
+}
+
+// Composition selects independent framing; expression and the model stay shared.
+func (a Avatar) Composition(full bool) Avatar {
+	if full {
+		a.Background = a.FullscreenBackground
+		a.Zoom = a.FullscreenZoom
+		a.Yaw = a.FullscreenYaw
+		a.Pitch = a.FullscreenPitch
+		a.X = a.FullscreenX
+		a.Y = a.FullscreenY
+	}
+	return a.Presentation()
 }

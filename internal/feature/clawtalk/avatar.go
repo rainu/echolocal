@@ -26,11 +26,13 @@ type avatarRenderer interface {
 
 type AvatarPage struct {
 	*CaptionPage
-	Renderer avatarRenderer
-	started  bool
-	epoch    uint64
-	mu       sync.Mutex
-	closed   bool
+	Renderer    avatarRenderer
+	started     bool
+	epoch       uint64
+	mu          sync.Mutex
+	closed      bool
+	Fullscreen  bool
+	composition config.Avatar
 }
 
 func (p *AvatarPage) Keeps() bool { return true }
@@ -92,10 +94,27 @@ func (m *Manager) standalonePage() sharedshell.View {
 	c := avatar.New(layout.AvatarDir, nil, func() bool { return false }, shellfeature.Get().Redraw)
 	c.SetSource(func() string { return config.AvatarSection.Read().Path })
 	c.SetBackground(func() string { return config.AvatarSection.Read().Background })
-	c.Configure(avatarlab.Options(config.AvatarSection.Read()))
+	saved := config.AvatarSection.Read()
+	c.EnableTalkLayout(func() string { return saved.FullscreenBackground })
+	full := saved.Mode() == "fullscreen"
+	c.SetTalkMode(full)
+	c.Configure(avatarlab.Options(saved.Composition(full)))
 	c.SetOutput(speaker.Get().VoiceLevel, 24*time.Hour)
 	m.mu.Lock()
 	m.avatarRenderer = c
 	m.mu.Unlock()
-	return &AvatarPage{CaptionPage: captions, Renderer: c}
+	return &AvatarPage{CaptionPage: captions, Renderer: c, Fullscreen: full, composition: saved}
+}
+
+// SwitchMode is presentation-only: it never calls the Talk manager or restarts
+// its renderer. Saved framing is frozen for this conversation in both modes.
+func (p *AvatarPage) SwitchMode() {
+	p.Fullscreen = !p.Fullscreen
+	if c, ok := p.Renderer.(interface {
+		SetTalkMode(bool)
+		Configure(avatar.Options)
+	}); ok {
+		c.Configure(avatarlab.Options(p.composition.Composition(p.Fullscreen)))
+		c.SetTalkMode(p.Fullscreen)
+	}
 }

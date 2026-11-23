@@ -86,6 +86,9 @@ int main() {
   }
   c.parse("S 0 0 0 0 0 0 12 6 9.99 -5 5");
   assert(c.zoom == 9.99f && c.panX == -5 && c.panY == 5);
+  for (int n=0;n<100;++n){c.parse("T 1");assert(c.fullscreen);c.parse("T 0");assert(!c.fullscreen);}
+  for(const char *bad:{"T 2","T -1","T 1 junk","T NaN","T 1.5"}){c.parse(bad);assert(!c.fullscreen);}
+  assert(c.zoom==9.99f && c.panX==-5 && c.panY==5);
   int fds[2];
   assert(pipe(fds) == 0);
   assert(dup2(fds[0], STDIN_FILENO) >= 0);

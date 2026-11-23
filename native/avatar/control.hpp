@@ -10,12 +10,15 @@ struct RendererControl {
   bool enabled = false, idle = true, blink = true, animation = true,
        ended = false;
   int mode = 0;
+  bool fullscreen = false;
   float fixed = .5f, level = 0, yaw = 0, pitch = 0, zoom = 1, panX = 0, panY = 0;
   double updated = 0;
   std::string line;
   explicit RendererControl(bool on) : enabled(on) {}
   void parse(const std::string &s) {
     int i, b, a, m;
+    char tail;
+    if (sscanf(s.c_str(), "T %d %c", &i, &tail) == 1 && (i==0 || i==1)) { fullscreen=i; return; }
     float f, l, y, p, z, x, t;
     char extra;
     if (sscanf(s.c_str(), "S %d %d %d %d %f %f %f %f %f %f %f %c", &i, &b, &a, &m, &f, &l,

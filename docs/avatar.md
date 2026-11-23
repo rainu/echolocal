@@ -340,3 +340,66 @@ it does not persist the temporary mouth source. Front retains its existing
 reset-and-save behavior. Asset selection, presentation settings and fullscreen
 preview still use the existing pages/lifecycle. No rendering, configuration or
 microphone behavior is changed by selecting a section.
+
+
+## Wake-word Talk presentation modes
+
+Standalone wake-word Talk on Athena has **Split-screen** and **Fullscreen**
+compositions. Session-specific Live Talk in Chat is unchanged. The split-screen
+keeps its transcript, status, history and end controls; its expand icon switches
+presentation. Fullscreen contains only the avatar/background and two circular
+bottom controls: split-screen and end conversation. Their accessible names are
+localized. Controls remain available if the model, image or graphics fail.
+
+Both modes use the same Talk connection, playback lane and microphone state.
+One full-panel native surface is retained; mode changes select a rendering region,
+background and saved transform without restarting the renderer or its animation
+clock. Both validated background snapshots are loaded once for the conversation,
+then reused across switches and released with the renderer. Invalid/missing
+backgrounds use the normal dark background. An image change made during Talk
+applies to the next conversation.
+
+### Settings contract
+
+All fields are in the existing `avatar` domain, shared by device settings,
+owner-authenticated web settings, configuration API and permission-gated Node
+settings. API paths remain `/api/v1/settings/avatar/FIELD`.
+
+| Field | Values / units | Default / reset value |
+| --- | --- | --- |
+| `talk_mode` | `split_screen`, `fullscreen` | `split_screen` |
+| `fullscreen_background` | Validated absolute device image path | Empty = dark background |
+| `fullscreen_zoom` | Integer 50–999 percent | 100 (fitted framing) |
+| `fullscreen_yaw` | Integer −180–180 degrees | 0 |
+| `fullscreen_pitch` | Integer −85–85 degrees | 0 |
+| `fullscreen_x`, `fullscreen_y` | Integer −500–500 percent of viewport width | 0 |
+
+Positive X moves right, positive Y moves down. Image fitting uses centered cover
+cropping against the actual mode's viewport. Fullscreen fills the complete panel;
+split-screen uses the right half at full panel height. Old/missing/invalid stored
+mode values resolve to split-screen. Missing/zero stored zoom resolves to 100.
+API writes reject invalid choices, out-of-range numbers and invalid image paths.
+
+In Avatar Lab the heading identifies the composition being edited. **Assets →
+Edit other mode** selects its independent saved framing; save edits before
+changing mode. Background and presentation settings route to that composition.
+**Default Talk view** selects the next conversation's mode, independently of the
+current preview or current Talk mode. **Reset fullscreen presentation** resets
+only its background and framing to the table above, not the default mode,
+split-screen composition, model or shared expression settings. The same reset
+values can be written through web/API fields individually.
+
+Save and Front/reset write framing only to the selected composition. Model,
+idle/blink/animation and mouth intensity remain shared. Fullscreen image and
+framing never overwrite the split-screen image and framing. The pinned preview
+button opens the selected composition with the real panel geometry, cover crop,
+transform and bottom controls. Its mode button switches the preview and its end
+button returns to the editor. Preview never starts Talk or opens a microphone;
+its renderer uses a closed mouth and a zero scalar audio source.
+
+The optional scalar protocol-4 extension `T 0|1` selects split/full presentation
+only for helpers launched with `--talk-layout`. The surface dimensions remain
+fixed; neither the frame clock nor the model/motion resources are recreated.
+The GUI and native helper share 72-pixel controls, a 24-pixel gap and a 20-pixel
+bottom inset. Transparent circular apertures in the upper native layer reveal
+normal accessible, focusable GUI controls below it. Input stays in the GUI.

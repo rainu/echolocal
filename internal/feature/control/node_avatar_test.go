@@ -46,9 +46,9 @@ func TestNodeAvatarSharedRegistryAndPermission(t *testing.T) {
 	if _, e = call("set", `{"domain":"avatar","name":"path","value":"../bad.vrm"}`); e == nil {
 		t.Fatal("invalid path accepted")
 	}
-	for _, name := range []string{"zoom", "yaw", "pitch", "x", "y"} {
+	for _, name := range []string{"zoom", "yaw", "pitch", "x", "y", "fullscreen_zoom", "fullscreen_yaw", "fullscreen_pitch", "fullscreen_x", "fullscreen_y"} {
 		value := "25"
-		if name == "zoom" {
+		if name == "zoom" || name == "fullscreen_zoom" {
 			value = "150"
 		}
 		raw, _ := json.Marshal(map[string]string{"domain": "avatar", "name": name, "value": value})

@@ -115,3 +115,55 @@ func AvatarBackgroundPage() *sharedshell.Page {
 		return rows, acts
 	}}
 }
+
+// Fullscreen uses the same validated registry as the owner web UI and API.
+func AvatarFullscreenPage() *sharedshell.Page { return avatarFullscreenPageFor(avatarlab.Controls()) }
+func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
+	note := ""
+	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), "fullscreen_mode"), Build: func() ([]menu.Row, []func(int)) {
+		rows := []menu.Row{}
+		acts := []func(int){}
+		save := func(name, value string) {
+			note = ""
+			if c.ChangeRaw(name, value) != nil {
+				note = avatar.Text(say.Chosen(), "save_failed")
+			}
+		}
+		for _, row := range c.Table.In("fullscreen") {
+			row := row
+			a := c.Read()
+			if row.Name == "talk_mode" {
+				for _, mode := range []string{"split_screen", "fullscreen"} {
+					mode := mode
+					key := mode
+					if mode == "fullscreen" {
+						key = "fullscreen_mode"
+					}
+					rows = append(rows, menu.Row{Label: avatar.Text(say.Chosen(), "talk_mode") + ": " + avatar.Text(say.Chosen(), key), Hint: row.OptionalText("help"), Kind: menu.Toggle, On: a.Mode() == mode})
+					acts = append(acts, func(int) { save("talk_mode", mode) })
+				}
+				continue
+			}
+			rows = append(rows, menu.Row{Label: row.Title(), Hint: row.OptionalText("help"), Value: row.Read(&a), Kind: menu.Field, Save: func(v string) { save(row.Name, v) }})
+			acts = append(acts, nil)
+		}
+		rows = append(rows, menu.Row{Label: avatar.Text(say.Chosen(), "reset_fullscreen"), Kind: menu.Plain})
+		acts = append(acts, func(int) {
+			note = ""
+			defaults := config.Avatar{}
+			for _, row := range c.Table.In("fullscreen") {
+				if row.Name != "talk_mode" {
+					if c.ChangeRaw(row.Name, row.Read(&defaults)) != nil {
+						note = avatar.Text(say.Chosen(), "save_failed")
+						break
+					}
+				}
+			}
+		})
+		if note != "" {
+			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
+			acts = append(acts, nil)
+		}
+		return rows, acts
+	}}
+}
