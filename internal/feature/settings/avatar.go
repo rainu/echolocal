@@ -110,7 +110,13 @@ func AvatarBackgroundPage() *sharedshell.Page {
 			{Label: text("background_reset"), Kind: menu.Plain},
 		}
 		acts := []func(int){nil, func(int) {
-			featureshell.Get().Push(newImagePicker(c.Read().Background, func(name string) error { return c.ChangeRaw("background", name) }))
+			featureshell.Get().Push(newImagePicker(c.Read().Background, func(name string) error {
+				err := c.ChangeRaw("background", name)
+				if err == nil {
+					note = ""
+				}
+				return err
+			}))
 		}, func(int) { save("") }}
 		if note != "" {
 			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})

@@ -37,7 +37,8 @@ type imagePickerView struct {
 	redraw func()
 }
 
-func (p *imagePickerView) SettingsPage() *sharedshell.Page { return p.Page }
+func (p *imagePickerView) SettingsPage() *sharedshell.Page    { return p.Page }
+func (p *imagePickerView) ImagePickerPage() *sharedshell.Page { return p.Page }
 func (p *imagePickerView) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()

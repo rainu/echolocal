@@ -166,7 +166,7 @@ var Get = sync.OnceValue(func() *screens.App {
 		extendAlarms,
 		extendApps,
 		extendClawApp,
-		extendAvatar, extendAvatarPreview,
+		extendAvatar, extendAvatarPreview, extendImagePicker,
 		extendCalendar,
 		extendCalls,
 		extendCameras,
