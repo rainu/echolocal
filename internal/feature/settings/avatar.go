@@ -6,6 +6,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/avatar"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/avatarlab"
+	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
@@ -105,9 +106,12 @@ func AvatarBackgroundPage() *sharedshell.Page {
 		}
 		rows := []menu.Row{
 			{Label: text("background"), Value: c.Read().Background, Kind: menu.Field, Save: save},
+			{Label: text("choose_image"), Kind: menu.Chevron},
 			{Label: text("background_reset"), Kind: menu.Plain},
 		}
-		acts := []func(int){nil, func(int) { save("") }}
+		acts := []func(int){nil, func(int) {
+			featureshell.Get().Push(newImagePicker(c.Read().Background, func(name string) error { return c.ChangeRaw("background", name) }))
+		}, func(int) { save("") }}
 		if note != "" {
 			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
 			acts = append(acts, nil)

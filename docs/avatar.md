@@ -291,3 +291,20 @@ descriptor released on stop; no permanent imported copies accumulate. Invalid
 selection is rejected without losing the previous setting. Files subsequently
 removed, made unreadable or corrupted fall back to the default background with
 a localized recovery message, without blocking Talk.
+
+### Device image selection
+
+The native chooser starts in the current image directory, or the managed upload
+directory when nothing is selected. It provides Cancel, parent folder, upload
+directory, refresh and previous/next page actions. Listing is asynchronous and
+cancelled when hidden; a covered page resumes its location when shown again.
+Only metadata is listed, never recursive scans or automatic image thumbnails.
+The shared directory reader retains the existing pinned-directory, symlink,
+permission, ordering and bounded paging policy used by the owner filesystem API.
+
+Web file selection is opt-in text-setting metadata. It uses the existing
+authenticated same-origin filesystem listing and the normal setting update
+endpoint; extensions are a display filter, not a substitute for server-side
+image validation. There are no upload, delete, microphone or Talk actions in
+either selector. Folder errors remain recoverable through parent/upload
+navigation; an image validation error keeps the selector open.

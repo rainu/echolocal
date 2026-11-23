@@ -2,6 +2,8 @@ package avatarlab
 
 import (
 	"github.com/ygelfand/echolocal/internal/config"
+	"github.com/ygelfand/libcountertop/pkg/say"
+	setting "github.com/ygelfand/libcountertop/pkg/settings"
 	"image"
 	"image/png"
 	"os"
@@ -49,5 +51,30 @@ func TestBackgroundSettingPreservesPresentationAndPersists(t *testing.T) {
 	a.Background = p
 	if a != before {
 		t.Fatal("clear changed framing")
+	}
+}
+
+func TestBackgroundPickerMetadataIsLocalizedAndUsesDeviceDirectory(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de", "it", "vi"} {
+		say.Use(lang)
+		c := &setting.Controls[config.Avatar]{Table: NewTable(), Read: func() config.Avatar { return config.Avatar{Background: "/images/saved.png"} }}
+		for _, field := range c.Fields() {
+			if field.Name != "background" {
+				continue
+			}
+			if field.FilePicker == nil || field.FilePicker.StartDir != "/images" || len(field.FilePicker.Extensions) != 3 || field.Help != "" {
+				t.Fatal(field)
+			}
+			for key, text := range field.FilePicker.Text {
+				if text == "" {
+					t.Fatal(lang, key)
+				}
+			}
+			if len(field.FilePicker.Text) != 14 {
+				t.Fatal(field.FilePicker)
+			}
+		}
 	}
 }

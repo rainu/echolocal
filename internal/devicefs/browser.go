@@ -1,8 +1,9 @@
 // Package devicefs provides owner-only real filesystem browsing and transfers.
-// It must only be mounted in the owner-authenticated HTTPS API.
+// HTTP endpoints require owner-authenticated HTTPS; local views require the owner gate.
 package devicefs
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -89,12 +90,6 @@ func handlerShared(root string, uploads *sync.Mutex, guard func(string) (func(),
 			failure(w, 405, "method_not_allowed")
 			return
 		}
-		resolved, err := resolve(root, name)
-		if err != nil {
-			directoryFailure(w, err)
-			return
-		}
-		name = resolved
 		offset := 0
 		if raw := query.Get("offset"); raw != "" {
 			var err error
@@ -104,103 +99,143 @@ func handlerShared(root string, uploads *sync.Mutex, guard func(string) (func(),
 				return
 			}
 		}
-		d, err := openDirectory(root, name)
+		listing, err := ListDirectory(r.Context(), root, name, offset)
 		if err != nil {
 			directoryFailure(w, err)
 			return
-		}
-		defer d.Close()
-		// Sort the complete bounded directory before paging. ReadDir retains
-		// lightweight names/types; stat metadata is loaded only for this page.
-		entries, err := d.ReadDir(maxOffset + pageSize + 1)
-		if err != nil && err != io.EOF {
-			directoryFailure(w, err)
-			return
-		}
-		listing := Listing{Path: name, Parent: parent(name), Entries: []Entry{}}
-		fillCapacity(d, &listing)
-		if len(entries) > maxOffset+pageSize {
-			entries = entries[:maxOffset+pageSize]
-			listing.LimitReached = true
-		}
-		type item struct {
-			entry                       fs.DirEntry
-			folder                      bool
-			key, targetKind, targetPath string
-		}
-		ordered := make([]item, 0, len(entries))
-		for _, entry := range entries {
-			if r.Context().Err() != nil {
-				return
-			}
-			v := item{entry: entry, folder: entry.IsDir(), key: strings.ToLower(entry.Name())}
-			if entry.Type()&os.ModeSymlink != 0 {
-				target, e := resolve(root, path.Join(name, entry.Name()))
-				if e == nil {
-					st, e := os.Lstat(filepath.Join(root, target))
-					if e == nil && (st.IsDir() || st.Mode().IsRegular()) {
-						v.targetPath = target
-						if st.IsDir() {
-							v.targetKind = "directory"
-							v.folder = true
-						} else {
-							v.targetKind = "file"
-						}
-					}
-				}
-			}
-			ordered = append(ordered, v)
-		}
-		slices.SortFunc(ordered, func(a, b item) int {
-			if a.folder != b.folder {
-				if a.folder {
-					return -1
-				}
-				return 1
-			}
-			if c := strings.Compare(a.key, b.key); c != 0 {
-				return c
-			}
-			return strings.Compare(a.entry.Name(), b.entry.Name())
-		})
-		metadataRoot, err := os.OpenRoot("/proc/self/fd/" + strconv.FormatUint(uint64(d.Fd()), 10))
-		if err != nil {
-			directoryFailure(w, err)
-			return
-		}
-		defer metadataRoot.Close()
-		end := min(offset+pageSize, len(ordered))
-		if end < len(ordered) {
-			next := end
-			listing.NextOffset = &next
-		}
-		for _, v := range ordered[min(offset, len(ordered)):end] {
-			info, e := metadataRoot.Lstat(v.entry.Name())
-			if errors.Is(e, fs.ErrNotExist) {
-				continue
-			} // externally removed
-			if e != nil {
-				directoryFailure(w, e)
-				return
-			}
-			kind := "special"
-			switch {
-			case info.Mode()&os.ModeSymlink != 0:
-				kind = "symlink"
-			case info.IsDir():
-				kind = "directory"
-			case info.Mode().IsRegular():
-				kind = "file"
-			}
-			listing.Entries = append(listing.Entries, Entry{
-				Name: info.Name(), Kind: kind, Size: info.Size(),
-				Modified: info.ModTime().UTC(), Mode: info.Mode().String(),
-				TargetKind: v.targetKind, TargetPath: v.targetPath,
-			})
 		}
 		respond(w, 200, listing)
 	})
 }
+
+// ListDirectory exposes the same bounded, metadata-only reader to local
+// owner-authorized views. root is trusted application layout, never user input.
+func ListDirectory(ctx context.Context, root, name string, offset int) (Listing, error) {
+	if name == "" {
+		name = "/"
+	}
+	if len(name) > 4096 || !utf8.ValidString(name) || !strings.HasPrefix(name, "/") || strings.ContainsAny(name, "\x00\\") {
+		return Listing{}, errListingPath
+	}
+	for _, part := range strings.Split(name, "/") {
+		if part == "." || part == ".." {
+			return Listing{}, errListingPath
+		}
+		for _, c := range part {
+			if c < 32 || c == 127 {
+				return Listing{}, errListingPath
+			}
+		}
+	}
+	if offset < 0 || offset > maxOffset || offset%pageSize != 0 {
+		return Listing{}, errListingOffset
+	}
+	if err := ctx.Err(); err != nil {
+		return Listing{}, err
+	}
+	name = path.Clean(name)
+	resolved, err := resolve(root, name)
+	if err != nil {
+		return Listing{}, err
+	}
+	name = resolved
+	d, err := openDirectory(root, name)
+	if err != nil {
+		return Listing{}, err
+	}
+	defer d.Close()
+	// Sort the complete bounded directory before paging. ReadDir retains
+	// lightweight names/types; stat metadata is loaded only for this page.
+	entries, err := d.ReadDir(maxOffset + pageSize + 1)
+	if err != nil && err != io.EOF {
+		return Listing{}, err
+	}
+	listing := Listing{Path: name, Parent: parent(name), Entries: []Entry{}}
+	fillCapacity(d, &listing)
+	if len(entries) > maxOffset+pageSize {
+		entries = entries[:maxOffset+pageSize]
+		listing.LimitReached = true
+	}
+	type item struct {
+		entry                       fs.DirEntry
+		folder                      bool
+		key, targetKind, targetPath string
+	}
+	ordered := make([]item, 0, len(entries))
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return Listing{}, err
+		}
+		v := item{entry: entry, folder: entry.IsDir(), key: strings.ToLower(entry.Name())}
+		if entry.Type()&os.ModeSymlink != 0 {
+			target, e := resolve(root, path.Join(name, entry.Name()))
+			if e == nil {
+				st, e := os.Lstat(filepath.Join(root, target))
+				if e == nil && (st.IsDir() || st.Mode().IsRegular()) {
+					v.targetPath = target
+					if st.IsDir() {
+						v.targetKind = "directory"
+						v.folder = true
+					} else {
+						v.targetKind = "file"
+					}
+				}
+			}
+		}
+		ordered = append(ordered, v)
+	}
+	slices.SortFunc(ordered, func(a, b item) int {
+		if a.folder != b.folder {
+			if a.folder {
+				return -1
+			}
+			return 1
+		}
+		if c := strings.Compare(a.key, b.key); c != 0 {
+			return c
+		}
+		return strings.Compare(a.entry.Name(), b.entry.Name())
+	})
+	metadataRoot, err := os.OpenRoot("/proc/self/fd/" + strconv.FormatUint(uint64(d.Fd()), 10))
+	if err != nil {
+		return Listing{}, err
+	}
+	defer metadataRoot.Close()
+	end := min(offset+pageSize, len(ordered))
+	if end < len(ordered) {
+		next := end
+		listing.NextOffset = &next
+	}
+	for _, v := range ordered[min(offset, len(ordered)):end] {
+		info, e := metadataRoot.Lstat(v.entry.Name())
+		if errors.Is(e, fs.ErrNotExist) {
+			continue
+		} // externally removed
+		if e != nil {
+			return Listing{}, e
+		}
+		kind := "special"
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			kind = "symlink"
+		case info.IsDir():
+			kind = "directory"
+		case info.Mode().IsRegular():
+			kind = "file"
+		}
+		listing.Entries = append(listing.Entries, Entry{
+			Name: info.Name(), Kind: kind, Size: info.Size(),
+			Modified: info.ModTime().UTC(), Mode: info.Mode().String(),
+			TargetKind: v.targetKind, TargetPath: v.targetPath,
+		})
+	}
+
+	return listing, nil
+}
+
+var errListingPath = errors.New("invalid_path")
+var errListingOffset = errors.New("invalid_offset")
+
 func parent(name string) string {
 	if name == "/" {
 		return ""
@@ -230,6 +265,10 @@ func openDirectory(root, name string) (*os.File, error) {
 }
 func directoryFailure(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errListingPath):
+		failure(w, 400, "invalid_path")
+	case errors.Is(err, errListingOffset):
+		failure(w, 400, "invalid_offset")
 	case errors.Is(err, syscall.EROFS):
 		failure(w, 403, "read_only_filesystem")
 	case errors.Is(err, fs.ErrPermission):
