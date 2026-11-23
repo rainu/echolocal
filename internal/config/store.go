@@ -44,6 +44,10 @@ func Load(path string) (*Store, error) {
 func (s *Store) Set() Writer      { return Writer{SharedWriter: s.shared, st: s} }
 func (s *Store) started(d Device) { s.Runtime(func(c *Config) { c.Device = d }) }
 func cloneConfig(c Config) Config {
+	if c.Avatar.MouthIntensity != nil {
+		n := *c.Avatar.MouthIntensity
+		c.Avatar.MouthIntensity = &n
+	}
 	c.Shared = c.Clone()
 	return c
 }
