@@ -318,3 +318,25 @@ Existing interruption, stale-period and teardown resets are unchanged. Both VRM
 0/1 mouth bindings use their existing authored weights, clamped by the renderer;
 models without a compatible A/aa expression stay unchanged rather than failing.
 Different authored mouth shapes can still warrant a different saved percentage.
+
+### Avatar Lab editing workspace
+
+The left side is divided into four workflow sections; the right side keeps
+the same live avatar viewport and gestures:
+
+- **Assets**: model file, background and saved presentation settings.
+- **Framing**: current rotation, zoom/position readout and front-view reset.
+- **Expression**: speech mouth intensity, silent speech preview and motion toggles.
+- **Advanced**: mouth-source tests, fixed mouth value and renderer/microphone diagnostics.
+
+Only the selected section scrolls. Section navigation, Back, Start/Stop,
+Fullscreen and Save stay visible outside the scrolling region. The selected
+section has a filled/marked button and a full heading. Long localized button
+labels wrap and grow rather than being clipped. Each section has independent
+scroll state. Credits and the existing one-/two-finger gestures are retained.
+
+Save is the existing Save presentation operation (including mouth intensity);
+it does not persist the temporary mouth source. Front retains its existing
+reset-and-save behavior. Asset selection, presentation settings and fullscreen
+preview still use the existing pages/lifecycle. No rendering, configuration or
+microphone behavior is changed by selecting a section.

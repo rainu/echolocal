@@ -36,6 +36,7 @@ type avatarLabController interface {
 type avatarView struct {
 	retiring       atomic.Pointer[avatar.Controller]
 	resume         atomic.Bool
+	section        int
 	note           string
 	app            avatarLabController
 	dragEpoch      atomic.Uint64
@@ -90,6 +91,12 @@ func avatarText(text string) gogui.View {
 	st.Size = 19
 	return gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})
 }
+func avatarHeading(text string) gogui.View {
+	st := gogui.CurrentTheme().Cfg.TextStyleDef
+	st.Size = 22
+	st.Color = gogui.Hex(0xA8DAD4)
+	return gogui.Text(gogui.TextCfg{Text: text, TextStyle: st, Mode: gogui.TextModeWrap})
+}
 func avatarButton(id, label string, selected, disabled bool, do func()) gogui.View {
 	color := gogui.Hex(0x283C42)
 	if selected {
@@ -98,7 +105,7 @@ func avatarButton(id, label string, selected, disabled bool, do func()) gogui.Vi
 	st := gogui.CurrentTheme().Cfg.TextStyleDef
 	st.Size = 20
 	st.Color = gogui.Hex(0xEEF3F4)
-	return gogui.Button(gogui.ButtonCfg{ID: id, MinHeight: 48, Height: 48, Sizing: gogui.FillFit, Color: color, Disabled: disabled, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: st})}, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	return gogui.Button(gogui.ButtonCfg{ID: id, MinHeight: 48, Sizing: gogui.FillFit, Color: color, Disabled: disabled, Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: st, Mode: gogui.TextModeWrap})}, OnClick: func(e gogui.EventCtx) { do(); e.Window.InvalidateLayout() }})
 }
 func avatarRow(v ...gogui.View) gogui.View {
 	return gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: v})
@@ -122,7 +129,12 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	size := min(width/2, height-100)
 	supported := width >= 640 && height >= 480
 	v.app.SetViewport(avatar.Viewport{X: width / 2, Y: 80, Size: size})
-	option := func(update func(*avatar.Options)) { o := v.app.Snapshot().Options; update(&o); v.app.Configure(o) }
+	option := func(update func(*avatar.Options)) {
+		v.note = ""
+		o := v.app.Snapshot().Options
+		update(&o)
+		v.app.Configure(o)
+	}
 	toggle := func(id, en, de string, on bool, update func(*avatar.Options)) gogui.View {
 		mark := "○ "
 		if on {
@@ -145,70 +157,104 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	if !supported {
 		note = avatarWords("Preview needs at least 640×480.", "Vorschau benötigt mindestens 640×480.")
 	}
-	body := []gogui.View{
-		avatarRow(avatarButton("vrm-back", avatarWords("Back", "Zurück"), false, false, func() { v.app.Stop(); featureshell.Get().Pop() }), avatarText(avatarWords("Avatar Lab", "Avatar-Labor"))),
-		avatarText(note),
-		avatarRow(avatarButton("avatar-file", avatar.Text(say.Chosen(), "model"), false, false, func() {
-			v.app.Stop()
-			lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarModelPage()) })
-		})),
-		avatarText(avatar.Text(say.Chosen(), "selection")),
-		avatarRow(avatarButton("avatar-background", avatar.Text(say.Chosen(), "background"), false, false, func() {
-			v.app.Stop()
-			lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarBackgroundPage()) })
-		})),
-		avatarText(avatar.Text(say.Chosen(), "mouth_intensity")),
-		avatarRow(avatarButton("avatar-intensity-down", "− 10%", false, s.Options.MouthIntensity <= 0, func() { option(func(o *avatar.Options) { o.MouthIntensity -= .1 }) }), avatarText(fmt.Sprintf("%.0f %%", s.Options.MouthIntensity*100)), avatarButton("avatar-intensity-up", "+ 10%", false, s.Options.MouthIntensity >= 1, func() { option(func(o *avatar.Options) { o.MouthIntensity += .1 }) })),
-		avatarText(avatar.Text(say.Chosen(), "mouth_intensity_help")),
-		avatarRow(avatarButton("avatar-mouth-reset", avatar.Text(say.Chosen(), "mouth_reset"), false, false, func() { option(func(o *avatar.Options) { o.MouthIntensity = .5 }) })),
-		avatarRow(avatarButton("avatar-speech-preview", avatar.Text(say.Chosen(), "speech_preview"), s.Options.Mouth == avatar.MouthSpeechPreview, !supported, func() {
-			option(func(o *avatar.Options) { o.Mouth = avatar.MouthSpeechPreview })
-			v.app.Start()
-		})),
-		avatarText(avatar.Text(say.Chosen(), "speech_preview_help")),
-		avatarRow(avatarButton("avatar-fullscreen", avatar.Text(say.Chosen(), "fullscreen"), false, !supported, func() { v.openPreview() })),
-
-		avatarRow(avatarButton("avatar-save", avatar.Text(say.Chosen(), "save_presentation"), false, false, func() {
+	// Only the active workflow section scrolls. Navigation and session actions
+	// stay outside it, so neither a long diagnostic block nor a small display
+	// can push Save, fullscreen preview, or Exit off-screen.
+	sections := [4][2]string{{"Avatar & background", "Avatar & Hintergrund"}, {"Framing & position", "Ausschnitt & Position"}, {"Expression & speech", "Ausdruck & Sprache"}, {"Tests & diagnostics", "Tests & Diagnose"}}
+	tabs := [4][2]string{{"Assets", "Dateien"}, {"Framing", "Ausschnitt"}, {"Expression", "Ausdruck"}, {"Advanced", "Erweitert"}}
+	tab := func(n int) gogui.View {
+		label := avatarWords(tabs[n][0], tabs[n][1])
+		if v.section == n {
+			label = "● " + label
+		}
+		return avatarButton(fmt.Sprintf("avatar-section-%d", n), label, v.section == n, false, func() { v.section = n })
+	}
+	body := []gogui.View{avatarHeading(avatarWords(sections[v.section][0], sections[v.section][1])), avatarText(note)}
+	switch v.section {
+	case 0:
+		body = append(body, []gogui.View{
+			avatarRow(avatarButton("avatar-file", avatar.Text(say.Chosen(), "model"), false, false, func() {
+				v.app.Stop()
+				lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarModelPage()) })
+			})),
+			avatarText(avatar.Text(say.Chosen(), "selection")),
+			avatarRow(avatarButton("avatar-background", avatar.Text(say.Chosen(), "background"), false, false, func() {
+				v.app.Stop()
+				lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarBackgroundPage()) })
+			})),
+			avatarRow(avatarButton("avatar-presentation", avatar.Text(say.Chosen(), "presentation"), false, false, func() { v.app.Stop(); featureshell.Get().Push(settings.AvatarPresentationPage()) })),
+		}...)
+	case 1:
+		body = append(body, []gogui.View{
+			avatarText(fmt.Sprintf("%s %.0f° / %.0f° · %.0f %%", avatarWords("Rotation", "Drehung"), s.Options.Yaw, s.Options.Pitch, avatar.EffectiveZoom(s.Options.Zoom)*100)),
+			avatarText(fmt.Sprintf("X %+.0f %% · Y %+.0f %%", s.Options.PanX*100, s.Options.PanY*100)),
+			avatarRow(avatarButton("avatar-rotate-left", "← 15°", false, false, func() { option(func(o *avatar.Options) { o.Yaw -= 15 }) }), avatarButton("avatar-rotate-reset", avatarWords("Front", "Vorne"), false, false, func() {
+				option(func(o *avatar.Options) {
+					o.Yaw = 0
+					o.Pitch = 0
+					o.Zoom = 1
+					o.PanX = 0
+					o.PanY = 0
+					v.dragEpoch.Add(1)
+					v.touchReset.Add(1)
+				})
+				if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
+					v.note = avatar.Text(say.Chosen(), "save_failed")
+				} else {
+					v.note = avatar.Text(say.Chosen(), "saved")
+				}
+			}), avatarButton("avatar-rotate-right", "15° →", false, false, func() { option(func(o *avatar.Options) { o.Yaw += 15 }) })),
+			avatarText(avatarWords("Drag to rotate, use two fingers to move, or pinch to zoom in the preview.", "In der Vorschau ziehen zum Drehen, mit zwei Fingern verschieben oder zum Zoomen zusammenziehen.")),
+		}...)
+	case 2:
+		body = append(body, []gogui.View{
+			avatarText(avatar.Text(say.Chosen(), "mouth_intensity")),
+			avatarRow(avatarButton("avatar-intensity-down", "− 10%", false, s.Options.MouthIntensity <= 0, func() { option(func(o *avatar.Options) { o.MouthIntensity -= .1 }) }), avatarText(fmt.Sprintf("%.0f %%", s.Options.MouthIntensity*100)), avatarButton("avatar-intensity-up", "+ 10%", false, s.Options.MouthIntensity >= 1, func() { option(func(o *avatar.Options) { o.MouthIntensity += .1 }) })),
+			avatarText(avatar.Text(say.Chosen(), "mouth_intensity_help")),
+			avatarRow(avatarButton("avatar-mouth-reset", avatar.Text(say.Chosen(), "mouth_reset"), false, false, func() { option(func(o *avatar.Options) { o.MouthIntensity = .5 }) })),
+			avatarRow(avatarButton("avatar-speech-preview", avatar.Text(say.Chosen(), "speech_preview"), s.Options.Mouth == avatar.MouthSpeechPreview, !supported, func() {
+				option(func(o *avatar.Options) { o.Mouth = avatar.MouthSpeechPreview })
+				v.app.Start()
+			})),
+			avatarText(avatar.Text(say.Chosen(), "speech_preview_help")),
+			toggle("vrm-idle", "Idle movement", "Ruhebewegung", s.Options.Idle, func(o *avatar.Options) { o.Idle = !o.Idle }),
+			toggle("vrm-blink", "Blink", "Blinzeln", s.Options.Blink, func(o *avatar.Options) { o.Blink = !o.Blink }),
+			toggle("vrm-animation", "VRMA animation", "VRMA-Animation", s.Options.Animation, func(o *avatar.Options) { o.Animation = !o.Animation }),
+		}...)
+	case 3:
+		body = append(body, []gogui.View{
+			avatarText(avatarWords("Mouth source", "Mundsteuerung")), avatarRow(modeButton(0), modeButton(1)), avatarRow(modeButton(2), modeButton(3)),
+			avatarRow(avatarButton("vrm-fixed-down", "−", false, s.Options.Mouth != 1, func() { option(func(o *avatar.Options) { o.Fixed -= .1 }) }), avatarText(fmt.Sprintf("%.0f %%", s.Options.Fixed*100)), avatarButton("vrm-fixed-up", "+", false, s.Options.Mouth != 1, func() { option(func(o *avatar.Options) { o.Fixed += .1 }) })),
+			avatarText(fmt.Sprintf("FPS %.1f · Frames %d · %.0f s\n%s %.0f %% · RMS %.4f\n%s %d · %s %d", s.FPS, s.Frames, s.Seconds, avatarWords("Mouth", "Mund"), s.Mouth*100, s.RMS, avatarWords("Mic blocks", "Mikrofonblöcke"), s.Blocks, avatarWords("Gaps >100ms", "Lücken >100ms"), s.Gaps)),
+			avatarText(avatarWords("Local level only; no recording or upload. Mic: stay quiet for 1 second. Hardware mute is respected.", "Nur lokaler Pegel; keine Aufnahme oder Übertragung. Mikrofon: 1 Sekunde ruhig bleiben. Hardware-Mute bleibt wirksam."))}...)
+		if s.Muted {
+			body = append(body, avatarText(avatarWords("Microphone muted", "Mikrofon stummgeschaltet")))
+		}
+	}
+	status := avatarWords("Preview stopped", "Vorschau gestoppt")
+	if s.Running {
+		status = avatarWords("Preview running", "Vorschau läuft")
+	}
+	if v.note != "" {
+		status = v.note
+	}
+	controls := gogui.Column(gogui.ContainerCfg{ID: fmt.Sprintf("vrm-controls-%d", v.section), Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: body})
+	left := gogui.Column(gogui.ContainerCfg{ID: "avatar-workspace", Width: float32(width / 2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(14), Spacing: gogui.SpacingSmall, Content: []gogui.View{
+		avatarRow(avatarButton("vrm-back", avatarWords("Back", "Zurück"), false, false, func() { v.app.Stop(); featureshell.Get().Pop() }), avatarHeading(avatarWords("Avatar Lab", "Avatar-Labor"))),
+		avatarRow(tab(0), tab(1)),
+		avatarRow(tab(2), tab(3)),
+		controls,
+		avatarRow(avatarButton("vrm-start", avatarWords("Start", "Starten"), false, s.Running || !supported, v.app.Start), avatarButton("vrm-stop", avatarWords("Stop", "Stoppen"), false, !s.Running, v.app.Stop)),
+		avatarRow(avatarButton("avatar-fullscreen", avatarWords("Fullscreen", "Vollbild"), false, !supported, func() { v.openPreview() }), avatarButton("avatar-save", avatarWords("Save", "Speichern"), true, false, func() {
 			if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
 				v.note = avatar.Text(say.Chosen(), "save_failed")
 			} else {
 				v.note = avatar.Text(say.Chosen(), "saved")
 			}
-		}), avatarButton("avatar-presentation", avatar.Text(say.Chosen(), "presentation"), false, false, func() { v.app.Stop(); featureshell.Get().Push(settings.AvatarPresentationPage()) })),
-		avatarText(v.note),
-		avatarRow(avatarButton("vrm-start", "Start", false, s.Running || !supported, v.app.Start), avatarButton("vrm-stop", "Stop", false, !s.Running, v.app.Stop)),
-		avatarText(fmt.Sprintf("%s %.0f° / %.0f° · %.0f %%", avatarWords("Rotation", "Drehung"), s.Options.Yaw, s.Options.Pitch, avatar.EffectiveZoom(s.Options.Zoom)*100)),
-		avatarText(fmt.Sprintf("X %+.0f %% · Y %+.0f %%", s.Options.PanX*100, s.Options.PanY*100)),
-		avatarRow(avatarButton("avatar-rotate-left", "← 15°", false, false, func() { option(func(o *avatar.Options) { o.Yaw -= 15 }) }), avatarButton("avatar-rotate-reset", avatarWords("Front", "Vorne"), false, false, func() {
-			option(func(o *avatar.Options) {
-				o.Yaw = 0
-				o.Pitch = 0
-				o.Zoom = 1
-				o.PanX = 0
-				o.PanY = 0
-				v.dragEpoch.Add(1)
-				v.touchReset.Add(1)
-			})
-			if err := avatarlab.SavePresentation(v.app.Snapshot().Options); err != nil {
-				v.note = avatar.Text(say.Chosen(), "save_failed")
-			} else {
-				v.note = avatar.Text(say.Chosen(), "saved")
-			}
-		}), avatarButton("avatar-rotate-right", "15° →", false, false, func() { option(func(o *avatar.Options) { o.Yaw += 15 }) })),
-		toggle("vrm-idle", "Idle movement", "Idle-Bewegung", s.Options.Idle, func(o *avatar.Options) { o.Idle = !o.Idle }),
-		toggle("vrm-blink", "Blink", "Blinzeln", s.Options.Blink, func(o *avatar.Options) { o.Blink = !o.Blink }),
-		toggle("vrm-animation", "VRMA animation", "VRMA-Animation", s.Options.Animation, func(o *avatar.Options) { o.Animation = !o.Animation }),
-		avatarText(avatarWords("Mouth source", "Mundsteuerung")), avatarRow(modeButton(0), modeButton(1)), avatarRow(modeButton(2), modeButton(3)),
-		avatarRow(avatarButton("vrm-fixed-down", "−", false, s.Options.Mouth != 1, func() { option(func(o *avatar.Options) { o.Fixed -= .1 }) }), avatarText(fmt.Sprintf("%.0f %%", s.Options.Fixed*100)), avatarButton("vrm-fixed-up", "+", false, s.Options.Mouth != 1, func() { option(func(o *avatar.Options) { o.Fixed += .1 }) })),
-		avatarText(fmt.Sprintf("FPS %.1f · Frames %d · %.0f s\n%s %.0f %% · RMS %.4f\n%s %d · %s %d", s.FPS, s.Frames, s.Seconds, avatarWords("Mouth", "Mund"), s.Mouth*100, s.RMS, avatarWords("Mic blocks", "Mikrofonblöcke"), s.Blocks, avatarWords("Gaps >100ms", "Lücken >100ms"), s.Gaps)),
-		avatarText(avatarWords("Local level only; no recording or upload. Mic: stay quiet for 1 second. Hardware mute is respected.", "Nur lokaler Pegel; keine Aufnahme oder Übertragung. Mikrofon: 1 Sekunde ruhig bleiben. Hardware-Mute bleibt wirksam.")),
-	}
-	if s.Muted {
-		body = append(body, avatarText(avatarWords("Microphone muted", "Mikrofon stummgeschaltet")))
-	}
-	left := gogui.Column(gogui.ContainerCfg{ID: "vrm-controls", Width: float32(width)/2 - 16, Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(14), Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: body})
-	right := gogui.Column(gogui.ContainerCfg{ID: "avatar-preview-touch", OnMouseDown: func(e gogui.EventCtx) { v.beginAvatarDrag(e, avatar.Viewport{X: width / 2, Y: 80, Size: size}) }, Width: float32(width)/2 + 16, Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(16), Content: []gogui.View{avatarText(s.ModelName + " · " + s.Credit), avatarText(avatarWords("One finger: rotate. Two: move. Pinch: zoom.", "Ein Finger: drehen. Zwei: verschieben. Pinch: zoomen."))}})
-	return gogui.Row(gogui.ContainerCfg{ID: "avatar-app", Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{left, right}})
+		})), avatarText(status),
+	}})
+	right := gogui.Column(gogui.ContainerCfg{ID: "avatar-preview-touch", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, OnMouseDown: func(e gogui.EventCtx) { v.beginAvatarDrag(e, avatar.Viewport{X: width / 2, Y: 80, Size: size}) }, Width: float32(width - width/2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(16), Content: []gogui.View{avatarText(s.ModelName + " · " + s.Credit), avatarText(avatarWords("One finger: rotate. Two: move. Pinch: zoom.", "Ein Finger: drehen. Zwei: verschieben. Zusammenziehen: zoomen."))}})
+	return gogui.Row(gogui.ContainerCfg{ID: "avatar-app", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Spacing: gogui.NoSpacing, Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{left, right}})
 }
 
 func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
