@@ -8,6 +8,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/avatar"
 	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -58,6 +59,49 @@ func poseJointName(id int) string {
 	}
 	return s
 }
+
+// Values are stable catalog IDs, independent of translated labels or rig order.
+func poseJointDropdown(c avatarPoseController, p avatar.PoseState) gogui.View {
+	present := make(map[int]bool, len(p.Joints))
+	for _, j := range p.Joints {
+		if j.ID >= 0 && j.ID < len(avatar.PoseBoneNames) {
+			present[j.ID] = true
+		}
+	}
+	options := make([]gogui.SelectOption, 0, len(present))
+	for id := range avatar.PoseBoneNames {
+		if present[id] {
+			options = append(options, gogui.NewSelectOption(poseJointName(id), strconv.Itoa(id)))
+		}
+	}
+	var selected []string
+	if present[p.Selected] {
+		selected = []string{strconv.Itoa(p.Selected)}
+	}
+	st := gogui.CurrentTheme().Cfg.TextStyleDef
+	// Select uses text height for option hit targets; keep rows finger-sized.
+	st.Size = 36
+	st.Color = gogui.Hex(0xEEF3F4)
+	return gogui.Select(gogui.SelectCfg{
+		ID: "pose-joint", A11YCfg: gogui.A11YCfg{A11YLabel: avatarWords("Joint", "Gelenk")},
+		Placeholder: avatarWords("Select a joint", "Gelenk auswählen"),
+		Options:     options, Selected: selected, Sizing: gogui.FillFit,
+		TextStyle: st, PlaceholderStyle: st, Padding: gogui.PadVH(6, 12),
+		Color: gogui.Hex(0x283C42), ColorSelectSubtle: gogui.Hex(0x3E706D),
+		FloatZIndex: 100,
+		OnSelect: func(values []string, e gogui.EventCtx) {
+			if len(values) != 1 {
+				return
+			}
+			id, err := strconv.Atoi(values[0])
+			if err != nil || !present[id] {
+				return
+			}
+			c.SelectJoint(id)
+			e.Window.InvalidateLayout()
+		},
+	})
+}
 func (v *avatarView) poseControls() []gogui.View {
 	c, ok := v.app.(avatarPoseController)
 	if !ok {
@@ -83,21 +127,10 @@ func (v *avatarView) poseControls() []gogui.View {
 		c.PoseMode(!v.poseCamera)
 		v.dragEpoch.Add(1)
 		v.touchReset.Add(1)
-	}), avatarText(v.poseHint()), avatarHeading(poseJointName(p.Selected)))
-	cycle := func(delta int) {
-		index := 0
-		for i, j := range p.Joints {
-			if j.ID == p.Selected {
-				index = i
-				break
-			}
-		}
-		c.SelectJoint(p.Joints[(index+delta+len(p.Joints))%len(p.Joints)].ID)
-	}
+	}), avatarText(v.poseHint()), poseJointDropdown(c, p))
 	body = append(body,
 		avatarRow(avatarButton("pose-undo", avatarWords("Undo", "Rückgängig"), false, !p.CanUndo, func() { action("undo", "") }), avatarButton("pose-redo", avatarWords("Redo", "Wiederholen"), false, !p.CanRedo, func() { action("redo", "") })),
 		avatarButton("pose-reset-joint", avatarWords("Reset selected joint", "Gewähltes Gelenk zurücksetzen"), false, p.Selected < 0 || v.poseCamera, func() { action("reset-joint", "") }))
-	body = append(body, avatarRow(avatarButton("pose-joint-prev", "←", false, false, func() { cycle(-1) }), avatarButton("pose-joint-next", "→", false, false, func() { cycle(1) })))
 	axes := []gogui.View{}
 	for i, name := range []string{"X · " + avatarWords("red", "rot"), "Y · " + avatarWords("green", "grün"), "Z · " + avatarWords("blue", "blau")} {
 		axes = append(axes, avatarButton(fmt.Sprintf("pose-axis-%d", i), name, v.poseAxis == i, false, func() { v.poseAxis = i }))

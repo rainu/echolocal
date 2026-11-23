@@ -88,7 +88,7 @@ func TestPosePanelLocalizationAndUnavailableRig(t *testing.T) {
 		if !strings.Contains(texts, avatarWords("Pose editing", "Pose bearbeiten")) || !strings.Contains(texts, avatarWords("Left Upper arm", "Links Oberarm")) {
 			t.Fatal("localization", texts)
 		}
-		for _, id := range []string{"pose-exit", "pose-camera", "pose-joint-prev", "pose-joint-next", "pose-axis-0", "pose-axis-1", "pose-axis-2", "pose-minus1", "pose-plus1", "pose-rest", "pose-revert", "pose-save", "pose-undo", "pose-redo", "pose-reset-joint"} {
+		for _, id := range []string{"pose-exit", "pose-camera", "pose-joint", "pose-axis-0", "pose-axis-1", "pose-axis-2", "pose-minus1", "pose-plus1", "pose-rest", "pose-revert", "pose-save", "pose-undo", "pose-redo", "pose-reset-joint"} {
 			avatarCaptionShape(t, root, id)
 		}
 		c.pose.Joints = nil
@@ -124,5 +124,100 @@ func TestPoseSingleSlotAndHistoryControls(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(avatarCaptionTexts(root), " "), "Save named pose") {
 		t.Fatal("old library UI")
+	}
+}
+
+func poseTextShape(root *gogui.Layout, text string) *gogui.Shape {
+	if root.Shape != nil && root.Shape.TC != nil && root.Shape.TC.Text == text {
+		return root.Shape
+	}
+	for i := range root.Children {
+		if s := poseTextShape(&root.Children[i], text); s != nil {
+			return s
+		}
+	}
+	return nil
+}
+func TestPoseJointDropdownSelectionAndModelSync(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de"} {
+		say.Use(lang)
+		w, _, c := poseGUIFixture(t)
+		// Unordered, sparse rig IDs must not become option indices.
+		c.pose.Joints = []avatar.Joint{{ID: 8, X: 150, Y: 220, Visible: true}, {ID: 5, X: 100, Y: 100, Visible: true}, {ID: 7, X: 260, Y: 220, Visible: true}}
+		c.pose.Selected = -1
+		w.InvalidateLayout()
+		root := w.TestRender(nil)
+		if !strings.Contains(strings.Join(avatarCaptionTexts(root), " "), avatarWords("Select a joint", "Gelenk auswählen")) {
+			t.Fatal("missing placeholder")
+		}
+		field := avatarCaptionShape(t, root, "pose-joint")
+		if field.Height < 48 || field.X+field.Width > 640 {
+			t.Fatal("dropdown field bounds", field)
+		}
+		if err := w.TestClick(avatarCaptionID(t, w, "pose-joint")); err != nil {
+			t.Fatal(err)
+		}
+		root = w.TestRender(nil)
+		for _, id := range []int{5, 7, 8} {
+			if poseTextShape(root, poseJointName(id)) == nil {
+				t.Fatal("missing rig option", id)
+			}
+		}
+		if poseTextShape(root, poseJointName(9)) != nil {
+			t.Fatal("missing bone offered")
+		}
+		target := poseTextShape(root, poseJointName(8))
+		before := c.state.Options
+		avatarSwipe(w, target.X+target.Width/2, target.Y+target.Height/2, target.X+target.Width/2, target.Y+target.Height/2)
+		if c.pose.Selected != 8 || c.state.Options != before || len(c.actions) != 0 {
+			t.Fatal("selection changed pose/framing/history", c.pose.Selected, c.actions)
+		}
+		root = w.TestRender(nil)
+		if poseTextShape(root, poseJointName(8)) == nil {
+			t.Fatal("selected field out of sync")
+		}
+		// A selection on the model must be reflected in the closed dropdown too.
+		avatarSwipe(w, 740, 180, 740, 180)
+		if c.pose.Selected != 5 {
+			t.Fatal("on-model head not selected", c.pose.Selected)
+		}
+		root = w.TestRender(nil)
+		if poseTextShape(root, poseJointName(5)) == nil || poseTextShape(root, poseJointName(8)) != nil {
+			t.Fatal("external selection stale")
+		}
+		featureshell.Get().Pop()
+	}
+}
+func TestPoseJointDropdownScrollsFullRig(t *testing.T) {
+	w, _, c := poseGUIFixture(t)
+	c.pose.Joints = nil
+	for id := range avatar.PoseBoneNames {
+		c.pose.Joints = append(c.pose.Joints, avatar.Joint{ID: id})
+	}
+	c.pose.Selected = -1
+	w.InvalidateLayout()
+	w.TestRender(nil)
+	if err := w.TestClick(avatarCaptionID(t, w, "pose-joint")); err != nil {
+		t.Fatal(err)
+	}
+	w.TestRender(nil)
+	ids := w.ResolveID("avatar-app:avatar-workspace:vrm-controls-1:pose-joint:dropdown")
+	if len(ids) != 1 {
+		t.Fatal("missing dropdown scroller", ids)
+	}
+	w.TestScroll(ids[0], 0, -10000)
+	root := w.TestRender(nil)
+	target := poseTextShape(root, poseJointName(len(avatar.PoseBoneNames)-1))
+	if target == nil {
+		t.Fatal("last bone missing")
+	}
+	if target.Y < 0 || target.Y+target.Height > 800 {
+		t.Fatal("last bone not scrolled into view", target.Y)
+	}
+	avatarSwipe(w, target.X+target.Width/2, target.Y+target.Height/2, target.X+target.Width/2, target.Y+target.Height/2)
+	if c.pose.Selected != len(avatar.PoseBoneNames)-1 {
+		t.Fatal("last bone not selectable", c.pose.Selected)
 	}
 }

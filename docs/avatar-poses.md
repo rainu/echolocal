@@ -19,7 +19,9 @@ names are included. Eye/jaw expression controls, matrix-only joints and rig
 creation are outside this editor. An empty/incompatible rig explains the
 limitation while ordinary framing remains available. A valid default VRMA with
 no matching target bones becomes a no-op rather than preventing model display. Dense or overlapping
-markers can be disambiguated with the previous/next joint controls.
+markers can be disambiguated with the scrollable joint dropdown. It lists only
+rig joints in stable catalog order with German/English labels; selecting a joint
+on the model updates the dropdown and vice versa.
 
 Two fingers still pan/pinch the camera. **Camera navigation** temporarily
 restores one-finger orbit without changing the pose; switch it off to edit
