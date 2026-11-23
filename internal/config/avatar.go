@@ -2,8 +2,10 @@ package config
 
 // AvatarZoomMin and AvatarZoomMax define the shared persisted/API percent range.
 const (
-	AvatarZoomMin = 50
-	AvatarZoomMax = 999
+	AvatarMouthIntensityDefault = 50
+	AvatarMouthIntensityMax     = 100
+	AvatarZoomMin               = 50
+	AvatarZoomMax               = 999
 	// A fitted model can extend half a viewport width from center. At 999% zoom,
 	// 500% translation keeps every model point reachable without changing pan units.
 	AvatarPositionLimit = 500
@@ -12,6 +14,8 @@ const (
 // Avatar contains the model and shared lab/conversation presentation.
 // Integer units are degrees and percent of the square rendering viewport.
 type Avatar struct {
+	// nil migrates old installations to 50%; explicit zero closes the mouth.
+	MouthIntensity *int `json:"mouth_intensity,omitempty"`
 	// Disabled flags preserve the legacy default: all three motions enabled.
 	IdleDisabled      bool   `json:"idle_disabled,omitempty"`
 	BlinkDisabled     bool   `json:"blink_disabled,omitempty"`
@@ -36,4 +40,12 @@ func (a Avatar) Presentation() Avatar {
 	a.X = max(-AvatarPositionLimit, min(AvatarPositionLimit, a.X))
 	a.Y = max(-AvatarPositionLimit, min(AvatarPositionLimit, a.Y))
 	return a
+}
+
+// MouthPercent preserves explicit zero while providing a safe legacy default.
+func (a Avatar) MouthPercent() int {
+	if a.MouthIntensity == nil {
+		return AvatarMouthIntensityDefault
+	}
+	return max(0, min(AvatarMouthIntensityMax, *a.MouthIntensity))
 }

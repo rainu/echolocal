@@ -157,6 +157,15 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 			v.app.Stop()
 			lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarBackgroundPage()) })
 		})),
+		avatarText(avatar.Text(say.Chosen(), "mouth_intensity")),
+		avatarRow(avatarButton("avatar-intensity-down", "− 10%", false, s.Options.MouthIntensity <= 0, func() { option(func(o *avatar.Options) { o.MouthIntensity -= .1 }) }), avatarText(fmt.Sprintf("%.0f %%", s.Options.MouthIntensity*100)), avatarButton("avatar-intensity-up", "+ 10%", false, s.Options.MouthIntensity >= 1, func() { option(func(o *avatar.Options) { o.MouthIntensity += .1 }) })),
+		avatarText(avatar.Text(say.Chosen(), "mouth_intensity_help")),
+		avatarRow(avatarButton("avatar-mouth-reset", avatar.Text(say.Chosen(), "mouth_reset"), false, false, func() { option(func(o *avatar.Options) { o.MouthIntensity = .5 }) })),
+		avatarRow(avatarButton("avatar-speech-preview", avatar.Text(say.Chosen(), "speech_preview"), s.Options.Mouth == avatar.MouthSpeechPreview, !supported, func() {
+			option(func(o *avatar.Options) { o.Mouth = avatar.MouthSpeechPreview })
+			v.app.Start()
+		})),
+		avatarText(avatar.Text(say.Chosen(), "speech_preview_help")),
 		avatarRow(avatarButton("avatar-fullscreen", avatar.Text(say.Chosen(), "fullscreen"), false, !supported, func() { v.openPreview() })),
 
 		avatarRow(avatarButton("avatar-save", avatar.Text(say.Chosen(), "save_presentation"), false, false, func() {

@@ -128,3 +128,60 @@ func TestOwnerBackgroundWebContract(t *testing.T) {
 		t.Fatal("invalid changed selection")
 	}
 }
+
+func TestOwnerWebMouthIntensityContractPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "avatar.json")
+	config.Use(path)
+	registry := &setting.Registry{}
+	c := &setting.Controls[config.Avatar]{Table: NewTable(), Read: config.AvatarSection.Read, Save: func(row setting.Setting[config.Avatar], v string) error {
+		return setting.Store(config.AvatarSection, row, v)
+	}}
+	registry.Add(c)
+	api := webapi.New(webapi.Options{Registry: registry, Settings: &zoomOwnerSettings{schema.Frontend{Password: "synthetic-owner"}}})
+	request := func(method, name, body string, auth bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/v1/settings/avatar/"+name, strings.NewReader(body))
+		req.TLS = &tls.ConnectionState{}
+		if auth {
+			req.SetBasicAuth("admin", "synthetic-owner")
+		}
+		w := httptest.NewRecorder()
+		api.Handler().ServeHTTP(w, req)
+		return w
+	}
+	if got := request(http.MethodPut, "mouth_intensity", `{"value":"100"}`, false).Code; got != 401 {
+		t.Fatal("unauthenticated", got)
+	}
+	for _, lang := range []string{"en", "de", "it", "vi"} {
+		if !strings.Contains(avatar.Text(lang, "mouth_intensity_help"), "100") {
+			t.Fatal("range help", lang)
+		}
+	}
+	for _, zoom := range []int{0, 50, 100} {
+		w := request(http.MethodPut, "mouth_intensity", `{"value":"`+strconv.Itoa(zoom)+`"}`, true)
+		if w.Code != 200 {
+			t.Fatal("write", zoom, w.Code, w.Body.String())
+		}
+		config.Use(path)
+		w = request(http.MethodGet, "mouth_intensity", "", true)
+		var field setting.Field
+		if err := json.Unmarshal(w.Body.Bytes(), &field); err != nil || w.Code != 200 || field.Min != 0 || field.Max != 100 || field.Value != strconv.Itoa(zoom) {
+			t.Fatal("restored web metadata", field, w.Code, err)
+		}
+	}
+	before := config.AvatarSection.Read()
+	for _, bad := range []string{"-1", "101", "50.5", "NaN"} {
+		if w := request(http.MethodPut, "mouth_intensity", `{"value":"`+bad+`"}`, true); w.Code != 422 || config.AvatarSection.Read() != before {
+			t.Fatal("invalid web write", bad, w.Code)
+		}
+	}
+	for _, axis := range []string{"x", "y"} {
+		for _, v := range []string{"-500", "500"} {
+			if w := request(http.MethodPut, axis, `{"value":"`+v+`"}`, true); w.Code != 200 {
+				t.Fatal(axis, v, w.Code)
+			}
+		}
+		if w := request(http.MethodPut, axis, `{"value":"501"}`, true); w.Code != 422 {
+			t.Fatal(axis, w.Code)
+		}
+	}
+}

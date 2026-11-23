@@ -186,6 +186,7 @@ existing settings API expose the same fields in domain `avatar`:
 
 | Field | Unit and accepted range | Default and interpretation |
 | --- | --- | --- |
+| mouth_intensity | integer percent, 0–100 | 50: restrained speech; 0 = closed, 100 = original strength |
 | zoom | integer percent, 50–999 | 100: fitted model; larger enlarges |
 | yaw | integer degrees, −180–180 | 0: front; horizontal model-center rotation |
 | pitch | integer degrees, −85–85 | 0: upright; vertical model-center rotation |
@@ -291,3 +292,29 @@ descriptor released on stop; no permanent imported copies accumulate. Invalid
 selection is rejected without losing the previous setting. Files subsequently
 removed, made unreadable or corrupted fall back to the default background with
 a localized recovery message, without blocking Talk.
+
+### Speech mouth intensity
+
+`avatar.mouth_intensity` is the same integer setting in on-device Presentation,
+owner web settings, settings API and existing Node settings commands. Invalid,
+fractional and nonfinite writes fail without changing storage. Old installations
+without the field use **50%**. Explicit **0%** survives save/restart and keeps the
+speech mouth at rest; **100%** restores the old strength. Reset presentation or
+the Lab mouth reset returns to 50%. Manual hand-edited storage is bounded.
+
+The Lab has live ±10% controls, a 50% reset and **Speech preview (silent)**. The
+preview replays an amplitude envelope derived from an offline synthesized speech
+recording, including pauses, without playing audio, capturing the microphone or
+connecting to an agent. Start/Stop and the other mouth-source buttons remain
+available. Preview/source choice is temporary; **Save presentation** persists the
+intensity for the next standalone wake-word Talk activation. Fullscreen remains
+a silent, closed-mouth composition preview, never a Talk session.
+
+Intensity multiplies the final bounded playback expression, after the existing
+speaker level calculation and before renderer smoothing. It never changes PCM,
+speaker volume, microphone gain, VAD or audio sent to an agent. The range cannot
+amplify above the old maximum or introduce extra clipping; rest remains zero.
+Existing interruption, stale-period and teardown resets are unchanged. Both VRM
+0/1 mouth bindings use their existing authored weights, clamped by the renderer;
+models without a compatible A/aa expression stay unchanged rather than failing.
+Different authored mouth shapes can still warrant a different saved percentage.

@@ -24,6 +24,7 @@ const (
 	MouthManual
 	MouthSynthetic
 	MouthMicrophone
+	MouthSpeechPreview
 )
 
 // MinZoom, MaxZoom and MaxPan are renderer-scale equivalents of the shared percent bounds.
@@ -37,11 +38,12 @@ type Options struct {
 	Idle, Blink, Animation bool
 	Mouth                  int
 	Fixed                  float64
+	MouthIntensity         float64
 	Yaw, Pitch, Zoom       float64
 	PanX, PanY             float64
 }
 
-// Mouth: 0 closed, 1 fixed, 2 synthetic, 3 local shared microphone.
+// Mouth: 0 closed, 1 fixed, 2 synthetic, 3 local shared microphone, 4 speech preview.
 type State struct {
 	Options                          Options
 	Running                          bool
@@ -74,7 +76,7 @@ type Controller struct {
 }
 
 func New(dir string, listen func() (<-chan []int16, func()), muted func() bool, redraw func()) *Controller {
-	return &Controller{dir: dir, renderer: layout.AvatarRenderer, resolve: ResolveAssets, viewport: Viewport{X: 640, Y: 80, Size: 640}, listen: listen, muted: muted, redraw: redraw, command: exec.CommandContext, state: State{Options: Options{Idle: true, Blink: true, Animation: true, Fixed: .5, Zoom: 1}, Notice: "ready"}}
+	return &Controller{dir: dir, renderer: layout.AvatarRenderer, resolve: ResolveAssets, viewport: Viewport{X: 640, Y: 80, Size: 640}, listen: listen, muted: muted, redraw: redraw, command: exec.CommandContext, state: State{Options: Options{Idle: true, Blink: true, Animation: true, Fixed: .5, MouthIntensity: .5, Zoom: 1}, Notice: "ready"}}
 }
 
 // SetSource is configured during GUI initialization. Changes are read at Start;
@@ -91,7 +93,7 @@ func (c *Controller) SetBackground(source func() string) {
 }
 func (c *Controller) Snapshot() State { c.mu.Lock(); defer c.mu.Unlock(); return c.state }
 func (c *Controller) Configure(o Options) {
-	if o.Mouth < 0 || o.Mouth > 3 || !finite(o.Fixed) || !finite(o.Yaw) || !finite(o.Pitch) || !finite(o.Zoom) || !finite(o.PanX) || !finite(o.PanY) {
+	if o.Mouth < 0 || o.Mouth > MouthSpeechPreview || !finite(o.MouthIntensity) || !finite(o.Fixed) || !finite(o.Yaw) || !finite(o.Pitch) || !finite(o.Zoom) || !finite(o.PanX) || !finite(o.PanY) {
 		return
 	}
 	// Zero-value Options retain the default framing for existing callers.
@@ -102,6 +104,7 @@ func (c *Controller) Configure(o Options) {
 	o.PanX = math.Max(-MaxPan, math.Min(MaxPan, o.PanX))
 	o.PanY = math.Max(-MaxPan, math.Min(MaxPan, o.PanY))
 	o.Pitch = math.Max(-85, math.Min(85, o.Pitch))
+	o.MouthIntensity = math.Max(0, math.Min(1, o.MouthIntensity))
 	o.Fixed = math.Max(0, math.Min(1, o.Fixed))
 	o.Yaw = math.Mod(o.Yaw+180, 360)
 	if o.Yaw < 0 {
@@ -291,6 +294,7 @@ func target(rms, floor float64) float64 {
 	return math.Min(1, math.Log(rms/gate)/math.Log(12))
 }
 func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser, cancel context.CancelFunc) {
+	previewStart := time.Time{}
 	tick := time.NewTicker(time.Second / 30)
 	defer tick.Stop()
 	var audio <-chan []int16
@@ -348,6 +352,11 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 			c.mu.Lock()
 			output := c.output
 			c.mu.Unlock()
+			if s.Options.Mouth != MouthSpeechPreview {
+				previewStart = time.Time{}
+			} else if previewStart.IsZero() {
+				previewStart = time.Now()
+			}
 			want := output == nil && s.Options.Mouth == MouthMicrophone && !muted
 			if want && release == nil {
 				audio, release = c.listen()
@@ -385,7 +394,10 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 				if !finite(level) {
 					level = 0
 				}
-				level = math.Max(0, math.Min(1, level))
+				level = SpeechMouth(level, o.MouthIntensity)
+				o.Mouth = MouthMicrophone
+			} else if o.Mouth == MouthSpeechPreview {
+				level = SpeechMouth(PreviewLevel(time.Since(previewStart)), o.MouthIntensity)
 				o.Mouth = MouthMicrophone
 			}
 			if _, err := fmt.Fprintf(stdin, "S %d %d %d %d %.4f %.4f %.4f %.4f %.4f %.4f %.4f\n", bit(o.Idle), bit(o.Blink), bit(o.Animation), o.Mouth, o.Fixed, level, o.Yaw, o.Pitch, o.Zoom, o.PanX, o.PanY); err != nil {

@@ -367,7 +367,7 @@ func TestPlaybackScalarNeverListensToMicrophone(t *testing.T) {
 	helper(c, "normal", &starts)
 	c.SetOutput(func() float64 { return math.Float64frombits(level.Load()) }, 2*time.Minute)
 	// Even selecting the old microphone mode must not attach capture in Talk.
-	c.Configure(Options{Mouth: MouthMicrophone})
+	c.Configure(Options{Mouth: MouthMicrophone, MouthIntensity: 1})
 	c.Start()
 	defer c.Stop()
 	eventually(t, func() bool { return c.Snapshot().Mouth == .75 })
