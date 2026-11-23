@@ -151,6 +151,9 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	if translated := avatar.Text(say.Chosen(), s.Notice); translated != "" {
 		note = translated
 	}
+	if s.Notice == "running" {
+		note = ""
+	}
 	if s.BackgroundNotice != "" {
 		note += " " + avatar.Text(say.Chosen(), s.BackgroundNotice)
 	}
@@ -169,7 +172,13 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 		}
 		return avatarButton(fmt.Sprintf("avatar-section-%d", n), label, v.section == n, false, func() { v.section = n })
 	}
-	body := []gogui.View{avatarHeading(avatarWords(sections[v.section][0], sections[v.section][1])), avatarText(note)}
+	body := []gogui.View{}
+	if v.section != 3 {
+		body = append(body, avatarHeading(avatarWords(sections[v.section][0], sections[v.section][1])))
+	}
+	if note != "" {
+		body = append(body, avatarText(note))
+	}
 	switch v.section {
 	case 0:
 		body = append(body, []gogui.View{
@@ -177,7 +186,6 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 				v.app.Stop()
 				lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarModelPage()) })
 			})),
-			avatarText(avatar.Text(say.Chosen(), "selection")),
 			avatarRow(avatarButton("avatar-background", avatar.Text(say.Chosen(), "background"), false, false, func() {
 				v.app.Stop()
 				lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarBackgroundPage()) })
@@ -216,7 +224,6 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 				option(func(o *avatar.Options) { o.Mouth = avatar.MouthSpeechPreview })
 				v.app.Start()
 			})),
-			avatarText(avatar.Text(say.Chosen(), "speech_preview_help")),
 			toggle("vrm-idle", "Idle movement", "Ruhebewegung", s.Options.Idle, func(o *avatar.Options) { o.Idle = !o.Idle }),
 			toggle("vrm-blink", "Blink", "Blinzeln", s.Options.Blink, func(o *avatar.Options) { o.Blink = !o.Blink }),
 			toggle("vrm-animation", "VRMA animation", "VRMA-Animation", s.Options.Animation, func(o *avatar.Options) { o.Animation = !o.Animation }),
@@ -225,8 +232,7 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 		body = append(body, []gogui.View{
 			avatarText(avatarWords("Mouth source", "Mundsteuerung")), avatarRow(modeButton(0), modeButton(1)), avatarRow(modeButton(2), modeButton(3)),
 			avatarRow(avatarButton("vrm-fixed-down", "−", false, s.Options.Mouth != 1, func() { option(func(o *avatar.Options) { o.Fixed -= .1 }) }), avatarText(fmt.Sprintf("%.0f %%", s.Options.Fixed*100)), avatarButton("vrm-fixed-up", "+", false, s.Options.Mouth != 1, func() { option(func(o *avatar.Options) { o.Fixed += .1 }) })),
-			avatarText(fmt.Sprintf("FPS %.1f · Frames %d · %.0f s\n%s %.0f %% · RMS %.4f\n%s %d · %s %d", s.FPS, s.Frames, s.Seconds, avatarWords("Mouth", "Mund"), s.Mouth*100, s.RMS, avatarWords("Mic blocks", "Mikrofonblöcke"), s.Blocks, avatarWords("Gaps >100ms", "Lücken >100ms"), s.Gaps)),
-			avatarText(avatarWords("Local level only; no recording or upload. Mic: stay quiet for 1 second. Hardware mute is respected.", "Nur lokaler Pegel; keine Aufnahme oder Übertragung. Mikrofon: 1 Sekunde ruhig bleiben. Hardware-Mute bleibt wirksam."))}...)
+			avatarText(fmt.Sprintf("FPS %.1f · Frames %d · %.0f s\n%s %.0f %% · RMS %.4f\n%s %d · %s %d", s.FPS, s.Frames, s.Seconds, avatarWords("Mouth", "Mund"), s.Mouth*100, s.RMS, avatarWords("Mic blocks", "Mikrofonblöcke"), s.Blocks, avatarWords("Gaps >100ms", "Lücken >100ms"), s.Gaps))}...)
 		if s.Muted {
 			body = append(body, avatarText(avatarWords("Microphone muted", "Mikrofon stummgeschaltet")))
 		}
