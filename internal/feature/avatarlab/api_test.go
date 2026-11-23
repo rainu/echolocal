@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,7 +67,7 @@ func TestOwnerWebZoomContractPersists(t *testing.T) {
 	}
 	before := config.AvatarSection.Read()
 	for _, bad := range []string{"49", "1000", "999.1", "NaN"} {
-		if w := request(http.MethodPut, "zoom", `{"value":"`+bad+`"}`, true); w.Code != 422 || config.AvatarSection.Read() != before {
+		if w := request(http.MethodPut, "zoom", `{"value":"`+bad+`"}`, true); w.Code != 422 || !reflect.DeepEqual(config.AvatarSection.Read(), before) {
 			t.Fatal("invalid web write", bad, w.Code)
 		}
 	}
@@ -170,7 +171,7 @@ func TestOwnerWebMouthIntensityContractPersists(t *testing.T) {
 	}
 	before := config.AvatarSection.Read()
 	for _, bad := range []string{"-1", "101", "50.5", "NaN"} {
-		if w := request(http.MethodPut, "mouth_intensity", `{"value":"`+bad+`"}`, true); w.Code != 422 || config.AvatarSection.Read() != before {
+		if w := request(http.MethodPut, "mouth_intensity", `{"value":"`+bad+`"}`, true); w.Code != 422 || !reflect.DeepEqual(config.AvatarSection.Read(), before) {
 			t.Fatal("invalid web write", bad, w.Code)
 		}
 	}
