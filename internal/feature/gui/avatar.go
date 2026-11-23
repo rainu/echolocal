@@ -253,7 +253,12 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 			}
 		})), avatarText(status),
 	}})
-	right := gogui.Column(gogui.ContainerCfg{ID: "avatar-preview-touch", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, OnMouseDown: func(e gogui.EventCtx) { v.beginAvatarDrag(e, avatar.Viewport{X: width / 2, Y: 80, Size: size}) }, Width: float32(width - width/2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(16), Content: []gogui.View{avatarText(s.ModelName + " · " + s.Credit), avatarText(avatarWords("One finger: rotate. Two: move. Pinch: zoom.", "Ein Finger: drehen. Zwei: verschieben. Zusammenziehen: zoomen."))}})
+	right := gogui.Column(gogui.ContainerCfg{ID: "avatar-preview-touch", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, OnMouseDown: func(e gogui.EventCtx) { v.beginAvatarDrag(e, avatar.Viewport{X: width / 2, Y: 80, Size: size}) }, Width: float32(width - width/2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{
+		gogui.Column(gogui.ContainerCfg{ID: "avatar-preview-info", Height: 80, Sizing: gogui.FillFixed, SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Padding: gogui.PadAll(8), Spacing: gogui.NoSpacing, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: []gogui.View{
+			avatarText(s.ModelName + " · " + s.Credit),
+			avatarText(avatarWords("One finger: rotate. Two: move. Pinch: zoom.", "Ein Finger: drehen. Zwei: bewegen. Zusammenziehen: zoomen.")),
+		}}),
+	}})
 	return gogui.Row(gogui.ContainerCfg{ID: "avatar-app", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Spacing: gogui.NoSpacing, Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{left, right}})
 }
 

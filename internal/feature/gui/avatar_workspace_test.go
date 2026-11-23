@@ -74,6 +74,10 @@ func TestAvatarWorkspaceSectionsAndPinnedActions(t *testing.T) {
 					if math.Abs(float64(avatarCaptionShape(t, root, "avatar-save").Y-saveY)) > .5 {
 						t.Fatalf("save moved with section %d: %v != %v", section, avatarCaptionShape(t, root, "avatar-save").Y, saveY)
 					}
+					info := avatarCaptionShape(t, root, "avatar-preview-info")
+					if info.Y < 0 || info.Y+info.Height > 80.5 || !info.Scrollable {
+						t.Fatal("credits/gesture text overlap the native viewport", info)
+					}
 					preview := avatarCaptionShape(t, root, "avatar-preview-touch")
 					if preview.X+preview.Width > float32(size[0])+.5 || preview.X < float32(size[0]/2)-16.5 {
 						t.Fatal("preview layout changed", preview)
