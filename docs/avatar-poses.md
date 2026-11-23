@@ -51,4 +51,6 @@ are unchanged. The renderer emits bounded AVATAR_JOINT ID X Y VISIBLE
 telemetry at 10 Hz in Lab only. Coordinates are viewport-local physical pixels,
 top-left origin, projected using the same matrix as the skinned mesh. Both
 sides reject invalid IDs, extra fields, non-finite numbers and out-of-range
-values. The native overlay owns no input or external resources.
+values. K HIDDEN makes the Lab surface transparent while the full-width native keyboard
+is open, without restarting rendering or losing the draft pose. Talk never uses
+this command. The native overlay owns no input or external resources.

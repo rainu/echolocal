@@ -1394,6 +1394,12 @@ int main(int argc, char **argv) {
         glDisable(GL_SCISSOR_TEST);
         if(appMode && controls.poseEdit)poseOverlay.draw(scene,view,controls.selected,w,h);
         if(full)cutouts.draw(w,h);
+        // The native layer must not cover the application's full-width keyboard.
+        // Keep all pose/model state alive; transparent pixels expose native UI.
+        if(appMode && !talkLayout && controls.hidden){
+          glDisable(GL_SCISSOR_TEST);glClearColor(0,0,0,0);
+          glClear(GL_COLOR_BUFFER_BIT);
+        }
         glFinish();
         need(glGetError() == GL_NO_ERROR, "GLES rendering error");
         times.push_back((now() - frame) * 1000);

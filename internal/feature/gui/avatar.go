@@ -126,6 +126,9 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	if v.load != nil && v.loaded.CompareAndSwap(false, true) {
 		v.load()
 	}
+	if c, ok := v.app.(interface{ SetLabOccluded(bool) }); ok {
+		c.SetLabOccluded(v.look != nil && v.look.Editor.Typing(w))
+	}
 	v.attachAvatarTouch(w)
 	if epoch := v.touchReset.Load(); v.touchSeenReset != epoch {
 		v.touchSeenReset = epoch

@@ -57,6 +57,7 @@ type State struct {
 }
 type Controller struct {
 	pose                 PoseState
+	labOccluded          bool
 	mu                   sync.Mutex
 	state                State
 	dir                  string
@@ -415,8 +416,14 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 				_ = f.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 			}
 			c.mu.Lock()
-			talk, full := c.talkLayout, c.fullscreen
+			talk, full, occluded := c.talkLayout, c.fullscreen, c.labOccluded
 			c.mu.Unlock()
+			if !talk {
+				if _, err := fmt.Fprintf(stdin, "K %d\n", bit(occluded)); err != nil {
+					cancel()
+					return
+				}
+			}
 			if talk {
 				if _, err := fmt.Fprintf(stdin, "T %d\n", bit(full)); err != nil {
 					cancel()
@@ -609,4 +616,12 @@ func (c *Controller) SetTalkMode(full bool) {
 	c.fullscreen = full
 	c.mu.Unlock()
 	c.redraw()
+}
+
+// SetLabOccluded reveals the native keyboard without stopping the renderer or
+// discarding unsaved joint edits. It is never configured by Talk.
+func (c *Controller) SetLabOccluded(hidden bool) {
+	c.mu.Lock()
+	c.labOccluded = hidden
+	c.mu.Unlock()
 }

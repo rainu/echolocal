@@ -13,7 +13,7 @@ struct RendererControl {
   int mode = 0;
  bool poseEdit=false, poseActive=false; int selected=-1;
  std::array<std::array<float,3>,54> pose{};
-  bool fullscreen = false;
+  bool fullscreen = false, hidden=false;
   float fixed = .5f, level = 0, yaw = 0, pitch = 0, zoom = 1, panX = 0, panY = 0;
   double updated = 0;
   std::string line;
@@ -24,6 +24,7 @@ struct RendererControl {
     if(sscanf(s.c_str(),"E %d %d %d %c",&i,&b,&a,&trailing)==3 && i>=0&&i<=1&&b>=-1&&b<54&&a>=0&&a<=1){poseEdit=i;selected=b;poseActive=a;return;}
     if(sscanf(s.c_str(),"P %d %f %f %f %c",&i,&rx,&ry,&rz,&trailing)==4&&i>=0&&i<54&&std::isfinite(rx)&&std::isfinite(ry)&&std::isfinite(rz)&&fabsf(rx)<=90&&fabsf(ry)<=90&&fabsf(rz)<=90){pose[i]={rx,ry,rz};return;}
     char tail;
+ if(sscanf(s.c_str(),"K %d %c",&i,&tail)==1&&(i==0||i==1)){hidden=i;return;}
     if (sscanf(s.c_str(), "T %d %c", &i, &tail) == 1 && (i==0 || i==1)) { fullscreen=i; return; }
     float f, l, y, p, z, x, t;
     char extra;
