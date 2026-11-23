@@ -127,9 +127,6 @@ func presentationMessage(k string) (string, bool) {
 	if k == "avatar.group.background" || k == "avatar.setting.background" || k == "avatar.entity.background" {
 		return "background", true
 	}
-	if k == "avatar.help.background" {
-		return "background_help", true
-	}
 	if k == "avatar.reset.background" {
 		return "background_reset", true
 	}

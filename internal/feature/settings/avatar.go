@@ -106,9 +106,8 @@ func AvatarBackgroundPage() *sharedshell.Page {
 		rows := []menu.Row{
 			{Label: text("background"), Value: c.Read().Background, Kind: menu.Field, Save: save},
 			{Label: text("background_reset"), Kind: menu.Plain},
-			{Label: text("background_help"), Kind: menu.Plain},
 		}
-		acts := []func(int){nil, func(int) { save("") }, nil}
+		acts := []func(int){nil, func(int) { save("") }}
 		if note != "" {
 			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
 			acts = append(acts, nil)
