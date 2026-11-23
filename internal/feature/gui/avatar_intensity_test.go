@@ -18,7 +18,7 @@ func TestLabSpeechIntensityControlsAndTranslations(t *testing.T) {
 		t.Run(lang, func(t *testing.T) {
 			say.Use(lang)
 			c := &avatarGestureController{state: avatar.State{Options: avatar.Options{MouthIntensity: .5, Zoom: 1}}}
-			v := &avatarView{app: c}
+			v := &avatarView{app: c, section: 2}
 			w := gogui.NewWindow(gogui.WindowCfg{State: new(int), Width: 1280, Height: 800})
 			w.SetView(v.build)
 			root := w.TestRender(nil)
@@ -30,8 +30,9 @@ func TestLabSpeechIntensityControlsAndTranslations(t *testing.T) {
 				t.Helper()
 				root = w.TestRender(nil)
 				s := avatarCaptionShape(t, root, id)
-				if s.Y < 0 || s.Y+s.Height > 800 {
-					if err := w.TestScroll(avatarCaptionID(t, w, "vrm-controls"), 0, 350-s.Y); err != nil {
+				scroller := avatarCaptionShape(t, root, "vrm-controls-2")
+				if s.Y < scroller.Y || s.Y+s.Height > scroller.Y+scroller.Height {
+					if err := w.TestScroll(avatarCaptionID(t, w, "vrm-controls-2"), 0, (scroller.Y+scroller.Height/2-s.Y-s.Height/2)/gogui.CurrentTheme().ScrollMultiplier); err != nil {
 						t.Fatal(err)
 					}
 					w.TestRender(nil)
