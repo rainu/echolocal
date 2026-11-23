@@ -178,8 +178,18 @@ func TestPoseJointDropdownSelectionAndModelSync(t *testing.T) {
 		if poseTextShape(root, poseJointName(8)) == nil {
 			t.Fatal("selected field out of sync")
 		}
-		// A selection on the model must be reflected in the closed dropdown too.
+		// A tap on the model closes an open dropdown and updates its field.
+		if err := w.TestClick(avatarCaptionID(t, w, "pose-joint")); err != nil {
+			t.Fatal(err)
+		}
+		w.TestRender(nil)
 		avatarSwipe(w, 740, 180, 740, 180)
+		for range 3 {
+			w.FrameFn()
+		}
+		if ids := w.ResolveID("avatar-app:avatar-workspace:vrm-controls-1:pose-joint:dropdown"); len(ids) != 0 {
+			t.Fatal("model tap left dropdown open", ids)
+		}
 		if c.pose.Selected != 5 {
 			t.Fatal("on-model head not selected", c.pose.Selected)
 		}

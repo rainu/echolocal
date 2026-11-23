@@ -336,6 +336,11 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 	if !state.Running || !state.Ready || !featureshell.Get().Visible(v) {
 		return
 	}
+	// The preview consumes pointer input, so the normal unclaimed-click blur
+	// cannot dismiss its sibling dropdown. Hand focus back explicitly.
+	if v.posePanel {
+		e.Window.QueueCommand(func(w *gogui.Window) { w.ClearFocus() })
+	}
 	if c, ok := v.app.(avatarPoseController); ok && c.PoseSnapshot().Enabled && !v.poseCamera {
 		v.beginPoseDrag(e, vp, float64(x), float64(y))
 		return
