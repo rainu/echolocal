@@ -94,6 +94,9 @@ func (v *avatarView) poseControls() []gogui.View {
 		}
 		c.SelectJoint(p.Joints[(index+delta+len(p.Joints))%len(p.Joints)].ID)
 	}
+	body = append(body,
+		avatarRow(avatarButton("pose-undo", avatarWords("Undo", "Rückgängig"), false, !p.CanUndo, func() { action("undo", "") }), avatarButton("pose-redo", avatarWords("Redo", "Wiederholen"), false, !p.CanRedo, func() { action("redo", "") })),
+		avatarButton("pose-reset-joint", avatarWords("Reset selected joint", "Gewähltes Gelenk zurücksetzen"), false, p.Selected < 0 || v.poseCamera, func() { action("reset-joint", "") }))
 	body = append(body, avatarRow(avatarButton("pose-joint-prev", "←", false, false, func() { cycle(-1) }), avatarButton("pose-joint-next", "→", false, false, func() { cycle(1) })))
 	axes := []gogui.View{}
 	for i, name := range []string{"X · " + avatarWords("red", "rot"), "Y · " + avatarWords("green", "grün"), "Z · " + avatarWords("blue", "blau")} {
@@ -107,49 +110,29 @@ func (v *avatarView) poseControls() []gogui.View {
 	adjust := func(delta float64) { c.RotateJoint(p.Selected, v.poseAxis, angle+delta) }
 	body = append(body, avatarText(fmt.Sprintf("%s · %.1f°  (−90…90°)", []string{"X", "Y", "Z"}[v.poseAxis], angle)),
 		avatarRow(avatarButton("pose-minus5", "−5°", false, p.Selected < 0 || v.poseCamera, func() { adjust(-5) }), avatarButton("pose-minus1", "−1°", false, p.Selected < 0 || v.poseCamera, func() { adjust(-1) }), avatarButton("pose-plus1", "+1°", false, p.Selected < 0 || v.poseCamera, func() { adjust(1) }), avatarButton("pose-plus5", "+5°", false, p.Selected < 0 || v.poseCamera, func() { adjust(5) })),
-		avatarRow(avatarButton("pose-rest", avatarWords("Rest pose", "Ruhepose"), false, false, func() { action("rest", ""); v.poseName = "" }), avatarButton("pose-revert", avatarWords("Revert edits", "Änderungen verwerfen"), false, false, func() { action("revert", ""); v.poseName = p.Name })))
-	if v.look != nil {
-		field := v.look.Input(gogui.InputCfg{ID: "pose-name", Text: v.poseName, Placeholder: avatarWords("Pose name (1–40 characters)", "Posenname (1–40 Zeichen)"), Sizing: gogui.FillFixed, Height: 56, OnTextChanged: func(s string, e gogui.EventCtx) { v.poseName = s; v.poseDelete = ""; e.Window.InvalidateLayout() }}, func() {})
-		body = append(body, gogui.Column(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Content: []gogui.View{field}, AmendLayout: func(ev gogui.EventCtx) {
-			top := v.look.Editor.Top
-			bottom := ev.Layout.Shape.Y + ev.Layout.Shape.Height
-			if v.look.Editor.Typing(ev.Window) && top > 0 && bottom > top-12 {
-				by := bottom - top + 20
-				id := fmt.Sprintf("vrm-controls-%d", v.section)
-				ev.Window.QueueCommand(func(w *gogui.Window) {
-					for _, resolved := range w.ResolveID(id) {
-						w.ScrollVerticalTo(resolved, w.ScrollVerticalOffset(resolved)-by)
-					}
-				})
-			}
-		}}))
+		avatarRow(avatarButton("pose-rest", avatarWords("Rest pose", "Ruhepose"), false, false, func() { action("rest", "") }), avatarButton("pose-revert", avatarWords("Revert edits", "Änderungen verwerfen"), false, false, func() { action("revert", "") })))
+	name := "Pose"
+	if len(p.Saved) > 0 {
+		name = p.Saved[0].Name
 	}
-	body = append(body, avatarButton("pose-save", avatarWords("Save named pose", "Benannte Pose speichern"), true, v.poseName == "", func() { action("save", strings.TrimSpace(v.poseName)) }))
+	body = append(body, avatarButton("pose-save", avatarWords("Save pose", "Pose speichern"), true, false, func() { action("save", name) }))
 	if p.Dirty {
 		body = append(body, avatarText(avatarWords("Unsaved pose changes", "Ungespeicherte Posenänderungen")))
 	}
 	if len(p.Saved) == 0 {
-		body = append(body, avatarText(avatarWords("No saved poses for this VRM.", "Keine gespeicherten Posen für dieses VRM.")))
-	}
-	for i, saved := range p.Saved {
-		label := saved.Name
-		if label == p.Name {
-			label = "● " + label
-		}
-		body = append(body, avatarButton(fmt.Sprintf("pose-load-%d", i), label, saved.Name == p.Name, false, func() { action("load", saved.Name); v.poseName = saved.Name }))
-	}
-	if p.Name != "" {
-		label := avatarWords("Delete selected pose", "Gewählte Pose löschen")
-		if v.poseDelete == p.Name {
+		body = append(body, avatarText(avatarWords("No saved pose for this VRM.", "Keine gespeicherte Pose für dieses VRM.")))
+	} else {
+		body = append(body, avatarButton("pose-load", avatarWords("Load saved pose", "Gespeicherte Pose laden"), false, false, func() { action("load", name) }))
+		label := avatarWords("Delete saved pose", "Gespeicherte Pose löschen")
+		if v.poseDelete == name {
 			label = avatarWords("Confirm deletion", "Löschen bestätigen")
 		}
 		body = append(body, avatarButton("pose-delete", label, false, false, func() {
-			if v.poseDelete != p.Name {
-				v.poseDelete = p.Name
+			if v.poseDelete != name {
+				v.poseDelete = name
 				return
 			}
-			action("delete", p.Name)
-			v.poseName = ""
+			action("delete", name)
 		}))
 	}
 	errCode := v.poseNotice
@@ -161,7 +144,6 @@ func (v *avatarView) poseControls() []gogui.View {
 			"pose_name_invalid": {"Use a unique name of 1–40 characters without control characters.", "Namen mit 1–40 Zeichen ohne Steuerzeichen verwenden."},
 			"pose_read_failed":  {"Pose library could not be read. It has not been overwritten.", "Posenbibliothek nicht lesbar. Sie wurde nicht überschrieben."},
 			"pose_save_failed":  {"Could not save pose. Check device storage and retry.", "Pose nicht gespeichert. Gerätespeicher prüfen und erneut versuchen."},
-			"pose_full":         {"32 poses per VRM maximum. Delete one before adding another.", "Maximal 32 Posen je VRM. Vorher eine Pose löschen."},
 			"pose_missing":      {"Pose not found.", "Pose nicht gefunden."},
 		}
 		m, ok := messages[errCode]
@@ -217,7 +199,11 @@ func (v *avatarView) beginPoseDrag(e gogui.EventCtx, vp avatar.Viewport, x, y fl
 	epoch := v.dragEpoch.Add(1)
 	decided := false
 	origin := p.Rotations[avatar.PoseBoneNames[id]][axis]
-	end := func() { v.dragEpoch.CompareAndSwap(epoch, epoch+1) }
+	_ = c.PoseAction("begin-edit", "")
+	end := func() {
+		v.dragEpoch.CompareAndSwap(epoch, epoch+1)
+		_ = c.PoseAction("end-edit", "")
+	}
 	move := func(m gogui.EventCtx) {
 		if m.Event == nil || v.touchMulti || v.dragEpoch.Load() != epoch || !featureshell.Get().Visible(v) {
 			return

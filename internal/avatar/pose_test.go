@@ -1,7 +1,7 @@
 package avatar
 
 import (
-	"fmt"
+	"encoding/json"
 	"math"
 	"os"
 	"strings"
@@ -19,46 +19,135 @@ func poseController(t *testing.T) *Controller {
 	c.SelectJoint(7)
 	return c
 }
-func TestPoseLibraryRoundtripAndModelIsolation(t *testing.T) {
+func TestPoseSingleSlotRoundtripAndModelIsolation(t *testing.T) {
 	c := poseController(t)
 	c.RotateJoint(7, 2, 35)
-	if err := c.PoseAction("save", "Wave"); err != nil {
+	if err := c.PoseAction("save", "Pose"); err != nil {
 		t.Fatal(err)
 	}
 	c.RotateJoint(7, 2, -20)
-	c.PoseAction("save", "Other")
-	c.PoseAction("load", "Wave")
+	if err := c.PoseAction("save", "Renamed"); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.pose.Saved) != 1 || c.pose.Saved[0].Name != "Renamed" {
+		t.Fatal(c.pose.Saved)
+	}
 	c.RotateJoint(7, 2, 70)
 	c.PoseAction("revert", "")
-	if got := c.PoseSnapshot().Rotations["leftUpperArm"][2]; got != 35 {
-		t.Fatal(got)
+	if c.pose.Rotations["leftUpperArm"][2] != -20 {
+		t.Fatal(c.pose)
 	}
 	c.loadPoses(strings.Repeat("b", 64))
 	if len(c.pose.Saved) != 0 {
-		t.Fatal("cross-model poses")
-	}
-	c.loadPoses(strings.Repeat("a", 64))
-	if len(c.pose.Saved) != 2 {
-		t.Fatal("restart lost library")
-	}
-	c.PoseAction("load", "Wave")
-	if c.pose.Rotations["leftUpperArm"][2] != 35 {
-		t.Fatal(c.pose)
-	}
-	c.PoseAction("rest", "")
-	if len(c.pose.Rotations) != 0 || c.pose.Name != "" {
-		t.Fatal("rest not distinct")
-	}
-	if err := c.PoseAction("delete", "Other"); err != nil {
-		t.Fatal(err)
+		t.Fatal("cross model")
 	}
 	c.loadPoses(strings.Repeat("a", 64))
 	if len(c.pose.Saved) != 1 {
-		t.Fatal("delete not persisted")
+		t.Fatal("restart lost pose")
+	}
+	c.PoseAction("load", "Renamed")
+	if c.pose.Rotations["leftUpperArm"][2] != -20 {
+		t.Fatal("wrong persisted pose")
 	}
 	info, err := os.Stat(c.posePath())
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal("private store", info, err)
+	}
+	c.PoseAction("delete", "Renamed")
+	c.loadPoses(strings.Repeat("a", 64))
+	if len(c.pose.Saved) != 0 {
+		t.Fatal("delete not persisted")
+	}
+}
+func TestPoseHistoryGroupingBranchAndJointReset(t *testing.T) {
+	c := poseController(t)
+	c.poseStats(2, "AVATAR_JOINT 8 150 130 1")
+	framing := c.Snapshot().Options
+	c.RotateJoint(8, 1, 15)
+	c.PoseAction("begin-edit", "")
+	for _, angle := range []float64{10, 20, 30} {
+		c.RotateJoint(7, 2, angle)
+	}
+	c.PoseAction("end-edit", "")
+	if len(c.pose.undo) != 2 {
+		t.Fatal("drag not grouped", len(c.pose.undo))
+	}
+	c.PoseAction("undo", "")
+	if c.pose.Rotations["leftUpperArm"][2] != 0 || c.pose.Rotations["leftLowerArm"][1] != 15 {
+		t.Fatal("undo drag", c.pose)
+	}
+	c.PoseAction("redo", "")
+	if c.pose.Rotations["leftUpperArm"][2] != 30 {
+		t.Fatal("redo drag")
+	}
+	c.PoseAction("reset-joint", "")
+	if c.pose.Rotations["leftUpperArm"] != (Rotation{}) || c.pose.Rotations["leftLowerArm"][1] != 15 {
+		t.Fatal("reset affected other joint")
+	}
+	c.PoseAction("undo", "")
+	if c.pose.Rotations["leftUpperArm"][2] != 30 {
+		t.Fatal("reset undo")
+	}
+	c.PoseAction("redo", "")
+	c.PoseAction("undo", "")
+	c.RotateJoint(7, 0, 5)
+	if c.PoseSnapshot().CanRedo {
+		t.Fatal("new edit retained redo")
+	}
+	c.PoseAction("save", "Pose")
+	c.PoseAction("rest", "")
+	c.PoseAction("undo", "")
+	if c.pose.Dirty || c.pose.Rotations["leftUpperArm"][0] != 5 {
+		t.Fatal("saved baseline not restored")
+	}
+	c.PoseAction("redo", "")
+	c.PoseAction("load", "Pose")
+	c.PoseAction("undo", "")
+	if len(c.pose.Rotations) != 0 {
+		t.Fatal("load not undoable")
+	}
+	if c.Snapshot().Options != framing {
+		t.Fatal("history changed framing")
+	}
+	for i := 0; i < 150; i++ {
+		c.RotateJoint(7, 0, float64(i%80))
+	}
+	if len(c.pose.undo) != poseHistoryLimit {
+		t.Fatal("history unbounded", len(c.pose.undo))
+	}
+	c.loadPoses(strings.Repeat("a", 64))
+	if c.PoseSnapshot().CanUndo || c.PoseSnapshot().CanRedo {
+		t.Fatal("history persisted")
+	}
+}
+func TestPoseHistoryNoopAndLegacyPreservation(t *testing.T) {
+	c := poseController(t)
+	c.RotateJoint(7, 0, 10)
+	n := len(c.pose.undo)
+	c.RotateJoint(7, 0, 10)
+	c.RotateJoint(900, 0, 10)
+	if len(c.pose.undo) != n {
+		t.Fatal("noop history")
+	}
+	c.PoseAction("undo", "")
+	if !c.PoseSnapshot().CanRedo {
+		t.Fatal("missing redo")
+	}
+	c.RotateJoint(7, 0, 0)
+	if !c.PoseSnapshot().CanRedo {
+		t.Fatal("noop erased redo")
+	}
+	legacy := poseFile{1, c.pose.Model, []SavedPose{{"First", map[string]Rotation{}}, {"Second", map[string]Rotation{"head": {1, 2, 3}}}}}
+	data, _ := json.Marshal(legacy)
+	if err := os.WriteFile(c.posePath(), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.loadPoses(c.pose.Model)
+	if err := c.PoseAction("save", "Updated"); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.pose.Saved) != 2 || c.pose.Saved[1].Name != "Second" || c.pose.Saved[1].Bones["head"] != (Rotation{1, 2, 3}) {
+		t.Fatal("legacy pose discarded")
 	}
 }
 func TestPoseWireValidationAndFramingSeparation(t *testing.T) {
@@ -118,12 +207,7 @@ func TestPoseCorruptStoreAndLimits(t *testing.T) {
 			t.Fatal(name)
 		}
 	}
-	for i := 0; i < 32; i++ {
-		if err := c.PoseAction("save", fmt.Sprint(i)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if c.PoseAction("save", "overflow") == nil {
-		t.Fatal("library not bounded")
+	if err := c.PoseAction("save", "Valid"); err != nil {
+		t.Fatal(err)
 	}
 }

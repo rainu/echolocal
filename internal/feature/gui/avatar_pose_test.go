@@ -6,9 +6,7 @@ import (
 	gogui "github.com/go-gui-org/go-gui/gui"
 	"github.com/ygelfand/echolocal/internal/avatar"
 	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
-	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/say"
-	"github.com/ygelfand/libcountertop/pkg/settings/schema"
 	"math"
 	"strings"
 	"testing"
@@ -16,7 +14,8 @@ import (
 
 type poseTestController struct {
 	avatarGestureController
-	pose avatar.PoseState
+	pose    avatar.PoseState
+	actions []string
 }
 
 func (c *poseTestController) PoseSnapshot() avatar.PoseState { return c.pose }
@@ -29,7 +28,10 @@ func (c *poseTestController) RotateJoint(id, axis int, value float64) {
 		c.pose.Rotations[avatar.PoseBoneNames[id]] = r
 	}
 }
-func (*poseTestController) PoseAction(string, string) error { return nil }
+func (c *poseTestController) PoseAction(action, name string) error {
+	c.actions = append(c.actions, action)
+	return nil
+}
 func poseGUIFixture(t *testing.T) (*gogui.Window, *avatarView, *poseTestController) {
 	c := &poseTestController{avatarGestureController: avatarGestureController{state: avatar.State{Running: true, Ready: true, Options: avatar.Options{Zoom: 1}}}, pose: avatar.PoseState{Enabled: true, Selected: 7, Joints: []avatar.Joint{{ID: 7, X: 260, Y: 220, Visible: true}, {ID: 8, X: 150, Y: 220, Visible: true}}, Rotations: map[string]avatar.Rotation{}}}
 	v := &avatarView{app: c, section: 1, posePanel: true}
@@ -51,6 +53,9 @@ func TestPoseHandleTouchVersusCamera(t *testing.T) {
 	avatarSwipe(w, 964, 300, 1004, 300)
 	if math.Abs(c.pose.Rotations["leftUpperArm"][0]-20) > .01 || c.state.Options != before {
 		t.Fatal("handle moved framing or wrong joint", c.pose, c.state.Options)
+	}
+	if len(c.actions) != 2 || c.actions[0] != "begin-edit" || c.actions[1] != "end-edit" {
+		t.Fatal("drag transaction", c.actions)
 	}
 	avatarSwipe(w, 1100, 550, 1200, 550)
 	if c.state.Options != before {
@@ -83,7 +88,7 @@ func TestPosePanelLocalizationAndUnavailableRig(t *testing.T) {
 		if !strings.Contains(texts, avatarWords("Pose editing", "Pose bearbeiten")) || !strings.Contains(texts, avatarWords("Left Upper arm", "Links Oberarm")) {
 			t.Fatal("localization", texts)
 		}
-		for _, id := range []string{"pose-exit", "pose-camera", "pose-joint-prev", "pose-joint-next", "pose-axis-0", "pose-axis-1", "pose-axis-2", "pose-minus1", "pose-plus1", "pose-rest", "pose-revert", "pose-save"} {
+		for _, id := range []string{"pose-exit", "pose-camera", "pose-joint-prev", "pose-joint-next", "pose-axis-0", "pose-axis-1", "pose-axis-2", "pose-minus1", "pose-plus1", "pose-rest", "pose-revert", "pose-save", "pose-undo", "pose-redo", "pose-reset-joint"} {
 			avatarCaptionShape(t, root, id)
 		}
 		c.pose.Joints = nil
@@ -98,34 +103,26 @@ func TestPosePanelLocalizationAndUnavailableRig(t *testing.T) {
 	}
 }
 
-type poseScreenSettings struct{}
-
-func (poseScreenSettings) Read() schema.Screen               { return schema.Screen{} }
-func (poseScreenSettings) Update(func(*schema.Screen)) error { return nil }
-func TestPoseNameRemainsVisibleAboveKeyboard(t *testing.T) {
-	w, v, c := poseGUIFixture(t)
-	v.look = widgets.NewUI(poseScreenSettings{})
-	v.poseName = "Visible draft"
-	root := w.TestRender(nil)
-	field := avatarCaptionShape(t, root, "pose-name")
-	scroller := avatarCaptionShape(t, root, "vrm-controls-1")
-	w.TestScroll(avatarCaptionID(t, w, "vrm-controls-1"), 0, (scroller.Y+scroller.Height/2-field.Y-field.Height/2)/gogui.CurrentTheme().ScrollMultiplier)
-	w.TestRender(nil)
-	if err := w.TestClick(avatarCaptionID(t, w, "pose-name")); err != nil {
-		t.Fatal(err)
-	}
-	w.FrameFn()
-	v.look.Editor.Top = 470
+func TestPoseSingleSlotAndHistoryControls(t *testing.T) {
+	w, _, c := poseGUIFixture(t)
+	c.pose.CanUndo, c.pose.CanRedo = true, true
+	c.pose.Saved = []avatar.SavedPose{{Name: "Existing"}}
 	w.InvalidateLayout()
-	for range 5 {
-		w.FrameFn()
+	root := w.TestRender(nil)
+	for _, id := range []string{"pose-undo", "pose-redo", "pose-reset-joint", "pose-load", "pose-save"} {
+		root = w.TestRender(nil)
+		field := avatarCaptionShape(t, root, id)
+		scroller := avatarCaptionShape(t, root, "vrm-controls-1")
+		w.TestScroll(avatarCaptionID(t, w, "vrm-controls-1"), 0, (scroller.Y+scroller.Height/2-field.Y-field.Height/2)/gogui.CurrentTheme().ScrollMultiplier)
+		w.TestRender(nil)
+		if err := w.TestClick(avatarCaptionID(t, w, id)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	root = w.TestRender(nil)
-	field = avatarCaptionShape(t, root, "pose-name")
-	if !v.look.Editor.Typing(w) || field.Y < 178 || field.Y+field.Height > 458 {
-		t.Fatalf("name hidden behind keyboard or focus lost: y=%v height=%v typing=%v", field.Y, field.Height, v.look.Editor.Typing(w))
+	if strings.Join(c.actions, ",") != "undo,redo,reset-joint,load,save" {
+		t.Fatal(c.actions)
 	}
-	if v.poseName != "Visible draft" || c.pose.Selected != 7 {
-		t.Fatal("keyboard discarded pose/name state")
+	if strings.Contains(strings.Join(avatarCaptionTexts(root), " "), "Save named pose") {
+		t.Fatal("old library UI")
 	}
 }

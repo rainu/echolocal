@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -34,10 +35,55 @@ type PoseState struct {
 	Rotations              map[string]Rotation
 	Saved                  []SavedPose
 	Name, Error            string
+	CanUndo, CanRedo       bool
+	undo, redo             []poseEdit
+	grouping, grouped      bool
 	readFailed             bool
 	revision               uint64
 }
 
+// History is transient and bounded; saved poses and framing are not undo state.
+type poseEdit struct {
+	Bones  map[string]Rotation
+	Name   string
+	Active bool
+}
+
+const poseHistoryLimit = 100
+
+func (c *Controller) poseEdit() poseEdit {
+	return poseEdit{copyRotations(c.pose.Rotations), c.pose.Name, c.pose.Active}
+}
+func pushPoseEdit(stack []poseEdit, edit poseEdit) []poseEdit {
+	if len(stack) == poseHistoryLimit {
+		stack = stack[1:]
+	}
+	return append(stack, edit)
+}
+func (c *Controller) recordPoseEdit(before poseEdit) {
+	if maps.Equal(before.Bones, c.pose.Rotations) && before.Name == c.pose.Name && before.Active == c.pose.Active {
+		return
+	}
+	if !c.pose.grouping || !c.pose.grouped {
+		c.pose.undo = pushPoseEdit(c.pose.undo, before)
+		c.pose.redo = nil
+		c.pose.grouped = c.pose.grouping
+	}
+}
+func (c *Controller) restorePoseEdit(edit poseEdit) {
+	c.pose.Rotations = copyRotations(edit.Bones)
+	c.pose.Name, c.pose.Active = edit.Name, edit.Active
+	c.pose.Dirty = len(c.pose.Rotations) != 0
+	if len(c.pose.Saved) > 0 {
+		c.pose.Dirty = !maps.Equal(c.pose.Saved[0].Bones, c.pose.Rotations)
+	}
+	for _, saved := range c.pose.Saved {
+		if saved.Name == c.pose.Name {
+			c.pose.Dirty = !maps.Equal(saved.Bones, c.pose.Rotations)
+			break
+		}
+	}
+}
 func copyRotations(in map[string]Rotation) map[string]Rotation {
 	out := map[string]Rotation{}
 	for k, v := range in {
@@ -49,6 +95,8 @@ func (c *Controller) PoseSnapshot() PoseState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	s := c.pose
+	s.CanUndo, s.CanRedo = len(s.undo) > 0, len(s.redo) > 0
+	s.undo, s.redo = nil, nil
 	s.Joints = append([]Joint(nil), s.Joints...)
 	s.Rotations = copyRotations(s.Rotations)
 	s.Saved = append([]SavedPose(nil), s.Saved...)
@@ -202,9 +250,18 @@ func (c *Controller) RotateJoint(id, axis int, value float64) {
 	if c.pose.Enabled {
 		for _, j := range c.pose.Joints {
 			if j.ID == id {
+				before := c.poseEdit()
 				r := c.pose.Rotations[PoseBoneNames[id]]
 				r[axis] = math.Max(-90, math.Min(90, value))
-				c.pose.Rotations[PoseBoneNames[id]] = r
+				if r == c.pose.Rotations[PoseBoneNames[id]] {
+					break
+				}
+				if r == (Rotation{}) {
+					delete(c.pose.Rotations, PoseBoneNames[id])
+				} else {
+					c.pose.Rotations[PoseBoneNames[id]] = r
+				}
+				c.recordPoseEdit(before)
 				c.pose.Dirty = true
 				c.pose.Active = true
 				c.pose.revision++
@@ -217,7 +274,7 @@ func (c *Controller) RotateJoint(id, axis int, value float64) {
 }
 
 // PoseAction changes only Lab state/library, never Talk or model/framing settings.
-// Save replaces only the exactly named pose. New names create distinct entries.
+// Save updates the single current slot. Legacy additional entries are preserved.
 func (c *Controller) PoseAction(action, name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -226,7 +283,45 @@ func (c *Controller) PoseAction(action, name string) error {
 		return errors.New("pose_read_failed")
 	}
 	c.pose.Error = ""
+	before := c.poseEdit()
+	if action != "begin-edit" && action != "end-edit" {
+		c.pose.grouping, c.pose.grouped = false, false
+	}
 	switch action {
+	case "begin-edit":
+		c.pose.grouping, c.pose.grouped = true, false
+		return nil
+	case "end-edit":
+		c.pose.grouping, c.pose.grouped = false, false
+		return nil
+	case "undo", "redo":
+		from, to := &c.pose.undo, &c.pose.redo
+		if action == "redo" {
+			from, to = to, from
+		}
+		if len(*from) == 0 {
+			return nil
+		}
+		edit := (*from)[len(*from)-1]
+		*from = (*from)[:len(*from)-1]
+		*to = pushPoseEdit(*to, before)
+		c.restorePoseEdit(edit)
+	case "reset-joint":
+		if c.pose.Selected < 0 || c.pose.Selected >= len(PoseBoneNames) {
+			return nil
+		}
+		found := false
+		for _, j := range c.pose.Joints {
+			if j.ID == c.pose.Selected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+		delete(c.pose.Rotations, PoseBoneNames[c.pose.Selected])
+		c.pose.Dirty, c.pose.Active = true, true
 	case "rest":
 		c.pose.Rotations = map[string]Rotation{}
 		c.pose.Name = ""
@@ -234,7 +329,10 @@ func (c *Controller) PoseAction(action, name string) error {
 		c.pose.Active = true
 	case "load", "revert":
 		if action == "revert" {
-			name = c.pose.Name
+			name = ""
+			if len(c.pose.Saved) > 0 {
+				name = c.pose.Saved[0].Name
+			}
 		}
 		found := false
 		for _, s := range c.pose.Saved {
@@ -273,11 +371,10 @@ func (c *Controller) PoseAction(action, name string) error {
 			c.pose.Saved = append(c.pose.Saved[:index:index], c.pose.Saved[index+1:]...)
 		} else {
 			if index < 0 {
-				if len(c.pose.Saved) >= 32 {
-					return fail("pose_full")
+				if len(c.pose.Saved) == 0 {
+					c.pose.Saved = append(c.pose.Saved, SavedPose{})
 				}
-				c.pose.Saved = append(c.pose.Saved, SavedPose{})
-				index = len(c.pose.Saved) - 1
+				index = 0
 			}
 			c.pose.Saved[index] = SavedPose{name, copyRotations(c.pose.Rotations)}
 		}
@@ -294,6 +391,9 @@ func (c *Controller) PoseAction(action, name string) error {
 		}
 	default:
 		return fail("pose_invalid")
+	}
+	if action == "rest" || action == "reset-joint" || action == "load" || action == "revert" {
+		c.recordPoseEdit(before)
 	}
 	c.pose.revision++
 	return nil

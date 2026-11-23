@@ -36,7 +36,7 @@ type avatarLabController interface {
 type avatarView struct {
 	look                  *widgets.UI
 	posePanel, poseCamera bool
-	poseName, poseDelete  string
+	poseDelete            string
 	poseAxis              int
 	poseNotice            string
 	retiring              atomic.Pointer[avatar.Controller]

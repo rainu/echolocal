@@ -1,4 +1,4 @@
-# Avatar Lab pose library
+# Avatar Lab pose editor
 
 Experimental Athena Avatar Lab only; poses do not automatically apply to Talk.
 
@@ -29,17 +29,29 @@ displayed, idle/VRMA and node constraints are suspended so they cannot overwrite
 joint edits; blink/mouth controls remain independent. The pose remains displayed
 after leaving manipulation until Stop/Start or an explicit rest/load action.
 
-**Rest pose** clears rotations (distinct from every named pose). **Revert edits**
-reloads the selected saved pose, or rest if no named pose is selected. Enter a
-name of 1–40 characters and **Save named pose**. Saving an existing exact name
-updates it; a different name creates another pose (up to 32 per model).
-Selecting a name explicitly loads it, replacing current unsaved edits.
-Deletion requires a second confirmation and never alters other saved poses.
+**Undo / Redo** (**Rückgängig / Wiederholen**) step through this Lab session's
+pose edits; one handle drag is one step, each fine adjustment is one step.
+Rest/load/revert and selected-joint resets are also undoable. A new edit after
+Undo discards the redo branch; no-op edits, camera navigation and saving do not.
+History retains the latest 100 steps and is cleared when the renderer/model
+session restarts; it is not persisted.
+
+**Reset selected joint** clears all three local rotation components of only the
+selected joint to its authored rest rotation. Other joints and framing stay
+unchanged. **Rest pose** resets the whole skeleton. **Revert edits** reloads the
+saved pose (or rest when none is saved).
+
+There is one visible saved pose per model: **Save pose** updates it,
+**Load saved pose** restores it, and deletion requires confirmation.
+No pose naming or multiple-pose library is exposed yet. Older multi-entry files
+remain readable and extra legacy entries are preserved when saving; the UI
+shows the first entry. Saving/deleting is persistent and is not undone by
+Undo/Redo, which only changes the in-session pose draft.
 
 The library uses a versioned, bounded JSON file per loaded VRM SHA-256 digest,
 not its display name or path. Identical model bytes share a library; replacing a
 file with different contents selects a different library. A new Lab renderer
-starts at its normal presentation; saved poses are available to select again.
+starts at its normal presentation; the saved pose is available to load again.
 Libraries survive service/device restart. Writes use mode 0600, fsync and atomic
 rename plus directory sync. Corrupt/incompatible libraries fail closed and cannot
 be overwritten by Save/Delete in that run. No existing settings migration or
@@ -53,6 +65,4 @@ telemetry at 10 Hz in Lab only. Coordinates are viewport-local physical pixels,
 top-left origin, projected using the same matrix as the skinned mesh. Both
 sides reject invalid IDs, extra fields, non-finite numbers and out-of-range
 values. K HIDDEN makes the Lab surface transparent while the full-width native keyboard
-is open, without restarting rendering or losing the draft pose. The name field
-scrolls above the keyboard in the fixed Lab workspace. Talk never uses
-this command. The native overlay owns no input or external resources.
+is open, without restarting rendering or losing the draft pose. Talk never uses this command. The native overlay owns no input or external resources.
