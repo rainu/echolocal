@@ -34,31 +34,40 @@ type avatarLabController interface {
 	SetViewport(avatar.Viewport)
 }
 type avatarView struct {
-	retiring       atomic.Pointer[avatar.Controller]
-	resume         atomic.Bool
-	section        int
-	fullscreen     bool
-	note           string
-	app            avatarLabController
-	dragEpoch      atomic.Uint64
-	load           func()
-	loaded         atomic.Bool
-	touchWindow    *gogui.Window
-	touchMulti     bool
-	touchSeenReset uint64
-	touchReset     atomic.Uint64
+	look                  *widgets.UI
+	posePanel, poseCamera bool
+	poseName, poseDelete  string
+	poseAxis              int
+	poseNotice            string
+	retiring              atomic.Pointer[avatar.Controller]
+	resume                atomic.Bool
+	section               int
+	fullscreen            bool
+	note                  string
+	app                   avatarLabController
+	dragEpoch             atomic.Uint64
+	load                  func()
+	loaded                atomic.Bool
+	touchWindow           *gogui.Window
+	touchMulti            bool
+	touchSeenReset        uint64
+	touchReset            atomic.Uint64
 }
 
 func (*avatarView) Covers() bool           { return true }
 func (*avatarView) Timeout() time.Duration { return 6 * time.Minute }
 func (v *avatarView) Close() {
+	if c, ok := v.app.(avatarPoseController); ok {
+		c.PoseMode(false)
+	}
+	v.posePanel = false
 	v.resume.Store(false)
 	v.loaded.Store(false)
 	v.dragEpoch.Add(1)
 	v.touchReset.Add(1)
 	v.app.Stop()
 }
-func extendAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
+func extendAvatar(look *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	if component.Board().Codename != "athena" {
 		return
 	}
@@ -66,7 +75,7 @@ func extendAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	c.SetSource(func() string { return config.AvatarSection.Read().Path })
 
 	avatarlab.Controls()
-	v := &avatarView{app: c}
+	v := &avatarView{app: c, look: look}
 	c.SetBackground(func() string { return config.AvatarSection.Read().Composition(v.fullscreen).Background })
 	v.load = func() { c.Configure(avatarlab.Options(config.AvatarSection.Read().Composition(v.fullscreen))) }
 	open := func() {
@@ -173,7 +182,7 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 		if v.section == n {
 			label = "● " + label
 		}
-		return avatarButton(fmt.Sprintf("avatar-section-%d", n), label, v.section == n, false, func() { v.section = n })
+		return avatarButton(fmt.Sprintf("avatar-section-%d", n), label, v.section == n, false, func() { v.leavePose(); v.section = n })
 	}
 	body := []gogui.View{}
 	if v.section != 3 {
@@ -213,6 +222,15 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 			})),
 		}...)
 	case 1:
+		body = append(body, avatarButton("avatar-pose-enter", avatarWords("Edit pose…", "Pose bearbeiten…"), false, !s.Ready, func() {
+			if c, ok := v.app.(avatarPoseController); ok {
+				v.posePanel = true
+				v.poseCamera = false
+				c.PoseMode(true)
+				v.dragEpoch.Add(1)
+				v.touchReset.Add(1)
+			}
+		}))
 		body = append(body, []gogui.View{
 			avatarText(fmt.Sprintf("%s %.0f° / %.0f° · %.0f %%", avatarWords("Rotation", "Drehung"), s.Options.Yaw, s.Options.Pitch, avatar.EffectiveZoom(s.Options.Zoom)*100)),
 			avatarText(fmt.Sprintf("X %+.0f %% · Y %+.0f %%", s.Options.PanX*100, s.Options.PanY*100)),
@@ -257,6 +275,9 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 			body = append(body, avatarText(avatarWords("Microphone muted", "Mikrofon stummgeschaltet")))
 		}
 	}
+	if v.posePanel {
+		body = v.poseControls()
+	}
 	status := avatarWords("Preview stopped", "Vorschau gestoppt")
 	if s.Running {
 		status = avatarWords("Preview running", "Vorschau läuft")
@@ -287,7 +308,7 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	right := gogui.Column(gogui.ContainerCfg{ID: "avatar-preview-touch", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, OnMouseDown: func(e gogui.EventCtx) { v.beginAvatarDrag(e, avatar.Viewport{X: width / 2, Y: 80, Size: size}) }, Width: float32(width - width/2), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{
 		gogui.Column(gogui.ContainerCfg{ID: "avatar-preview-info", Height: 80, Sizing: gogui.FillFixed, SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Padding: gogui.PadAll(8), Spacing: gogui.NoSpacing, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: []gogui.View{
 			avatarText(s.ModelName + " · " + s.Credit),
-			avatarText(avatarWords("One finger: rotate. Two: move. Pinch: zoom.", "Ein Finger: drehen. Zwei: bewegen. Zusammenziehen: zoomen.")),
+			avatarText(v.poseHint()),
 		}}),
 	}})
 	return gogui.Row(gogui.ContainerCfg{ID: "avatar-app", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Spacing: gogui.NoSpacing, Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Content: []gogui.View{left, right}})
@@ -304,6 +325,10 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 	}
 	state := v.app.Snapshot()
 	if !state.Running || !state.Ready || !featureshell.Get().Visible(v) {
+		return
+	}
+	if c, ok := v.app.(avatarPoseController); ok && c.PoseSnapshot().Enabled && !v.poseCamera {
+		v.beginPoseDrag(e, vp, float64(x), float64(y))
 		return
 	}
 	epoch := v.dragEpoch.Add(1)
@@ -342,6 +367,7 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 }
 
 func (v *avatarView) selectComposition(full bool) {
+	v.leavePose()
 	if v.fullscreen == full {
 		return
 	}

@@ -6,6 +6,7 @@
 #define STBI_ONLY_JPEG
 #include "turntable.hpp"
 #include "viewport.hpp"
+#include "pose.hpp"
 #include "vendor/json.hpp"
 #include "vendor/stb_image.h"
 #include <EGL/egl.h>
@@ -647,6 +648,16 @@ struct Scene {
     }
   }
 };
+// Expose only independent, active TRS joints. Aliased humanoid names must not
+// reset the same node twice or create coincident competing controls.
+static int poseNode(const Scene &scene,int id){
+ if(id<0||id>=poseCount)return -1;
+ auto it=scene.bones.find(poseNames[id]);if(it==scene.bones.end())return -1;
+ int node=it->second;
+ if(!scene.active[node]||scene.d->nodes[node].has_matrix)return -1;
+ for(int before=0;before<id;before++){auto b=scene.bones.find(poseNames[before]);if(b!=scene.bones.end()&&b->second==node)return -1;}
+ return node;
+}
 // VRMA humanoid retargeting. Rotation deltas are conjugated from source bind
 // coordinates to target bind coordinates; hips translation uses height ratio.
 // Expression/lookAt tracks and spring physics are outside this renderer
@@ -921,6 +932,46 @@ void main(){if(distance(gl_FragCoord.xy,center)>39.)discard;outColor=vec4(0.);})
  ~ControlCutouts(){if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
 };
 
+struct PoseOverlay {
+ GLuint prog=0,vao=0;
+ PoseOverlay(){
+ const char *vs=R"(#version 300 es
+ void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.-1.,0.,1.);})";
+ const char *fs=R"(#version 300 es
+ precision highp float;uniform vec2 start,end;uniform vec4 color;uniform float radius;out vec4 outColor;
+ void main(){vec2 d=end-start;float t=clamp(dot(gl_FragCoord.xy-start,d)/max(dot(d,d),.01),0.,1.);float line=distance(gl_FragCoord.xy,start+t*d);float tip=distance(gl_FragCoord.xy,end);if(line>3.&&tip>radius)discard;outColor=color;})";
+ GLuint v=shader(GL_VERTEX_SHADER,vs),f=shader(GL_FRAGMENT_SHADER,fs);
+ prog=glCreateProgram();glAttachShader(prog,v);glAttachShader(prog,f);glLinkProgram(prog);glDeleteShader(v);glDeleteShader(f);
+ GLint ok=0;glGetProgramiv(prog,GL_LINK_STATUS,&ok);need(ok,"pose overlay shader failed");glGenVertexArrays(1,&vao);
+ }
+ void mark(float x,float y,float dx,float dy,float r,float red,float green,float blue,int w,int h){
+ glUniform2f(glGetUniformLocation(prog,"start"),x,y);glUniform2f(glGetUniformLocation(prog,"end"),x+dx,y+dy);
+ glUniform4f(glGetUniformLocation(prog,"color"),red,green,blue,1);glUniform1f(glGetUniformLocation(prog,"radius"),r);
+ int left=std::max(0,int(std::min(x,x+dx)-r-4)),bottom=std::max(0,int(std::min(y,y+dy)-r-4));
+ glScissor(left,bottom,std::max(0,std::min(w,int(std::max(x,x+dx)+r+4))-left),std::max(0,std::min(h,int(std::max(y,y+dy)+r+4))-bottom));
+ glDrawArrays(GL_TRIANGLES,0,3);
+ }
+ void draw(Scene &scene,const M &view,int selected,int w,int h){
+ glViewport(0,0,w,h);glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);glEnable(GL_SCISSOR_TEST);
+ glUseProgram(prog);glBindVertexArray(vao);
+ for(int id=0;id<poseCount;id++){
+ int node=poseNode(scene,id);if(node<0)continue;
+ auto m=mul(view,scene.world[node]);float x=(m[12]*.5f+.5f)*w,y=(m[13]*.5f+.5f)*h;
+ if(x<0||x>=w||y<0||y>=h||m[14]<-1||m[14]>1)continue;
+ mark(x,y,0,0,id==selected?12:7,1,id==selected?.85f:1,.2f,w,h);
+ }
+ if(selected>=0 && selected<poseCount){
+ auto it=scene.bones.find(poseNames[selected]);
+ if(it!=scene.bones.end()){
+ auto m=mul(view,scene.world[it->second]);float x=(m[12]*.5f+.5f)*w,y=(m[13]*.5f+.5f)*h;
+ if(x>=0&&x<w&&y>=0&&y<h){
+ mark(x,y,64,0,18,1,.25,.25,w,h);mark(x,y,0,64,18,.25,1,.25,w,h);mark(x,y,-45,-45,18,.3,.6,1,w,h);
+ }}}
+ glDisable(GL_SCISSOR_TEST);glDepthMask(GL_TRUE);glEnable(GL_DEPTH_TEST);
+ }
+ ~PoseOverlay(){if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
+};
+
 struct EGL {
   EGLDisplay display = EGL_NO_DISPLAY;
   EGLContext context = EGL_NO_CONTEXT;
@@ -1139,6 +1190,7 @@ int main(int argc, char **argv) {
       stage = "gpu_failed";
       Background backdrop(background), fullBackdrop(fullBackground);
       ControlCutouts cutouts;
+ PoseOverlay poseOverlay;
       GLuint prog = program();
       glUseProgram(prog);
       glUniform1i(glGetUniformLocation(prog, "image"), 0);
@@ -1215,7 +1267,7 @@ int main(int argc, char **argv) {
       float mouth = 0;
       size_t frames = 0;
       bool captured = false;
-      double nextStats = 0;
+      double nextStats = 0, nextJoints=0;
       while (!stopped && now() - start < seconds) {
         controls.read();
         if (controls.ended)
@@ -1248,10 +1300,19 @@ int main(int argc, char **argv) {
         mouth += (target - mouth) * (target > mouth ? .7f : .45f);
         float phase = float(fmod(t, 4.2));
         float blink = phase < .16f ? sinf(phase / .16f * 3.14159265f) : 0;
-        scene.animate(t, appMode ? controls.idle : (idle && !animation));
-        if (!appMode || controls.animation)
+        scene.animate(t, appMode ? (controls.idle && !controls.poseActive) : (idle && !animation));
+        if (!appMode || (controls.animation && !controls.poseActive))
           motion.apply(scene, t);
-        scene.constraints();
+        if(appMode && controls.poseActive){
+          for(int id=0;id<poseCount;id++){
+            int index=poseNode(scene,id);if(index<0)continue;
+            auto &node=scene.d->nodes[index];
+            Q q;memcpy(q.data(),scene.rest[index].q,16);
+            for(int axis=0;axis<3;axis++){float angle=controls.pose[id][axis]*3.14159265f/180;Q delta={0,0,0,cosf(angle/2)};delta[axis]=sinf(angle/2);q=qm(q,delta);}
+            memcpy(node.rotation,q.data(),16);node.has_rotation=1;
+          }
+          scene.transforms();
+        }else scene.constraints();
         scene.morphs(mouth, (appMode ? controls.blink : idle) ? blink : 0);
         glDisable(GL_SCISSOR_TEST);
         glClearColor(0,0,0,0);
@@ -1331,10 +1392,20 @@ int main(int argc, char **argv) {
         }
         glDepthMask(GL_TRUE);
         glDisable(GL_SCISSOR_TEST);
+        if(appMode && controls.poseEdit)poseOverlay.draw(scene,view,controls.selected,w,h);
         if(full)cutouts.draw(w,h);
         glFinish();
         need(glGetError() == GL_NO_ERROR, "GLES rendering error");
         times.push_back((now() - frame) * 1000);
+        if(appMode && !talkLayout && t>=nextJoints){
+          for(int id=0;id<poseCount;id++){
+            int node=poseNode(scene,id);if(node<0)continue;
+            auto m=mul(view,scene.world[node]);float x=(m[12]*.5f+.5f)*w,y=(.5f-m[13]*.5f)*h;
+            if(std::isfinite(x)&&std::isfinite(y)&&fabsf(x)<1e6&&fabsf(y)<1e6)
+              printf("AVATAR_JOINT %d %.2f %.2f %d\n",id,x,y,int(x>=0&&x<w&&y>=0&&y<h&&m[14]>=-1&&m[14]<=1));
+          }
+          fflush(stdout);nextJoints=t+.1;
+        }
         if (appMode && t >= nextStats) {
           printf("AVATAR_STATS %.3f %zu %.3f %.4f %.3f\n",
                  t > .01 ? frames / t : 0., frames, t, mouth, times.back());
