@@ -117,7 +117,7 @@ func TestOwnerBackgroundWebContract(t *testing.T) {
 		config.Use(state)
 		w := request(http.MethodGet, "", true)
 		var field setting.Field
-		if json.Unmarshal(w.Body.Bytes(), &field) != nil || field.Value != v || field.Help != "" || field.FilePicker == nil || len(field.FilePicker.Extensions) != 3 {
+		if json.Unmarshal(w.Body.Bytes(), &field) != nil || field.Value != v || field.Help != "" {
 			t.Fatal("web metadata/read", w.Body.String())
 		}
 	}

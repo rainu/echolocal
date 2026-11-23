@@ -6,12 +6,10 @@ import (
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/config"
-	"github.com/ygelfand/echolocal/internal/layout"
 	sharedcomponent "github.com/ygelfand/libcountertop/pkg/runtime/component"
 	"github.com/ygelfand/libcountertop/pkg/say"
 	setting "github.com/ygelfand/libcountertop/pkg/settings"
 	"math"
-	"path"
 	"strconv"
 	"sync"
 )
@@ -25,17 +23,6 @@ func NewTable() *setting.Table[config.Avatar] {
 		return nil
 	}}}
 	rows = append(rows, setting.Setting[config.Avatar]{Name: "background", Kind: setting.Text, Group: "background", Icon: "mdi:image",
-		FilePicker: func(a *config.Avatar) *setting.FilePicker {
-			start := layout.StateDir + "/user-files"
-			if a.Background != "" && avatar.ValidateBackgroundPath(a.Background) == nil {
-				start = path.Dir(a.Background)
-			}
-			text := map[string]string{}
-			for _, key := range []string{"choose_image", "picker_title", "picker_cancel", "picker_folder", "picker_uploads", "picker_up", "picker_refresh", "picker_loading", "picker_empty", "picker_previous", "picker_next", "picker_limit", "picker_error", "picker_go"} {
-				text[key] = avatar.Text(say.Chosen(), key)
-			}
-			return &setting.FilePicker{Extensions: []string{".png", ".jpg", ".jpeg"}, StartDir: start, Text: text}
-		},
 		Read: func(a *config.Avatar) string { return a.Background },
 		Write: func(a *config.Avatar, v string) error {
 			if e := avatar.ValidateBackground(v); e != nil {
