@@ -74,7 +74,14 @@ position (at most 24 hours). Playlist-only, channel, search, clip, credential-be
 nonstandard-port YouTube URLs are rejected before playback
 changes. A watch link with a playlist still plays only its selected video.
 
-YouTube runs its supported embedded web player; EchoLocal does not resolve watch
+YouTube normally runs its official embedded web player. If YouTube refuses that
+embedding context with code 101/150, EchoLocal opens the ordinary official
+YouTube watch page and bridges its standard media controls to the same device
+decoders. This does not import cookies, automate sign-in, extract stream URLs,
+remove advertising or make restricted content available. The website fallback
+uses a browser identity; the separate Cast receiver retains its Cast identity.
+The website DOM is not a versioned API and may need compatibility updates.
+EchoLocal does not resolve watch
 pages as direct files, extract signed stream URLs, bypass Cast trust, or add a
 public YouTube-only playback endpoint. YouTube chooses the stream and ads;
 the existing device media adapter supplies the hardware decoders.
@@ -93,8 +100,19 @@ produce distinct safe errors without exposing source URLs.
 Limitations: display-capable builds only; no sign-in/Premium integration, playlist
 queue, guaranteed ad-free playback, restricted/age-gated/region-locked content,
 or guarantee that every public video permits embedding or the device codecs.
-YouTube Music links play the corresponding embedded video, not a separate Music
+YouTube Music links play the corresponding YouTube video, not a separate Music
 account/session. Internet access to YouTube and its media hosts is required.
 No playback URL or account settings are persisted. Service restart ends playback.
 
 Refs #71.
+
+### Diagnosing playback refusals
+
+Error 101/150 reports refusal in the current embedded-player context; it is not
+by itself proof that the uploader globally disabled embedding. Missing client
+identification (153), sign-in/consent, regional and content restrictions are
+different conditions. Test ordinary official-site playback in the actual device
+network before attributing a refusal to missing cookies or recommending cookies.
+A successful page/player state is not sufficient: verify decoder frames and
+position, controls and the device output path. No cookie export is needed for
+public content that the device can play anonymously.
