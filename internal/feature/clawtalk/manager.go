@@ -65,16 +65,13 @@ func (m *Manager) Run(ctx context.Context) error {
 func (m *Manager) Busy() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.active }
 func (m *Manager) Stop() bool {
 	m.mu.Lock()
-	active := m.active
-	cancel := m.cancel
-	m.mu.Unlock()
-	if !active {
+	defer m.mu.Unlock()
+	if !m.active {
 		return false
 	}
-	if cancel != nil {
-		cancel()
+	if m.cancel != nil {
+		m.cancel()
 	}
-	m.Controller.Stop()
 	return true
 }
 
@@ -105,7 +102,7 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.mu.Unlock()
-	go m.activate(ctx, cancel, slot, generation, nil)
+	go m.activate(ctx, cancel, slot, generation, nil, nil)
 	return true
 }
 
@@ -127,7 +124,7 @@ func (m *Manager) StartOwned(slot int, haBusy bool) (uint64, error) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.mu.Unlock()
-	go m.activate(ctx, cancel, slot, generation, nil)
+	go m.activate(ctx, cancel, slot, generation, nil, nil)
 	return generation, nil
 }
 
@@ -141,7 +138,9 @@ func (m *Manager) StopOwned(generation uint64) bool {
 	m.cancel()
 	return true
 }
-func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot int, generation uint64, selected *Slot) {
+func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot int, generation uint64, selected *Slot, launch *automationLaunch) {
+	startErr := errors.New("talk_start_failed")
+	defer func() { launch.notify(startErr) }()
 	defer cancel()
 	defer func() {
 		status := m.Status()
@@ -157,6 +156,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}
 	muted, e := mute.Get().Muted()
 	if e != nil || muted {
+		startErr = errors.New("talk_microphone_muted")
 		m.Mute()
 		return
 	}
@@ -182,7 +182,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}()
 	sh := shellfeature.Get()
 	idle.Get().Wake()
-	if selected == nil {
+	if selected == nil || launch != nil {
 		page := m.standalonePage()
 		held := sh.Hold(page)
 		defer func() {
@@ -209,6 +209,9 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	a.startTone, a.endTone = v.StartTone, v.EndTone
 	a.feedback = feedback
 	bound, bindErr := claw.Get().BindTalk()
+	if launch != nil {
+		bound, bindErr = launch.bound, nil
+	}
 	if bindErr != nil {
 		a.Close()
 		if ctx.Err() == nil {
@@ -258,11 +261,19 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		}
 	}
 	if e = m.Controller.Start(ctx, b, time.Duration(v.Timeout)*time.Second); e != nil {
+		reason := b.Diagnostics().Reason
+		if strings.HasPrefix(reason, "rpc_") || reason == "talk_connection_changed" || reason == "talk_control_unavailable" || reason == "control_stream_closed" {
+			startErr = errors.New("talk_connection_unavailable")
+		}
+		if ctx.Err() != nil {
+			startErr = errors.New("talk_start_cancelled")
+		}
 		if ctx.Err() == nil {
 			m.setError()
 		}
 		return
 	}
+	launch.notify(nil)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	var previousState talk.State
@@ -417,6 +428,6 @@ func (m *Manager) StartSession(key string, haBusy bool) (uint64, error) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.cancel = cancel
 	m.mu.Unlock()
-	go m.activate(ctx, cancel, 0, generation, &v)
+	go m.activate(ctx, cancel, 0, generation, &v, nil)
 	return generation, nil
 }
