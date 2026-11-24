@@ -26,3 +26,29 @@ func TestEchoLagSignAndSilence(t *testing.T) {
 		t.Fatal(corr)
 	}
 }
+
+func TestEchoTrialsExposeTailOutsideShortFilter(t *testing.T) {
+	ref, in := make([]int16, 6*16000), make([]int16, 6*16000)
+	rng := rand.New(rand.NewPCG(59, 2))
+	for i := range ref {
+		ref[i] = int16(rng.IntN(16000) - 8000)
+		if i >= 13 {
+			in[i] += ref[i-13] / 3
+		}
+		if i >= 1800 {
+			in[i] += ref[i-1800] / 4
+		}
+	}
+	short, _, err := echoTrial(in, ref, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	long, _, err := echoTrial(in, ref, 4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("short %.1f long %.1f", short, long)
+	if long < short+6 {
+		t.Fatalf("long tail not resolved: short %.1f long %.1f", short, long)
+	}
+}
