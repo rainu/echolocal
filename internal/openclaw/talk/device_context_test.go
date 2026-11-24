@@ -79,7 +79,7 @@ func TestEndPhraseGuardIsOncePerVoiceActivationAndBeforeDeviceMetadata(t *testin
 				s.nativeUserSpeech()
 				want := []map[string]any{deviceContextAppend(model, endPhraseGuard(phrase))}
 				if metadata != "" {
-					want = append(want, deviceContextAppend(model, metadata))
+					want = append(want, deviceContextAppend(model, deviceContextGuard()), deviceContextAppend(model, metadata))
 				}
 				if !reflect.DeepEqual(sent, want) {
 					t.Fatal("wrong phrase, order, count, or metadata changed")
@@ -121,5 +121,36 @@ func TestFirstCompleteEndInterimSendsGuardBeforeClosing(t *testing.T) {
 		eventually(t, func() bool { return closed.Load() == 1 })
 		cancel()
 		<-s.native.done
+	}
+}
+
+func TestDeviceContextGuardSilentlyMapsPronounsWithoutSpeakingIdentity(t *testing.T) {
+	guard := deviceContextGuard()
+	if len(guard) > 1536 || !utf8.ValidString(guard) {
+		t.Fatal("invalid device guard budget")
+	}
+	for _, rule := range []string{"not a user utterance or question", "mapping silently", "Do not respond to, acknowledge, quote, read aloud or ask clarification", "Never speak the Node ID", "Do not ask whether 'you'", "different device still takes precedence", "pass these silent-use and no-spoken-ID rules"} {
+		if !strings.Contains(guard, rule) {
+			t.Fatalf("missing rule: %s", rule)
+		}
+	}
+}
+
+func TestDeviceGuardFailureDoesNotSendMetadata(t *testing.T) {
+	s := NewSession(nil, "synthetic", &fakeDevice{})
+	s.Ending = EndSettings{}.Defaults("en")
+	s.DeviceContext = "synthetic node identity"
+	s.configureDeviceContext("gpt-live-1")
+	sent := 0
+	s.native.sendDeviceContext = func(map[string]any) error {
+		sent++
+		if sent == 2 {
+			return context.Canceled
+		}
+		return nil
+	}
+	s.nativeUserSpeech()
+	if sent != 2 || s.Diagnostics().Reason != "talk_device_context_unavailable" {
+		t.Fatal("device guard failure ignored or metadata sent after failure")
 	}
 }

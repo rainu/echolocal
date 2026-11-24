@@ -16,10 +16,11 @@ import (
 
 type voiceTranscript struct{ role, text, id string }
 type nativeState struct {
-	deviceContext     map[string]any
-	endPhraseContext  map[string]any
-	sendDeviceContext func(map[string]any) error
-	deviceContextOnce sync.Once
+	deviceContext      map[string]any
+	deviceGuardContext map[string]any
+	endPhraseContext   map[string]any
+	sendDeviceContext  func(map[string]any) error
+	deviceContextOnce  sync.Once
 
 	legacy                                                                              atomic.Bool
 	workCtx                                                                             context.Context
@@ -69,6 +70,7 @@ func (s *Session) controlLink(ctx context.Context) *rtc.ControlChannel {
 func (s *Session) configureDeviceContext(model string) {
 	s.native.endPhraseContext = deviceContextAppend(model, endPhraseGuard(s.Ending.Phrase))
 	if s.DeviceContext != "" {
+		s.native.deviceGuardContext = deviceContextAppend(model, deviceContextGuard())
 		s.native.deviceContext = deviceContextAppend(model, s.DeviceContext)
 	}
 	s.native.sendDeviceContext = func(event map[string]any) error {
@@ -88,7 +90,7 @@ func (s *Session) nativeUserSpeech() {
 	s.native.deviceContextOnce.Do(func() {
 		// Guard first, then optional metadata; never replace provider instructions
 		// or append policy to every transcript. A new activation owns a new once.
-		for _, event := range []map[string]any{s.native.endPhraseContext, s.native.deviceContext} {
+		for _, event := range []map[string]any{s.native.endPhraseContext, s.native.deviceGuardContext, s.native.deviceContext} {
 			if event == nil {
 				continue
 			}
