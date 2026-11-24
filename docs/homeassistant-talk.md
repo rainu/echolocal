@@ -1,100 +1,103 @@
 # Home Assistant Talk actions
 
-The optional EchoLocal Home Assistant integration exposes three response-capable
-actions over the device's existing authenticated ESPHome connection. No new
-OpenClaw credentials, permissions or protocol features are required.
+EchoLocal exposes three response-capable native actions through Home Assistant's
+built-in ESPHome integration. No EchoLocal HACS/custom integration or Home
+Assistant restart is required. Reuse the device's existing authenticated
+ESPHome connection; no new OpenClaw credentials, grants or protocol are needed.
 
-| Action | Inputs | Response |
+| Native action suffix | Inputs | Response |
 | --- | --- | --- |
-| `echolocal.start_talk` | `device_id`; optional `session_id`, `startup_prompt` | `{"success": true, "active": true}` after transport and audio are ready |
-| `echolocal.stop_talk` | `device_id` | `{"success": true, "active": false}` after voice resources are released; repeated stops succeed |
-| `echolocal.get_openclaw_sessions` | `device_id` | `{"sessions": [{"id": "agent:example:voice-demo", "name": "Voice demo"}]}` |
+| `talk_start` | `session_id`, `startup_prompt` (both strings) | `{"success": true, "active": true}` after transport/audio readiness |
+| `talk_stop` | None | `{"success": true, "active": false}` after voice resources are released |
+| `openclaw_sessions` | None | `{"sessions": [{"id": "agent:example:voice-demo", "name": "Voice demo"}]}` |
 
-Select the **main EchoLocal device**, not one of its ESPHome sub-devices.
-For non-admin users, start and stop require control permission for the device's
-registered ESPHome entities; session discovery requires read permission. Automations retain Home Assistant's normal system context.
+## Calling the native actions
+
+In **Developer tools > Actions**, find your device's ESPHome actions ending in
+`talk_start`, `talk_stop` and `openclaw_sessions`. Copy the exact action names
+shown by Home Assistant: their device-specific prefix depends on the registered
+device name. The names below use `YOUR_DEVICE` as a placeholder.
+
+Stock ESPHome requires both declared Start Talk fields. Use an empty string
+(`""`) to select the corresponding device default independently. Do not omit
+the fields. No `device_id` field is needed: the native action name identifies
+the device.
+
+```yaml
+# Retrieve selectable session IDs and labels.
+- action: esphome.YOUR_DEVICE_openclaw_sessions
+  response_variable: available_sessions
+
+# Start with both device defaults.
+- action: esphome.YOUR_DEVICE_talk_start
+  data:
+    session_id: ""
+    startup_prompt: ""
+  response_variable: talk_started
+
+# End only this device's voice conversation.
+- action: esphome.YOUR_DEVICE_talk_stop
+  response_variable: talk_stopped
+```
+
+For an explicit session, replace `session_id: ""` with an exact routing ID from
+`available_sessions.sessions`; names are display labels, not identifiers.
+For a one-call prompt override, replace `startup_prompt: ""` with the prompt.
+Either field can stay empty while the other supplies an override. Response
+variables are optional for start/stop; use one to consume the session catalog.
+Action failures propagate to Home Assistant instead of returning false success.
 
 ## Defaults and one-call overrides
 
 The device's first assistant profile supplies the default session/agent,
-startup greeting, provider/model, tones and inactivity timeout.
-Omit either optional argument (or use an empty string) to independently use its
-corresponding device default. A non-empty startup prompt follows the same
-validation and speakable startup path as the configured greeting (maximum 1536 UTF-8 bytes).
+startup greeting, provider/model, tones and inactivity timeout. Empty input
+selects the corresponding default. A non-empty prompt uses the configured
+greeting's validation and speakable startup path (maximum 1536 UTF-8 bytes).
 Whitespace-only prompts are invalid.
 
-Use the exact stable routing `id` returned by session discovery as `session_id`.
-Names are display labels, not identifiers. Discovery uses the same selectable
-sidebar-session catalog as the device's chat app, follows pagination, excludes
-archived/system/cron/subagent sessions and never fetches transcripts.
-A failed, malformed or incomplete catalog raises an error; only an actual
-successful empty catalog returns `{"sessions":[]}`.
+Overrides belong only to the activation. Assistant settings and selected
+session, greeting and provider/model defaults are never rewritten. If the
+default profile creates a fresh context per activation, automation follows that
+behavior without persisting its transient ID. No new settings or owner UI are
+introduced.
 
-Overrides are copied into the activation only. Neither the assistant settings
-nor the selected session, greeting or provider/model defaults are rewritten.
-When the default profile creates a new context for each activation, the
-automation similarly uses a fresh transient context without persisting its ID.
-No new settings or owner UI are introduced.
-
-## Automation example
-
-```yaml
-- action: echolocal.get_openclaw_sessions
-  data:
-    device_id: YOUR_MAIN_DEVICE_ID
-  response_variable: available_sessions
-
-# Select an id from available_sessions.sessions; never use a display name.
-- action: echolocal.start_talk
-  data:
-    device_id: YOUR_MAIN_DEVICE_ID
-    session_id: "agent:example:voice-demo"
-    startup_prompt: "Briefly tell me what is on my calendar."
-  response_variable: talk_started
-
-- action: echolocal.stop_talk
-  data:
-    device_id: YOUR_MAIN_DEVICE_ID
-  response_variable: talk_stopped
-```
-
-Both start overrides can be omitted altogether. Response variables are optional
-for start/stop, but errors still fail the action. They are needed to consume the
-session list in an automation.
+Discovery reuses the device chat app's selectable sidebar-session catalog,
+follows pagination and excludes archived/system/cron/subagent sessions. It never
+fetches transcripts. A failed, malformed or incomplete catalog raises an error;
+only a successful empty catalog returns `{"sessions":[]}`.
 
 ## Failure and lifetime semantics
 
 An active or connecting Talk returns `talk_already_active` without switching,
-stopping or restarting that conversation. A busy Home Assistant assistant returns
-`talk_assistant_busy`. Unknown/invalid override IDs return `talk_invalid_session`.
-Disconnected devices/gateways return `talk_device_unavailable` or
-`talk_connection_unavailable`; muted capture returns `talk_microphone_muted`.
-Other setup failures return `talk_start_failed`, not a successful queued response.
+stopping or restarting it. A busy Home Assistant assistant returns
+`talk_assistant_busy`. Invalid override IDs return `talk_invalid_session`.
+Disconnected devices/gateways report failure; muted capture returns
+`talk_microphone_muted`. Other setup failures report `talk_start_failed`,
+not a successful queued response.
 
-Start waits for actual Talk setup. It does not retry uncertain requests.
-If the Home Assistant link fails after a start was delivered, check the device or
-use Stop Talk before deciding whether to start again.
+Start waits for actual transport/audio setup. Native actions use opt-in bounded
+asynchronous dispatch so keepalives, discovery and Stop are not queued behind
+setup. Home Assistant's own request timeout can expire before the device's
+bounded setup deadline. An uncertain/timed-out start is not proof that nothing
+started: inspect the device or call Stop before retrying. Do not blindly retry.
 
-Stop cancels only this device's voice activation and closes its voice transport.
-It never calls `chat.abort`, deletes/resets an OpenClaw session or stops an
-independent text task. The selected underlying session remains available.
+Stop is idempotent: it succeeds when no Talk is active. It cancels only this
+device's voice activation and closes its voice transport. It never calls
+`chat.abort`, deletes/resets an OpenClaw session or stops an independent text
+task.
 
-The device also exposes native ESPHome actions `talk_start`, `talk_stop` and
-`openclaw_sessions`. Native `talk_start` has two string arguments; stock ESPHome
-requires both fields, so use `""` for a default. The HACS wrapper provides the
-truly optional fields above and uses a bounded response timeout appropriate for
-Talk setup. Blocking native actions use opt-in bounded asynchronous dispatch,
-so keepalives and Stop Talk are not queued behind setup.
+## Verification and separate follow-up
 
-## Checks
+On the installed candidate, live calls through Home Assistant's built-in
+ESPHome integration verified all four default/explicit-input combinations,
+actual readiness, session IDs/names, invalid inputs, duplicate protection,
+responsive discovery and repeated Stop. Assistant settings stayed byte-identical.
 
-Go regression tests cover independent overrides and unchanged store bytes,
-fresh transient defaults, invalid prompts/IDs, paginated/error catalogs,
-active-call protection, generation-safe/idempotent stop and native action
-discovery. The library tests check read-loop responsiveness, concurrent stop,
-bounded admission, correlation and panic cleanup.
+Go tests cover overrides, unchanged settings, default contexts, validation,
+paginated/error catalogs, ownership and generation-safe stop. Library tests
+cover read-loop responsiveness, bounded concurrency, correlation and cleanup.
+No new physical-user-speech, wake-word or acoustic listening check is claimed.
 
-The HACS `tests/test_talk.py` suite runs in a Home Assistant Python environment
-and checks optional schemas, response support, device routing/permissions,
-failure propagation, disconnections, malformed replies and absence of retries.
-Mocked tests do not establish real-device or spoken-conversation behavior.
+[HACS PR #3](https://github.com/rainu/echolocal-hacs/pull/3) is a separate,
+deferred convenience wrapper with truly omittable fields. It is not required
+for these native actions and is not a deployment or acceptance dependency.
