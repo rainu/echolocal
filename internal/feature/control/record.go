@@ -57,7 +57,7 @@ func hearing() []*cobra.Command {
 	}
 
 	echo := &cobra.Command{
-		Use:   "echo <seconds> [path]",
+		Use:   "echo <seconds> [path|trials]",
 		Short: "Measure echo without saving audio, or explicitly record three channels to a path",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -85,7 +85,7 @@ func hearing() []*cobra.Command {
 				return fmt.Errorf("record echo: nothing captured")
 			}
 
-			if len(args) == 2 {
+			if len(args) == 2 && args[1] != "trials" {
 				wav := make([]int16, 0, 3*len(m))
 				for i := range m {
 					wav = append(wav, m[i], r[i], o[i])
@@ -100,7 +100,7 @@ func hearing() []*cobra.Command {
 				levels(m), levels(r), levels(o))
 			lag, corr := echoLag(m, r)
 			fmt.Fprintf(cmd.OutOrStdout(), "mic_after_ref_samples %d correlation %.3f\n", lag, corr)
-			if trials, _ := cmd.Flags().GetBool("trials"); trials {
+			if len(args) == 2 && args[1] == "trials" {
 				for _, taps := range []int{1024, 4096, 8192} {
 					erle, attenuation, err := echoTrial(m, r, taps)
 					if err != nil {
@@ -113,8 +113,6 @@ func hearing() []*cobra.Command {
 			return nil
 		},
 	}
-
-	echo.Flags().Bool("trials", false, "compare fresh filter tails in memory without changing the live canceller")
 
 	raw := &cobra.Command{
 		Use:   "raw <seconds> <path>",
