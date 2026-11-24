@@ -7,14 +7,14 @@ ESPHome connection; no new OpenClaw credentials, grants or protocol are needed.
 
 | Native action suffix | Inputs | Response |
 | --- | --- | --- |
-| `talk_start` | `session_id`, `startup_prompt` (both strings) | `{"success": true, "active": true}` after transport/audio readiness |
-| `talk_stop` | None | `{"success": true, "active": false}` after voice resources are released |
+| `openclaw_talk_start` | `session_id`, `startup_prompt` (both strings) | `{"success": true, "active": true}` after transport/audio readiness |
+| `openclaw_talk_stop` | None | `{"success": true, "active": false}` after voice resources are released |
 | `openclaw_sessions` | None | `{"sessions": [{"id": "agent:example:voice-demo", "name": "Voice demo"}]}` |
 
 ## Calling the native actions
 
 In **Developer tools > Actions**, find your device's ESPHome actions ending in
-`talk_start`, `talk_stop` and `openclaw_sessions`. Copy the exact action names
+`openclaw_talk_start`, `openclaw_talk_stop` and `openclaw_sessions`. Copy the exact action names
 shown by Home Assistant: their device-specific prefix depends on the registered
 device name. The names below use `YOUR_DEVICE` as a placeholder.
 
@@ -29,15 +29,15 @@ the device.
   response_variable: available_sessions
 
 # Start with both device defaults.
-- action: esphome.YOUR_DEVICE_talk_start
+- action: esphome.YOUR_DEVICE_openclaw_talk_start
   data:
     session_id: ""
     startup_prompt: ""
-  response_variable: talk_started
+  response_variable: openclaw_talk_started
 
 # End only this device's voice conversation.
-- action: esphome.YOUR_DEVICE_talk_stop
-  response_variable: talk_stopped
+- action: esphome.YOUR_DEVICE_openclaw_talk_stop
+  response_variable: openclaw_talk_stopped
 ```
 
 For an explicit session, replace `session_id: ""` with an exact routing ID from

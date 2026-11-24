@@ -19,7 +19,7 @@ func talkActions() []*esphome.Action {
 		return nil
 	}
 	return []*esphome.Action{
-		{Name: "talk_start", Description: "Start Talk; empty arguments use assistant 1 defaults for this call only.", Answers: true,
+		{Name: "openclaw_talk_start", Description: "Start Talk; empty arguments use assistant 1 defaults for this call only.", Answers: true,
 			Args: []esphome.Arg{{Name: "session_id", Type: esphome.ArgString}, {Name: "startup_prompt", Type: esphome.ArgString}},
 			Run: func(c esphome.Call) (any, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
@@ -31,7 +31,7 @@ func talkActions() []*esphome.Action {
 				}
 				return map[string]any{"success": true, "active": true}, nil
 			}},
-		{Name: "talk_stop", Description: "Stop only the voice conversation; succeeds when already stopped.", Answers: true,
+		{Name: "openclaw_talk_stop", Description: "Stop only the voice conversation; succeeds when already stopped.", Answers: true,
 			Run: func(esphome.Call) (any, error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
