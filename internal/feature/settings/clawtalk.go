@@ -1,0 +1,401 @@
+//go:build !board_biscuit
+
+package settings
+
+import (
+	"context"
+	"encoding/json"
+	"github.com/ygelfand/echolocal/internal/config"
+	"github.com/ygelfand/echolocal/internal/feature/assistantconfig"
+	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
+	featureclaw "github.com/ygelfand/echolocal/internal/feature/openclaw"
+	"github.com/ygelfand/echolocal/internal/feature/shell"
+	"github.com/ygelfand/echolocal/internal/feature/tones"
+	"github.com/ygelfand/echolocal/internal/lib/wake"
+	"github.com/ygelfand/libcountertop/pkg/display/menu"
+	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
+	"github.com/ygelfand/libcountertop/pkg/say"
+	"github.com/ygelfand/libcountertop/pkg/settings/schema"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+func talkRows(slot int) ([]menu.Row, []func(int), bool) {
+	return talkRowsFor(slot, clawtalk.Get().Store.Get(slot))
+}
+func talkRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), bool) {
+	target := "Home Assistant"
+	if s.OpenClaw {
+		target = "OpenClaw"
+	}
+	rows := []menu.Row{{Label: say.T("clawtalk.target"), Value: target, Kind: menu.Chevron, Open: func() menu.View { return talkTargetPage(slot) }}}
+	acts := []func(int){nil}
+	return rows, acts, s.OpenClaw
+}
+func talkOptionsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int), bool) {
+	rows := []menu.Row{}
+	acts := []func(int){}
+	if !s.OpenClaw {
+		return []menu.Row{{Label: say.T("clawtalk.configure_target"), Kind: menu.Plain}}, []func(int){nil}, false
+	}
+	if talkSaveFailed.Load() {
+		rows = append(rows, menu.Row{Label: say.T("openclaw.error.storage"), Kind: menu.Plain})
+		acts = append(acts, nil)
+	}
+	agent := s.AgentLabel
+	if agent == "" {
+		agent = say.T("clawtalk.select_agent")
+	}
+	model := s.Model
+	if model == "" {
+		model = say.T("clawtalk.gateway_default")
+	}
+
+	contextSummary := say.T("clawtalk.new_each")
+	if s.Resume {
+		contextSummary = say.T("clawtalk.resume")
+	}
+	rows = append(rows,
+		menu.Row{Label: say.T("clawtalk.agent"), Value: agent, Kind: menu.Chevron, Open: func() menu.View { return talkAgentPage(slot) }},
+		menu.Row{Label: say.T("clawtalk.model"), Value: model, Hint: say.T("clawtalk.model_hint"), Kind: menu.Chevron, Open: func() menu.View { return talkModelPage(slot) }},
+		menu.Row{Label: say.T("clawtalk.context"), Value: contextSummary, Kind: menu.Chevron, Open: func() menu.View { return talkConversationContextPage(slot) }},
+		menu.Row{Label: say.T("clawtalk.start_tone"), Value: talkToneLabel(s.StartTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, false) }},
+		menu.Row{Label: progressToneTitle(), Value: talkToneLabel(s.ProgressTone), Kind: menu.Chevron, Open: func() menu.View { return talkFeedbackTonePage(slot, "progress") }},
+		menu.Row{Label: say.T("clawtalk.end_tone"), Value: talkToneLabel(s.EndTone), Kind: menu.Chevron, Open: func() menu.View { return talkTonePage(slot, true) }},
+	)
+	acts = append(acts, nil, nil, nil, nil, nil, nil)
+
+	rows = append(rows, menu.Row{Label: endText("title"), Value: s.Ending.Defaults(say.Chosen()).Phrase, Kind: menu.Chevron, Open: func() menu.View { return talkEndPage(slot) }})
+	acts = append(acts, nil)
+	rows = append(rows, menu.Row{Label: say.T("clawtalk.timeout"), Value: say.F("clawtalk.seconds", map[string]any{"N": s.Timeout}), Kind: menu.Chevron, Open: func() menu.View { return talkTimeoutPage(slot) }})
+	acts = append(acts, nil)
+	return rows, acts, true
+}
+
+// Conversation policy, existing-session selection and device prompt belong
+// together; audio/model settings remain on the assistant's main options page.
+func talkConversationContextPage(slot int) *TalkPromptEditor {
+	p := talkConversationPromptPageFor(clawtalk.Get().Store.Get(slot),
+		featureclaw.Get().Node.ConversationDeviceContextWithTemplate,
+		func(device, greeting string) error {
+			return saveTalk(slot, func(s *clawtalk.Slot) { s.DeviceContextTemplate = device; s.GreetingPrompt = greeting })
+		},
+		func() { shell.Get().Redraw() })
+	p.Title = say.T("clawtalk.context")
+	p.Leading = func() ([]menu.Row, []func(int)) {
+		return talkContextSettingsRowsFor(slot, clawtalk.Get().Store.Get(slot))
+	}
+	return p
+}
+
+func talkContextSettingsRowsFor(slot int, s clawtalk.Slot) ([]menu.Row, []func(int)) {
+	rows := []menu.Row{}
+	acts := []func(int){}
+	if talkSaveFailed.Load() {
+		rows = append(rows, menu.Row{Label: say.T("openclaw.error.storage"), Kind: menu.Plain})
+		acts = append(acts, nil)
+	}
+	rows = append(rows, menu.Row{Label: say.T("clawtalk.resume"), Hint: say.T("clawtalk.resume_hint"), Kind: menu.Toggle, On: s.Resume})
+	acts = append(acts, func(int) { saveTalk(slot, func(v *clawtalk.Slot) { v.Resume = !s.Resume }); shell.Get().Redraw() })
+	if s.Resume {
+		label := s.ContextLabel
+		if label == "" {
+			label = say.T("clawtalk.new_context")
+			if s.Context != "" {
+				label = say.T("clawtalk.device_context")
+			}
+		}
+		rows = append(rows, menu.Row{Label: promptText("session"), Value: label, Kind: menu.Chevron, Open: func() menu.View { return talkContextPage(slot) }})
+	} else {
+		rows = append(rows, menu.Row{Label: say.T("clawtalk.new_each"), Kind: menu.Plain})
+	}
+	acts = append(acts, nil)
+	return rows, acts
+}
+
+func talkTargetPage(slot int) *sharedshell.Page {
+	return &sharedshell.Page{Title: say.T("clawtalk.target"), Build: func() ([]menu.Row, []func(int)) {
+		s := clawtalk.Get().Store.Get(slot)
+		choose := func(on bool) func(int) {
+			return func(int) {
+				go func() {
+					clawtalk.Get().Stop()
+					if on && claw().EnableTalk() != nil {
+						talkSaveFailed.Store(true)
+						shell.Get().Redraw()
+						return
+					}
+					if saveTalk(slot, func(v *clawtalk.Slot) { v.OpenClaw = on }) == nil {
+						shell.Get().Pop()
+					}
+				}()
+			}
+		}
+		return []menu.Row{{Label: "Home Assistant", Chosen: !s.OpenClaw}, {Label: "OpenClaw", Chosen: s.OpenClaw}}, []func(int){choose(false), choose(true)}
+	}}
+}
+
+type talkChoice struct{ id, label string }
+
+func safeTalkLabel(text, id string, index int, key string) string {
+	return clawtalk.SafeLabel(text, id, index, key)
+}
+func nativeChoices(list []clawtalk.Choice) []talkChoice {
+	out := []talkChoice{}
+	for _, v := range list {
+		out = append(out, talkChoice{v.Value, v.Label})
+	}
+	return out
+}
+func talkPicker(title string, read func(context.Context) ([]talkChoice, error), choose func(talkChoice)) *sharedshell.Page {
+	var mu sync.Mutex
+	var choices []talkChoice
+	loading := true
+	failed := false
+	page := &sharedshell.Page{Title: title}
+	page.OnOpen = func() {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			defer cancel()
+			list, e := read(ctx)
+			mu.Lock()
+			choices = list
+			loading = false
+			failed = e != nil
+			mu.Unlock()
+			shell.Get().Redraw()
+		}()
+	}
+	page.Build = func() ([]menu.Row, []func(int)) {
+		mu.Lock()
+		defer mu.Unlock()
+		if loading {
+			return []menu.Row{{Label: say.T("clawtalk.loading"), Kind: menu.Plain}}, []func(int){nil}
+		}
+		if failed {
+			return []menu.Row{{Label: say.T("clawtalk.unavailable"), Kind: menu.Plain}}, []func(int){nil}
+		}
+		var rows []menu.Row
+		var acts []func(int)
+		for _, v := range choices {
+			v := v
+			rows = append(rows, menu.Row{Label: v.label})
+			acts = append(acts, func(int) { choose(v) })
+		}
+		return rows, acts
+	}
+	return page
+}
+func talkAgentPage(slot int) *sharedshell.Page {
+	return talkPicker(say.T("clawtalk.agent"), func(ctx context.Context) ([]talkChoice, error) {
+		list, err := clawtalk.AgentChoices(ctx, claw())
+		return nativeChoices(list), err
+	}, func(v talkChoice) {
+		clawtalk.Get().Stop()
+		if saveTalk(slot, func(s *clawtalk.Slot) { s.Agent = v.id; s.AgentLabel = v.label; s.Context = ""; s.ContextLabel = "" }) == nil {
+			shell.Get().Pop()
+		}
+	})
+}
+func talkContextPage(slot int) *sharedshell.Page {
+	saved := clawtalk.Get().Store.Get(slot)
+	return talkPicker(promptText("session"), func(ctx context.Context) ([]talkChoice, error) {
+		list, err := clawtalk.SessionChoices(ctx, claw(), saved.Agent)
+		return nativeChoices(list), err
+	}, func(v talkChoice) {
+		clawtalk.Get().Stop()
+		if saveTalk(slot, func(s *clawtalk.Slot) { s.Context = v.id; s.ContextLabel = v.label; s.Resume = true }) == nil {
+			shell.Get().Pop()
+		}
+	})
+}
+func talkTimeoutPage(slot int) *sharedshell.Page {
+	return &sharedshell.Page{Title: say.T("clawtalk.timeout"), Build: func() ([]menu.Row, []func(int)) {
+		var rows []menu.Row
+		var acts []func(int)
+		for _, n := range []int{15, 30, 60, 120, 300, 900} {
+			n := n
+			rows = append(rows, menu.Row{Label: say.F("clawtalk.seconds", map[string]any{"N": n}), Chosen: clawtalk.Get().Store.Get(slot).Timeout == n})
+			acts = append(acts, func(int) {
+				saveTalk(slot, func(s *clawtalk.Slot) { s.Timeout = n })
+				shell.Get().Pop()
+			})
+		}
+		return rows, acts
+	}}
+}
+func talkWordRow(slot int) (menu.Row, func(int), bool) {
+	if !clawtalk.Get().Store.Get(slot).OpenClaw {
+		return menu.Row{}, nil, false
+	}
+	id := config.Get().Wake.Slot(slot).ID
+	phrase := say.T("assistants.off")
+	for _, m := range wake.Lib().Ours() {
+		if m.ID == id {
+			phrase = m.Phrase
+		}
+	}
+	return menu.Row{Label: say.T("assistants.word"), Value: phrase, Kind: menu.Chevron, Open: func() menu.View {
+		return &sharedshell.Page{Title: say.T("assistants.word"), Build: func() ([]menu.Row, []func(int)) {
+			rows := []menu.Row{{Label: say.T("assistants.off"), Chosen: id == ""}}
+			ids := []string{""}
+			for _, m := range wake.Lib().Ours() {
+				rows = append(rows, menu.Row{Label: m.Phrase, Chosen: m.ID == id})
+				ids = append(ids, m.ID)
+			}
+			var acts []func(int)
+			for _, modelID := range ids {
+				modelID := modelID
+				acts = append(acts, func(int) {
+					if assistantconfig.SetWakeWord(slot, modelID) == nil {
+						shell.Get().Pop()
+					}
+				})
+			}
+			return rows, acts
+		}}
+	}}, nil, true
+}
+
+var talkSaveFailed atomic.Bool
+
+func saveTalk(slot int, change func(*clawtalk.Slot)) error {
+	err := clawtalk.Get().Store.Update(slot, change)
+	talkSaveFailed.Store(err != nil)
+	shell.Get().Redraw()
+	return err
+}
+
+type talkModelProvider = clawtalk.CatalogProvider
+type talkModelSelection = clawtalk.ModelSelection
+
+func talkModelChoices(providers []talkModelProvider) []talkChoice {
+	return nativeChoices(clawtalk.ModelChoices(providers))
+}
+func containsTalkValue(list []string, value string) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}
+func talkModelPage(slot int) *sharedshell.Page {
+	saved := clawtalk.Get().Store.Get(slot)
+	return talkPicker(say.T("clawtalk.model"), func(ctx context.Context) ([]talkChoice, error) {
+		list, err := clawtalk.LiveModelChoices(ctx, claw(), saved.Context)
+		return nativeChoices(list), err
+	}, func(v talkChoice) {
+		var selected talkModelSelection
+		if v.id != "" && json.Unmarshal([]byte(v.id), &selected) != nil {
+			return
+		}
+		clawtalk.Get().Stop()
+		if saveTalk(slot, func(s *clawtalk.Slot) { s.Provider = selected.Provider; s.Model = selected.Model }) == nil {
+			shell.Get().Pop()
+		}
+	})
+}
+
+func talkToneLabel(choice string) string {
+	if choice == "" {
+		return say.T("clawtalk.default_tone")
+	}
+	for _, option := range tones.Get().Choices() {
+		if option.Value == choice {
+			return option.Label
+		}
+	}
+	return schema.Chime(choice).Label()
+}
+
+// Use the largest normal built-in catalogue shared by calls/alerts, plus
+// installed custom clips. No per-feature hard-coded subset.
+func talkBuiltinToneChoices() []talkChoice {
+	choices := []talkChoice{{"", say.T("clawtalk.default_tone")}}
+	for _, v := range schema.CallChimes() {
+		choices = append(choices, talkChoice{string(v), v.Label()})
+	}
+	return choices
+}
+func talkToneChoices() []talkChoice { return nativeChoices(clawtalk.ToneChoices()) }
+func talkToneDetail(title string, choice talkChoice, preview, use func()) *sharedshell.Page {
+	return &sharedshell.Page{Title: title, Build: func() ([]menu.Row, []func(int)) {
+		return []menu.Row{{Label: choice.label, Hint: say.T("clawtalk.tone_preview_hint"), Kind: menu.Plain}}, []func(int){nil}
+	}, Actions: []sharedshell.Action{
+		{Label: say.T("clawtalk.tone_preview"), MinHeight: 72, Do: preview},
+		{Label: say.T("clawtalk.tone_use"), MinHeight: 72, Role: sharedshell.Primary, Do: use},
+	}}
+}
+func progressToneTitle() string {
+	switch say.Chosen() {
+	case "de":
+		return "Verbindungston"
+	case "it":
+		return "Tono di connessione"
+	case "vi":
+		return "Âm kết nối"
+	default:
+		return "Connection tone"
+	}
+}
+func talkTonePage(slot int, end bool) *sharedshell.Page {
+	cue := "ready"
+	if end {
+		cue = "end"
+	}
+	return talkFeedbackTonePage(slot, cue)
+}
+func talkFeedbackTonePage(slot int, cue string) *sharedshell.Page {
+	title := say.T("clawtalk.start_tone")
+	if cue == "end" {
+		title = say.T("clawtalk.end_tone")
+	}
+	if cue == "progress" {
+		title = progressToneTitle()
+	}
+	return &sharedshell.Page{Title: title, Build: func() ([]menu.Row, []func(int)) {
+		saved := clawtalk.Get().Store.Get(slot)
+		selected := saved.StartTone
+		if cue == "end" {
+			selected = saved.EndTone
+		}
+		if cue == "progress" {
+			selected = saved.ProgressTone
+		}
+		rows := []menu.Row{}
+		for _, choice := range talkToneChoices() {
+			rows = append(rows, menu.Row{Label: choice.label, Chosen: choice.id == selected, Kind: menu.Chevron, Open: func() menu.View {
+				return talkToneDetail(title, choice, func() {
+					if cue == "progress" {
+						clawtalk.Get().PreviewProgressTone(choice.id)
+					} else {
+						clawtalk.Get().PreviewTone(choice.id, cue == "end")
+					}
+				}, func() {
+					if saveTalk(slot, func(s *clawtalk.Slot) {
+						if cue == "progress" {
+							s.ProgressTone = choice.id
+						} else if cue == "end" {
+							s.EndTone = choice.id
+						} else {
+							s.StartTone = choice.id
+						}
+					}) == nil {
+						shell.Get().Pop()
+						shell.Get().Pop()
+					}
+				})
+			}})
+		}
+		return rows, make([]func(int), len(rows))
+	}}
+}
+
+func talkOptionsPage(slot int) *sharedshell.Page {
+	return &sharedshell.Page{Title: say.F("assistants.slot", map[string]any{"N": slot + 1}), Build: func() ([]menu.Row, []func(int)) {
+		rows, acts, _ := talkOptionsRowsFor(slot, clawtalk.Get().Store.Get(slot))
+		return rows, acts
+	}}
+}
