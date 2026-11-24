@@ -38,3 +38,18 @@ func nodePermissionsCommand() *cobra.Command {
 		return string(b), nil
 	})
 }
+
+// Local lifecycle controls; never exposed as remote Node input.
+func nodeDesktopCommand() *cobra.Command {
+	return harness.Says(&cobra.Command{Use: "node-desktop [stop]", Short: "Local live-screen status or stop", Args: cobra.MaximumNArgs(1)}, func(args []string) (string, error) {
+		c := featureclaw.Get().Node
+		if len(args) > 0 {
+			if args[0] != "stop" {
+				return "", errors.New("use stop")
+			}
+			c.StopDesktop()
+		}
+		raw, _ := json.Marshal(c.DesktopStatus())
+		return string(raw), nil
+	})
+}

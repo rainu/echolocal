@@ -12,6 +12,14 @@ func TestNodeAccessEveryGroup(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "permissions.json")
 	a := NewNodeAccess(p)
 	for _, g := range PermissionGroups {
+		if g == "desktop" {
+			if a.Granted(g) {
+				t.Fatal("desktop default must be off")
+			}
+			if err := a.SetGrants(map[string]bool{g: true}); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if !a.Granted(g) {
 			t.Fatal("default", g)
 		}

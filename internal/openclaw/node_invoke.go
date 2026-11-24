@@ -14,11 +14,19 @@ func (c *Client) SetNodeGrants(g map[string]bool) error {
 	if c.access == nil {
 		return errors.New("unsupported_command")
 	}
-	if err := c.access.SetGrants(g); err != nil {
+	inputOnly, err := c.access.setGrants(g)
+	if err != nil {
 		return err
 	}
 	c.op.Lock()
 	defer c.op.Unlock()
+	inputOn := c.access.Granted("input")
+	c.mu.Lock()
+	hot := inputOnly && c.rpc != nil && (!inputOn || c.rpc.nodeInputDeclared)
+	c.mu.Unlock()
+	if hot {
+		return nil
+	}
 	c.stopLocked()
 	if c.saved.Enabled {
 		c.startLocked()
@@ -61,7 +69,7 @@ func (c *Client) nodeEvent(parent context.Context, r *rpcLink, f frame) {
 	if p.TimeoutMS > 0 {
 		timeout = min(timeout, time.Duration(p.TimeoutMS)*time.Millisecond)
 	}
-	ctx, cancel := context.WithTimeout(parent, timeout)
+	ctx, cancel := nodeInvocationContext(parent, p.Command, p.TimeoutMS, timeout)
 	r.mu.Lock()
 	if r.nodeCalls == nil {
 		r.nodeCalls = map[string]context.CancelFunc{}
@@ -103,4 +111,13 @@ func (c *Client) nodeEvent(parent context.Context, r *rpcLink, f frame) {
 			_ = r.nodeResult(delivery, reply)
 		}
 	}()
+}
+
+// Only desktop.stream uses the Gateway cancellation-owned zero-timeout contract.
+// All other commands keep their existing finite cap.
+func nodeInvocationContext(parent context.Context, command string, timeoutMS int, bounded time.Duration) (context.Context, context.CancelFunc) {
+	if command == "desktop.stream" && timeoutMS == 0 {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, bounded)
 }

@@ -13,16 +13,17 @@ import (
 // rpcLink belongs to one authenticated socket. Lost or uncertain requests are
 // never transferred to a replacement connection.
 type rpcLink struct {
-	conn      *websocket.Conn
-	origin    string
-	write     sync.Mutex
-	mu        sync.Mutex
-	next      uint64
-	pending   map[string]chan frame
-	closed    bool
-	nodeCalls map[string]context.CancelFunc
-	subs      map[*eventSubscription]bool
-	appSubs   map[chan struct{}]bool
+	conn              *websocket.Conn
+	origin            string
+	write             sync.Mutex
+	mu                sync.Mutex
+	next              uint64
+	pending           map[string]chan frame
+	closed            bool
+	nodeCalls         map[string]context.CancelFunc
+	nodeInputDeclared bool
+	subs              map[*eventSubscription]bool
+	appSubs           map[chan struct{}]bool
 }
 
 func newRPCLink(conn *websocket.Conn) *rpcLink {

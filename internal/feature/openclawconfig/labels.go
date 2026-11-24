@@ -49,6 +49,11 @@ func Labels() map[string]string {
 	for i, g := range groups {
 		out["group."+g] = groupNames[i]
 	}
+	desktopNames := map[string]string{"en": "Live screen sharing (default off)", "de": "Live-Bildschirmfreigabe (standardmäßig aus)", "it": "Condivisione schermo live (disattivata)", "vi": "Chia sẻ màn hình trực tiếp (mặc định tắt)"}
+	out["group.desktop"] = desktopNames[say.Chosen()]
+	if out["group.desktop"] == "" {
+		out["group.desktop"] = desktopNames["en"]
+	}
 	scopeKeys := []string{"operator.admin", "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.approvals", "operator.questions", "operator.pairing", "operator.talk", "operator.talk.secrets"}
 	scopeNames := map[string][]string{
 		"en": {"Administration", "Read Gateway data", "Perform actions", "Read sessions", "Modify sessions", "Manage approvals", "Answer questions", "Manage device pairing", "Use Talk", "Access Talk provider credentials"},

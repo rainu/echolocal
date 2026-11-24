@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-var PermissionGroups = []string{"screen", "input", "display", "settings", "audio", "alarms", "intercom", "camera", "state", "diagnostics", "maintenance", "tones", "talk"}
+var PermissionGroups = []string{"screen", "desktop", "input", "display", "settings", "audio", "alarms", "intercom", "camera", "state", "diagnostics", "maintenance", "tones", "talk"}
 
 type NodeOperation struct {
 	Command, Group string
@@ -24,6 +24,8 @@ type NodeAccess struct {
 	grants           map[string]bool
 	operations       map[string]NodeOperation
 	active           map[uint64]context.CancelFunc
+	activeGroups     map[uint64]string
+	inputGeneration  uint64
 	next, generation uint64
 	storageErr       bool
 	cleanup          []func()
@@ -31,7 +33,7 @@ type NodeAccess struct {
 }
 
 func NewNodeAccess(path string) *NodeAccess {
-	a := &NodeAccess{changed: make(chan struct{}, 1), path: path, grants: map[string]bool{}, operations: map[string]NodeOperation{}, active: map[uint64]context.CancelFunc{}}
+	a := &NodeAccess{changed: make(chan struct{}, 1), path: path, grants: map[string]bool{}, operations: map[string]NodeOperation{}, active: map[uint64]context.CancelFunc{}, activeGroups: map[uint64]string{}}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return a
@@ -49,18 +51,31 @@ func permissionGroup(g string) bool {
 }
 func (a *NodeAccess) granted(g string) bool {
 	v, ok := a.grants[g]
-	return permissionGroup(g) && !a.storageErr && (!ok || v)
+	return permissionGroup(g) && !a.storageErr && ((!ok && g != "desktop") || (ok && v))
 }
 func (a *NodeAccess) Granted(g string) bool { a.mu.Lock(); defer a.mu.Unlock(); return a.granted(g) }
 
 // SetGrants must remain local/admin-owned, never a Node command. Policy edits
-// cancel active work and fence results. Missing fields default on after upgrade.
+// cancel active work and fence results. Legacy fields default on after upgrade; desktop sharing always defaults off.
 func (a *NodeAccess) SetGrants(changes map[string]bool) error {
+	_, err := a.setGrants(changes)
+	return err
+}
+
+// inputOnly means no other effective permission changed. Input reduction can
+// remain live: reject new input, cancel existing input jobs, preserve capture.
+func (a *NodeAccess) setGrants(changes map[string]bool) (inputOnly bool, err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for g := range changes {
 		if !permissionGroup(g) {
-			return errors.New("permission_unknown")
+			return false, errors.New("permission_unknown")
+		}
+	}
+	inputOnly = !a.storageErr
+	for g, on := range changes {
+		if g != "input" && a.granted(g) != on {
+			inputOnly = false
 		}
 	}
 	next := map[string]bool{}
@@ -72,11 +87,11 @@ func (a *NodeAccess) SetGrants(changes map[string]bool) error {
 	}
 	data, _ := json.Marshal(next)
 	if os.MkdirAll(filepath.Dir(a.path), 0700) != nil {
-		return errors.New("permissions_storage")
+		return false, errors.New("permissions_storage")
 	}
 	f, err := os.CreateTemp(filepath.Dir(a.path), ".node-permissions-*")
 	if err != nil {
-		return errors.New("permissions_storage")
+		return false, errors.New("permissions_storage")
 	}
 	defer os.Remove(f.Name())
 	if err = f.Chmod(0600); err == nil {
@@ -93,13 +108,24 @@ func (a *NodeAccess) SetGrants(changes map[string]bool) error {
 		err = os.Rename(f.Name(), a.path)
 	}
 	if err != nil {
-		return errors.New("permissions_storage")
+		return false, errors.New("permissions_storage")
+	}
+	if a.granted("input") != next["input"] {
+		a.inputGeneration++
 	}
 	a.grants = next
 	a.storageErr = false
-	a.cancel()
+	if inputOnly {
+		for id, cancel := range a.active {
+			if a.activeGroups[id] == "input" {
+				cancel()
+			}
+		}
+	} else {
+		a.cancel()
+	}
 	a.changedLocked()
-	return nil
+	return inputOnly, nil
 }
 func (a *NodeAccess) OnCleanup(fn func()) {
 	a.mu.Lock()
@@ -176,8 +202,9 @@ func (a *NodeAccess) Execute(ctx context.Context, name string, params json.RawMe
 	a.next++
 	id, gen := a.next, a.generation
 	a.active[id] = cancel
+	a.activeGroups[id] = op.Group
 	a.mu.Unlock()
-	defer func() { cancel(); a.mu.Lock(); delete(a.active, id); a.mu.Unlock() }()
+	defer func() { cancel(); a.mu.Lock(); delete(a.active, id); delete(a.activeGroups, id); a.mu.Unlock() }()
 	if ctx.Err() != nil {
 		return nil, errors.New("cancelled")
 	}
@@ -197,4 +224,11 @@ func (a *NodeAccess) Execute(ctx context.Context, name string, params json.RawMe
 		return nil, errors.New("cancelled")
 	}
 	return result, err
+}
+
+// InputGeneration fences contacts/editor work even across rapid off/on changes.
+func (a *NodeAccess) InputGeneration() uint64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.inputGeneration
 }

@@ -49,6 +49,7 @@ func (s *Service) Run(ctx context.Context) error {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	ui, node := s.Client.Status(), s.Node.Status()
+	desktop := s.Node.DesktopStatus()
 	for {
 		select {
 		case <-ctx.Done():
@@ -56,7 +57,9 @@ func (s *Service) Run(ctx context.Context) error {
 			return s.Client.Close()
 		case <-tick.C:
 			nextUI, nextNode := s.Client.Status(), s.Node.Status()
-			if nextUI != ui || nextNode != node {
+			nextDesktop := s.Node.DesktopStatus()
+			if nextUI != ui || nextNode != node || nextDesktop.State != desktop.State {
+				desktop = nextDesktop
 				ui, node = nextUI, nextNode
 				shell.Get().Redraw()
 			}
