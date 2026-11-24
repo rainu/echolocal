@@ -204,6 +204,40 @@ func rfbRaw(img *image.RGBA, f []byte) []byte {
 	}
 	return out
 }
+
+// rfbCursor gives mouse viewers a local, latency-free pointer even though the
+// touchscreen device has no system mouse cursor. Only send it after RichCursor
+// negotiation. It is not drawn into screenshots and never generates input.
+func rfbCursor(format []byte) []byte {
+	shape := [...]string{
+		"X", "XX", "XOX", "XOOX", "XOOOX", "XOOOOX", "XOOOOOX",
+		"XOOOOOOX", "XOOOOOOOX", "XOOOOOOOOX", "XOOOOOOOOOX",
+		"XOOOOOXXXXXX", "XOOXOOX", "XOX XOOX", "XX  XOOX",
+		"X    XOOX", "     XOOX", "      XX",
+	}
+	const w = 16
+	h := len(shape)
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	mask := make([]byte, (w+7)/8*h)
+	for y, row := range shape {
+		for x, pixel := range row {
+			if pixel == ' ' {
+				continue
+			}
+			offset := img.PixOffset(x, y)
+			if pixel == 'O' {
+				img.Pix[offset], img.Pix[offset+1], img.Pix[offset+2] = 255, 255, 255
+			}
+			img.Pix[offset+3] = 255
+			mask[y*((w+7)/8)+x/8] |= 0x80 >> (x % 8)
+		}
+	}
+	rectangle := make([]byte, 12) // Hotspot at (0,0), not screen coordinates.
+	binary.BigEndian.PutUint16(rectangle[4:], w)
+	binary.BigEndian.PutUint16(rectangle[6:], uint16(h))
+	binary.BigEndian.PutUint32(rectangle[8:], 0xffffff11) // signed -239
+	return append(append(rectangle, rfbRaw(img, format)...), mask...)
+}
 func compactLength(n int) []byte {
 	b := []byte{byte(n & 127)}
 	n >>= 7
@@ -245,6 +279,7 @@ func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int,
 	defer idle.Stop()
 	format := append([]byte(nil), rfbFormat...)
 	tight, pending, force := false, false, false
+	cursor, cursorPending := false, false
 	var previous [32]byte
 	lastUpdate := time.Time{}
 	for {
@@ -263,14 +298,19 @@ func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int,
 					return errors.New("rfb_pixel_format")
 				}
 				format = append(format[:0], e.data[3:]...)
+				cursorPending = cursor
 				force = true
 			case 2:
-				tight = false
+				tight, cursor = false, false
 				for i := 0; i < len(e.data); i += 4 {
-					if binary.BigEndian.Uint32(e.data[i:]) == 7 {
+					switch int32(binary.BigEndian.Uint32(e.data[i:])) {
+					case 7:
 						tight = true
+					case -239: // RichCursor, explicitly advertised by noVNC.
+						cursor = true
 					}
 				}
+				cursorPending = cursor
 			case 3:
 				x, y := int(binary.BigEndian.Uint16(e.data[1:])), int(binary.BigEndian.Uint16(e.data[3:]))
 				rw, rh := int(binary.BigEndian.Uint16(e.data[5:])), int(binary.BigEndian.Uint16(e.data[7:]))
@@ -296,7 +336,7 @@ func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int,
 			img := image.NewRGBA(image.Rect(0, 0, w, h))
 			draw.ApproxBiLinear.Scale(img, img.Bounds(), src, src.Bounds(), draw.Src, nil)
 			hash := sha256.Sum256(img.Pix)
-			if !force && hash == previous {
+			if !force && hash == previous && !cursorPending {
 				// A held incremental request is not an idle viewer. Empty updates keep
 				// the standard request/response loop alive even on a static display.
 				if time.Since(lastUpdate) >= time.Second {
@@ -310,6 +350,9 @@ func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int,
 			}
 			header := make([]byte, 16)
 			header[3] = 1
+			if cursorPending {
+				header[3] = 2
+			}
 			binary.BigEndian.PutUint16(header[8:], uint16(w))
 			binary.BigEndian.PutUint16(header[10:], uint16(h))
 			var payload []byte
@@ -332,6 +375,12 @@ func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int,
 			}
 			if _, err = p.Write(payload); err != nil {
 				return err
+			}
+			if cursorPending {
+				if _, err = p.Write(rfbCursor(format)); err != nil {
+					return err
+				}
+				cursorPending = false
 			}
 			lastUpdate = time.Now()
 			previous = hash

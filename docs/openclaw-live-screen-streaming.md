@@ -47,6 +47,9 @@ and wheel pulses become short bounded touch swipes. Coordinates are mapped from
 the fixed stream size to the device view. Geometry/orientation changes disable
 input until a fresh stream. A held contact has a five-second inactivity limit.
 Middle/right buttons and OS-level shortcuts are not supported.
+Mouse viewers advertising RFB RichCursor receive a high-contrast local arrow,
+so no physical mouse or device-side cursor is needed. The cursor is not burned
+into captured pixels; touch input and permission checks are unchanged.
 
 Printable Latin-1/Unicode keys and common editor keys use the existing editor
 controller; Ctrl+A selects all. Each key is an atomic editor stroke, with no
