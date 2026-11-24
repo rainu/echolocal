@@ -23,6 +23,20 @@ The existing native wire contracts are preserved: public `gpt-live-1` uses
 `response.create` is added. A silent-channel designation alone is not a guarantee
 that the provider will never respond.
 
+## Silent-use guard
+
+Refs #60. When device context is present, a separate silent-use instruction is
+sent immediately before it, once per activation after the end-phrase guard.
+It tells the model to apply the mapping without replying, acknowledging or asking
+whether "you" refers to a Node ID, and never to speak the ID. Explicitly named
+other devices retain precedence. Consultation should carry these rules with the
+context. This applies to default and custom templates without changing or
+truncating their contents, including at the 1536-byte limit.
+
+This remains a prompt-level instruction, not an audio redaction filter or a
+guarantee of model compliance. Backing-agent propagation depends on Live
+delegation. Synthetic ordering/wire tests do not establish spoken compliance.
+
 ## Settings and defaults
 
 Settings → OpenClaw → Assistant 1/2 → Conversation context directly groups resume
