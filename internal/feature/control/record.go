@@ -57,9 +57,9 @@ func hearing() []*cobra.Command {
 	}
 
 	echo := &cobra.Command{
-		Use:   "echo <seconds> <path>",
-		Short: "Record the center microphone, the loopback, and what listeners got, as three channels",
-		Args:  cobra.ExactArgs(2),
+		Use:   "echo <seconds> [path|trials]",
+		Short: "Measure echo without saving audio, or explicitly record three channels to a path",
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			d, err := seconds(args[0])
 			if err != nil {
@@ -85,24 +85,31 @@ func hearing() []*cobra.Command {
 				return fmt.Errorf("record echo: nothing captured")
 			}
 
-			wav := make([]int16, 0, 3*len(m))
-			for i := range m {
-				wav = append(wav, m[i], r[i], o[i])
+			if len(args) == 2 && args[1] != "trials" {
+				wav := make([]int16, 0, 3*len(m))
+				for i := range m {
+					wav = append(wav, m[i], r[i], o[i])
+				}
+				if err := write(args[1], 3, wav); err != nil {
+					return err
+				}
 			}
-			if err := write(args[1], 3, wav); err != nil {
-				return err
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"seconds %.2f sounding %.2f\n  mic %s\n  ref %s\n  out %s\n",
+				float64(len(m))/mic.Rate, float64(sounding)/mic.Rate,
+				levels(m), levels(r), levels(o))
+			lag, corr := echoLag(m, r)
+			fmt.Fprintf(cmd.OutOrStdout(), "mic_after_ref_samples %d correlation %.3f\n", lag, corr)
+			if len(args) == 2 && args[1] == "trials" {
+				for _, taps := range []int{1024, 4096, 8192} {
+					erle, attenuation, err := echoTrial(m, r, taps)
+					if err != nil {
+						return err
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "trial_taps %d erle_db %.1f total_suppression_db %.1f\n", taps, erle, attenuation)
+				}
 			}
 
-			fmt.Fprintf(
-				cmd.OutOrStdout(),
-				"%s seconds %.2f sounding %.2f\n  mic %s\n  ref %s\n  out %s\n",
-				args[1],
-				float64(len(m))/mic.Rate,
-				float64(sounding)/mic.Rate,
-				levels(m),
-				levels(r),
-				levels(o),
-			)
 			return nil
 		},
 	}
