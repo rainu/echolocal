@@ -319,7 +319,7 @@ func (p *Player) Command(c esphome.MediaCommand) error {
 		}
 	}
 	if p.command == nil {
-		return errors.New("Media player is unavailable")
+		return errors.New("media player is unavailable")
 	}
 	p.command(c)
 	return nil

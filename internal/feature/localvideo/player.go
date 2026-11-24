@@ -137,7 +137,7 @@ func (r *Receiver) command(c esphome.MediaCommand) {
 func (r *Receiver) Command(c esphome.MediaCommand) error {
 	if c.HasMediaURL && c.MediaURL != "" {
 		if c.Announcement || !shared.ValidURL(c.MediaURL) {
-			return errors.New("Use an HTTP(S) media URL; video announcements are not supported")
+			return errors.New("use an HTTP(S) media URL; video announcements are not supported")
 		}
 		if _, _, err := youtubeurl.Parse(c.MediaURL); err != nil {
 			return err
@@ -201,7 +201,7 @@ func (r *Receiver) speaker(c esphome.MediaCommand) (bool, error) {
 				return true, err
 			}
 			if c.Announcement {
-				return true, errors.New("YouTube announcements are not supported")
+				return true, errors.New("announcements with YouTube URLs are not supported")
 			}
 			return true, r.Command(c)
 		}
