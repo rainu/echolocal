@@ -100,3 +100,33 @@ func TestVideoEntityTracksWebControlsErrorsAndMediaVolume(t *testing.T) {
 		t.Fatal("media volume/mute missing")
 	}
 }
+
+func TestSpeakerYouTubeRoutingAndOrdinaryAudioFallback(t *testing.T) {
+	p := &fakePlayer{state: "idle"}
+	r := newReceiver(p, &fakeVolume{})
+	for _, raw := range []string{"https://youtube.com/watch?v=M7lc1UVf-VE", "https://youtu.be/M7lc1UVf-VE", "https://music.youtube.com/watch?v=M7lc1UVf-VE"} {
+		handled, err := r.speaker(esphome.MediaCommand{HasMediaURL: true, MediaURL: raw, HasCommand: true, Command: esphome.MediaPlayerPlay})
+		if !handled || err != nil || p.loaded != raw {
+			t.Fatal("YouTube request lost", handled, err)
+		}
+		if p.calls[len(p.calls)-1] != "load" {
+			t.Fatal("new load incorrectly resumed previous player")
+		}
+	}
+	calls := len(p.calls)
+	for _, raw := range []string{"https://youtube.com/playlist?list=x", "https://youtu.be/invalid"} {
+		handled, err := r.speaker(esphome.MediaCommand{HasMediaURL: true, MediaURL: raw})
+		if !handled || err == nil || len(p.calls) != calls {
+			t.Fatal("bad link reached player")
+		}
+	}
+	if handled, err := r.speaker(esphome.MediaCommand{HasMediaURL: true, MediaURL: "https://example.com/music.wav"}); handled || err != nil {
+		t.Fatal("ordinary media intercepted")
+	}
+	if handled, err := r.speaker(esphome.MediaCommand{HasMediaURL: true, MediaURL: "https://example.com/voice.wav", Announcement: true}); handled || err != nil {
+		t.Fatal("announcement intercepted")
+	}
+	if handled, err := r.speaker(esphome.MediaCommand{HasMediaURL: true, MediaURL: "https://youtu.be/M7lc1UVf-VE", Announcement: true}); !handled || err == nil {
+		t.Fatal("YouTube announcement accepted")
+	}
+}

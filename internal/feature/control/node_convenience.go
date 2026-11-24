@@ -18,6 +18,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/alarm"
 	"github.com/ygelfand/echolocal/internal/feature/clawtalk"
 	"github.com/ygelfand/echolocal/internal/feature/idle"
+	"github.com/ygelfand/echolocal/internal/feature/localvideo"
 	"github.com/ygelfand/echolocal/internal/feature/screen"
 	timers "github.com/ygelfand/echolocal/internal/feature/timer"
 	"github.com/ygelfand/echolocal/internal/feature/voice"
@@ -61,7 +62,7 @@ func registerNodeConvenience(a *connection.NodeAccess) {
 		for _, s := range config.Streams() {
 			out[string(s)] = map[string]any{"volume": volume.Get().Level(s), "muted": speaker.Get().Muted(s)}
 		}
-		return map[string]any{"channels": out}, nil
+		return map[string]any{"channels": out, "video": localvideo.Get().Snapshot()}, nil
 	})
 	add("audio.volume.set", "audio", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p struct {
