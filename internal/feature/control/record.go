@@ -100,10 +100,21 @@ func hearing() []*cobra.Command {
 				levels(m), levels(r), levels(o))
 			lag, corr := echoLag(m, r)
 			fmt.Fprintf(cmd.OutOrStdout(), "mic_after_ref_samples %d correlation %.3f\n", lag, corr)
+			if trials, _ := cmd.Flags().GetBool("trials"); trials {
+				for _, taps := range []int{1024, 4096, 8192} {
+					erle, attenuation, err := echoTrial(m, r, taps)
+					if err != nil {
+						return err
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "trial_taps %d erle_db %.1f total_suppression_db %.1f\n", taps, erle, attenuation)
+				}
+			}
 
 			return nil
 		},
 	}
+
+	echo.Flags().Bool("trials", false, "compare fresh filter tails in memory without changing the live canceller")
 
 	raw := &cobra.Command{
 		Use:   "raw <seconds> <path>",
