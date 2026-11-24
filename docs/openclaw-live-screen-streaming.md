@@ -1,4 +1,4 @@
-# OpenClaw live screen sharing (issue #15)
+# OpenClaw live screen sharing and control (issue #15)
 
 ## Contract and dependencies
 
@@ -24,7 +24,11 @@ A dedicated `desktop` permission defaults **off**, both for fresh installations
 and when upgrading old permission files. The old `screen` grant continues to
 govern screenshots and bounded recordings only. Local administrators can enable
 live sharing under OpenClaw -> Node -> Permissions. Enabling all permissions is
-also an explicit opt-in. Changing grants reconnects the same Node identity.
+also an explicit opt-in. Changes reconnect the same Node identity when its declared capabilities need to
+expand. Input-only reductions are applied live, cancel input work and withdraw
+input tool metadata without disconnecting an ongoing screen stream. Re-enabling
+previously declared input can also be live; enabling input absent from the
+current handshake requires a reconnect/capability approval as usual.
 
 Start from the OpenClaw desktop viewer. Close/release that viewer to stop.
 The device permission page also has **Stop stream**; the local administrative
@@ -32,9 +36,31 @@ CLI exposes `node-desktop` status and `node-desktop stop`. Neither is exposed
 through remote input or as a Node plugin tool. Revoking the local desktop
 permission cancels capture and withdraws the command declaration.
 
-The transport is **view-only**, even if a viewer requests control. RFB key,
-pointer and bounded clipboard messages are consumed without executing input or
-accessing the device clipboard. Audio and camera are not captured.
+The existing **Remote input** (`input`) permission also governs desktop-viewer
+input; there is no additional input permission. View-only Gateway observers
+filter input before delivery. In control mode, the device independently checks
+the live input grant and existing sensitive-page restrictions for every event.
+Sharing alone never authorizes input.
+
+The left mouse button maps to one touch contact; click is tap, drag is swipe,
+and wheel pulses become short bounded touch swipes. Coordinates are mapped from
+the fixed stream size to the device view. Geometry/orientation changes disable
+input until a fresh stream. A held contact has a five-second inactivity limit.
+Middle/right buttons and OS-level shortcuts are not supported.
+
+Printable Latin-1/Unicode keys and common editor keys use the existing editor
+controller; Ctrl+A selects all. Each key is an atomic editor stroke, with no
+persistent OS key-down. Permission, generation and non-password focus are checked
+again on the UI queue immediately before editing. Clipboard messages are still
+discarded; paste/OS command execution is not added. Audio/camera are not captured.
+
+Permission revocation, a protected page, stop, disconnect, timeout or shutdown
+cancels a held touch without completing a click or gesture and clears held-key
+state. Permission generations fence even rapid off/on changes. A denied held
+button must be released before a fresh gesture can start. The supporting
+libcountertop dependency is pinned to its concrete fork revision; its cancellation
+and guarded-editor changes are tracked separately and need the same owner
+acceptance before merge.
 
 ## Capture and wire implementation
 
@@ -80,7 +106,9 @@ signaling is logged or returned.
 Automated checks cover default-off upgrades, unchanged screenshot permission,
 strict attach-target validation, zero/positive invocation timeout semantics,
 RFB authentication/initialization, Raw pixel order, Tight JPEG decoding,
-fragmented carrier input, hostile pixel layouts/clipboard sizes, and teardown
+fragmented carrier input, hostile pixel layouts/clipboard sizes, input grant
+gating/generation fencing, coordinate/key translation, non-activating contact
+cancellation and UI-queue editor guards, and teardown
 for local stop, revocation, disconnect, cancellation, peer close and timeout.
 Existing Node, settings and control suites remain regression gates.
 
@@ -89,7 +117,7 @@ separately in the PR. Four samples/second and the 640-pixel bound are configured
 limits, **not measured delivery rate or end-to-end latency guarantees**.
 Raw fallback consumes considerably more bandwidth than Tight JPEG. Capture and
 JPEG encoding cost CPU; there is no hardware H.264 acceleration in this RFB path.
-There is no desktop audio, clipboard, remote input, resize protocol extension
+There is no desktop audio, clipboard, OS-key injection, resize protocol extension
 or change to `screen.snapshot`/`screen.record`.
 
 A protocol client successfully receiving frames is not proof of playback in the

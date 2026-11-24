@@ -14,11 +14,19 @@ func (c *Client) SetNodeGrants(g map[string]bool) error {
 	if c.access == nil {
 		return errors.New("unsupported_command")
 	}
-	if err := c.access.SetGrants(g); err != nil {
+	inputOnly, err := c.access.setGrants(g)
+	if err != nil {
 		return err
 	}
 	c.op.Lock()
 	defer c.op.Unlock()
+	inputOn := c.access.Granted("input")
+	c.mu.Lock()
+	hot := inputOnly && c.rpc != nil && (!inputOn || c.rpc.nodeInputDeclared)
+	c.mu.Unlock()
+	if hot {
+		return nil
+	}
 	c.stopLocked()
 	if c.saved.Enabled {
 		c.startLocked()

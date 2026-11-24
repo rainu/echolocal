@@ -15,7 +15,7 @@ func nodePermissionsPage() *sharedshell.Page {
 }
 func nodePermissionsPageFor(c *openclaw.Client) *sharedshell.Page {
 	hints := map[string]string{
-		"desktop": "Nur Ansicht · standardmäßig aus · keine Fernbedienung",
+		"desktop": "Bildschirm teilen · Eingaben benötigen zusätzlich Fernbedienung",
 		"talk":    "Konfigurierte Sprachassistenten starten/stoppen", "screen": "Bildschirmaufnahmen lesen", "input": "Tippen, Wischen und Texteingabe",
 		"display": "Nachrichten und Bildschirmseiten steuern", "settings": "Nicht geheime Geräteeinstellungen lesen/ändern",
 		"audio": "Medien und Lautstärke steuern", "alarms": "Wecker und Timer steuern",

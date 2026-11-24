@@ -478,7 +478,8 @@ func (c *Client) attempt(ctx context.Context) bool {
 		empty := []string{}
 		handshake.OperatorScopes = &empty
 	}
-	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": c.connectParams(handshake, challenge.Nonce, time.Now().UnixMilli())}); e != nil {
+	submitted := c.connectParams(handshake, challenge.Nonce, time.Now().UnixMilli())
+	if e = conn.WriteJSON(map[string]any{"type": "req", "id": rid, "method": "connect", "params": submitted}); e != nil {
 		c.mark("error", "network", "out", "connect")
 		return true
 	}
@@ -567,6 +568,13 @@ func (c *Client) attempt(ctx context.Context) bool {
 		}
 	}
 	link := newRPCLink(conn)
+	if commands, ok := submitted["commands"].([]string); ok {
+		for _, command := range commands {
+			if strings.HasPrefix(command, "echolocal.input.") {
+				link.nodeInputDeclared = true
+			}
+		}
+	}
 	link.origin = s.URL
 	c.mu.Lock()
 	c.rpc = link

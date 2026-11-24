@@ -49,7 +49,7 @@ func Labels() map[string]string {
 	for i, g := range groups {
 		out["group."+g] = groupNames[i]
 	}
-	desktopNames := map[string]string{"en": "Live screen sharing (view only; default off)", "de": "Live-Bildschirmfreigabe (nur Ansicht; standardmäßig aus)", "it": "Condivisione schermo live (sola lettura; disattivata)", "vi": "Chia sẻ màn hình trực tiếp (chỉ xem; mặc định tắt)"}
+	desktopNames := map[string]string{"en": "Live screen sharing (default off)", "de": "Live-Bildschirmfreigabe (standardmäßig aus)", "it": "Condivisione schermo live (disattivata)", "vi": "Chia sẻ màn hình trực tiếp (mặc định tắt)"}
 	out["group.desktop"] = desktopNames[say.Chosen()]
 	if out["group.desktop"] == "" {
 		out["group.desktop"] = desktopNames["en"]

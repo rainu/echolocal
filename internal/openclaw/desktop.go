@@ -19,6 +19,14 @@ import (
 
 const desktopFrameLimit = 64 * 1024
 
+// DesktopInput receives only Gateway-forwarded control events. Implementations
+// must independently enforce local input policy, and Close must cancel contacts.
+type DesktopInput interface {
+	Pointer(context.Context, byte, int, int)
+	Key(context.Context, bool, uint32)
+	Close()
+}
+
 // DesktopStatus deliberately contains no bearer capabilities or destinations.
 type DesktopStatus struct {
 	State  string `json:"state"`
@@ -73,7 +81,7 @@ func desktopAttachURL(origin, ticket, attachPath string) (string, error) {
 
 // StreamDesktop owns exactly one outbound carrier, capture operation and RFB
 // state machine. Called only by the permission-gated desktop.stream operation.
-func (c *Client) StreamDesktop(ctx context.Context, raw json.RawMessage, w, h int, capture func(context.Context) (image.Image, error)) (any, error) {
+func (c *Client) StreamDesktop(ctx context.Context, raw json.RawMessage, w, h int, capture func(context.Context) (image.Image, error), inputs ...DesktopInput) (any, error) {
 	var p struct {
 		Ticket     string `json:"ticket"`
 		AttachPath string `json:"attachPath"`
@@ -140,7 +148,7 @@ func (c *Client) StreamDesktop(ctx context.Context, raw json.RawMessage, w, h in
 		c.desktop.status.State = "streaming"
 		c.desktop.status.Frames++
 		c.desktop.mu.Unlock()
-	})
+	}, inputs...)
 	if ctx.Err() != nil {
 		return nil, errors.New("cancelled")
 	}

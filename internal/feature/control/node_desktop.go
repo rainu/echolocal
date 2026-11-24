@@ -70,6 +70,8 @@ func registerNodeDesktop(a *connection.NodeAccess) {
 			w = max(1, w*640/longest)
 			h = max(1, h*640/longest)
 		}
-		return featureclaw.Get().Node.StreamDesktop(ctx, raw, w, h, captureDesktop)
+		input := nodeDesktopInput(ctx, a, w, h)
+		defer input.Close()
+		return featureclaw.Get().Node.StreamDesktop(ctx, raw, w, h, captureDesktop, input)
 	}})
 }

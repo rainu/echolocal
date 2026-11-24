@@ -92,12 +92,12 @@ func rfbHandshake(p desktopWire, password string, w, h int) error {
 	binary.BigEndian.PutUint16(header, uint16(w))
 	binary.BigEndian.PutUint16(header[2:], uint16(h))
 	copy(header[4:], rfbFormat)
-	name := []byte("EchoLocal (view only)")
+	name := []byte("EchoLocal")
 	binary.BigEndian.PutUint32(header[20:], uint32(len(name)))
 	_, err = p.Write(append(header, name...))
 	return err
 }
-func readRFBEvents(ctx context.Context, p desktopWire, out chan<- rfbEvent) error {
+func readRFBEvents(ctx context.Context, p desktopWire, out chan<- rfbEvent, inputs ...DesktopInput) error {
 	send := func(e rfbEvent) error {
 		select {
 		case out <- e:
@@ -128,9 +128,9 @@ func readRFBEvents(ctx context.Context, p desktopWire, out chan<- rfbEvent) erro
 		case 3:
 			b, err = rfbRead(p, 9)
 		case 4:
-			_, err = rfbRead(p, 7) // Never inject keys.
+			b, err = rfbRead(p, 7)
 		case 5:
-			_, err = rfbRead(p, 5) // Never inject pointer events.
+			b, err = rfbRead(p, 5)
 		case 6:
 			b, err = rfbRead(p, 7)
 			if err != nil {
@@ -146,6 +146,14 @@ func readRFBEvents(ctx context.Context, p desktopWire, out chan<- rfbEvent) erro
 		}
 		if err != nil {
 			return err
+		}
+		if len(inputs) > 0 && inputs[0] != nil && ctx.Err() == nil {
+			if kind[0] == 4 {
+				inputs[0].Key(ctx, b[0] != 0, binary.BigEndian.Uint32(b[3:]))
+			}
+			if kind[0] == 5 {
+				inputs[0].Pointer(ctx, b[0], int(binary.BigEndian.Uint16(b[1:])), int(binary.BigEndian.Uint16(b[3:])))
+			}
 		}
 		if kind[0] == 0 || kind[0] == 2 || kind[0] == 3 {
 			if err = send(rfbEvent{kind[0], b}); err != nil {
@@ -210,7 +218,7 @@ func compactLength(n int) []byte {
 	}
 	return b
 }
-func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int, capture func(context.Context) (image.Image, error), frame func()) error {
+func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int, capture func(context.Context) (image.Image, error), frame func(), inputs ...DesktopInput) error {
 	if err := rfbHandshake(p, password, w, h); err != nil {
 		return err
 	}
@@ -221,7 +229,16 @@ func serveDesktop(ctx context.Context, p desktopWire, password string, w, h int,
 	defer cancel()
 	events := make(chan rfbEvent, 8)
 	failed := make(chan error, 1)
-	go func() { failed <- readRFBEvents(ctx, p, events) }()
+	go func() {
+		err := readRFBEvents(ctx, p, events, inputs...)
+		// Release input promptly even if the capture loop is currently blocked.
+		for _, input := range inputs {
+			if input != nil {
+				input.Close()
+			}
+		}
+		failed <- err
+	}()
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	idle := time.NewTimer(45 * time.Second)
