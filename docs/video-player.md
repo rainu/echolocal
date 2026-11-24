@@ -45,3 +45,8 @@ Replace the example entity ID with the Video entity discovered for your device. 
 The original **Speaker** entity is unchanged, including Home Assistant's audio conversion and announcement handling. The separate Video entity deliberately advertises no audio-conversion format: Home Assistant otherwise turns MP4 into WAV and drops the picture. No REST login, extra service, HA configuration patch, HACS installation or `bypass_proxy` flag is required.
 
 Pass direct HTTP(S) media URLs. Home Assistant's ESPHome native media protocol does not carry a seek command; seeking remains available on the device and web interface rather than being advertised as an unsupported HA feature. The Video entity does not handle announcements; send those to Speaker.
+
+
+### Existing Speaker proxy prerequisite
+
+The original Speaker entity still uses Home Assistant's WAV/announcement proxy. That proxy needs a Home Assistant internal URL which is reachable from the device; an automatically detected container-only address may not be reachable. If direct Video playback and a correctly formatted direct WAV work but normal Speaker conversion does not, check this HA URL setting separately. This update does not rewrite HA's global URL configuration.
