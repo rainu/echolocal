@@ -50,4 +50,4 @@ func (a *Actions) Declare() {
 
 func (a *Actions) Name() string { return "actions" }
 
-func (a *Actions) Actions() []*esphome.Action { return a.reg.Actions() }
+func (a *Actions) Actions() []*esphome.Action { return append(a.reg.Actions(), talkActions()...) }

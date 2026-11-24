@@ -14,6 +14,7 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/runtime/service"
 
 	"github.com/ygelfand/echolocal/internal/android/firewall"
+	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/bluetooth"
@@ -33,14 +34,15 @@ type API struct{ *nativeapi.Server }
 
 var get = sync.OnceValue(func() *API {
 	s := nativeapi.New(nativeapi.Dependencies{
-		KeyPath:      layout.KeyPath,
-		DialPath:     layout.DialPath,
-		Identity:     identity,
-		Bluetooth:    func() esphome.BluetoothFeature { return bluetooth.Get().Features() },
-		Registry:     component.Default(),
-		Adoption:     adoption{},
-		Logs:         logging.Log.Stream,
-		OnSubscribed: func() { component.Subscribed.Emit(struct{}{}) },
+		ConcurrentActions: concurrentActions(),
+		KeyPath:           layout.KeyPath,
+		DialPath:          layout.DialPath,
+		Identity:          identity,
+		Bluetooth:         func() esphome.BluetoothFeature { return bluetooth.Get().Features() },
+		Registry:          component.Default(),
+		Adoption:          adoption{},
+		Logs:              logging.Log.Stream,
+		OnSubscribed:      func() { component.Subscribed.Emit(struct{}{}) },
 	})
 	component.Reconnect.Listen(func(struct{}) { s.Reconnect() })
 	component.Fire.Listen(s.Fire)
@@ -109,3 +111,10 @@ type adoption struct{}
 
 func (adoption) Adopted() bool            { return config.Get().API.Adopted }
 func (adoption) SetAdopted(on bool) error { return config.Set().API().Adopted(on) }
+
+func concurrentActions() int {
+	if board.Detect().Has(board.Panel) {
+		return 8
+	}
+	return 0
+}

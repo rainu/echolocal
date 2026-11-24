@@ -212,3 +212,5 @@ OpenClaw owner web/API settings: [coverage and API](docs/openclaw-owner-settings
 Settings completeness requirements: [contributing](CONTRIBUTING.md).
 
 Managed owner file transfers: [web interface, API and limits](docs/managed-files.md).
+
+[Home Assistant Talk actions and session discovery](docs/homeassistant-talk.md).
