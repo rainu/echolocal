@@ -11,6 +11,7 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/input/touch"
 	"github.com/ygelfand/libcountertop/pkg/runtime/control/screencmd"
 
+	"github.com/ygelfand/echolocal/internal/feature/localvideo"
 	"github.com/ygelfand/echolocal/internal/hardware/display"
 	hwtouch "github.com/ygelfand/echolocal/internal/hardware/touch"
 )
@@ -18,6 +19,7 @@ import (
 var shot = func() (image.Image, error) { return screencmd.Composed(display.Get()) }
 
 func addDesktop(pages map[string]http.Handler, input *textentry.Controller) {
+	pages["video"] = localvideo.Handler()
 	pages["desktop"] = desktop.New(
 		display.Get(),
 		func(c touch.Contact) { hwtouch.Get().Feed(c) },
