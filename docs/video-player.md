@@ -53,23 +53,25 @@ The original Speaker entity still uses Home Assistant's WAV/announcement proxy. 
 
 ## YouTube and YouTube Music URLs
 
-The existing Video web page, authenticated \`POST /api/v1/video/\` load action,
-Video media-player entity, and Node \`audio.control.video\` accept:
+The existing Video web page, authenticated `POST /api/v1/video/` load action,
+Video media-player entity, and Node `audio.control.video` accept:
 
-- \`https://www.youtube.com/watch?v=M7lc1UVf-VE\`
-- \`https://youtu.be/M7lc1UVf-VE\`
-- \`https://music.youtube.com/watch?v=M7lc1UVf-VE\`
+- `https://www.youtube.com/watch?v=M7lc1UVf-VE`
+- `https://youtu.be/M7lc1UVf-VE`
+- `https://music.youtube.com/watch?v=M7lc1UVf-VE`
 
-The existing Speaker Node action \`audio.control.speaker\` also routes these URLs
+The existing Speaker Node action `audio.control.speaker` also routes these URLs
 to the same YouTube player. Its ordinary audio URLs and announcements remain on
 the original audio path. This does not change Home Assistant's Speaker WAV proxy:
 use the Video entity to pass the original YouTube URL through Home Assistant.
-The standalone diagnostic \`echod media\` command still accepts WAV audio only.
+The standalone diagnostic `echod media` command still accepts WAV audio only.
 
-Mobile watch links, \`/embed/VIDEO_ID\` and \`/shorts/VIDEO_ID\` also identify a
-single video. Optional \`t=90\`, \`t=1m30s\` or \`start=90\` selects the initial
-position (at most 24 hours). Playlist-only, channel, search, credential-bearing,
-fragment-bearing and nonstandard-port YouTube URLs are rejected before playback
+Podcast episode links (`music.youtube.com/podcast/VIDEO_ID`), live links (`/live/VIDEO_ID`), legacy `/v/VIDEO_ID` and `/e/VIDEO_ID`, privacy-enhanced `youtube-nocookie.com/embed/VIDEO_ID`, trailing slashes, timestamp fragments (`#t=90`) and YouTube-owned share redirects are recognized without manual rewriting. Redirect wrappers are unwrapped locally (at most three levels), never fetched and never followed to non-YouTube sites.
+
+Mobile watch links, `/embed/VIDEO_ID` and `/shorts/VIDEO_ID` also identify a
+single video. Optional `t=90`, `t=1m30s` or `start=90` selects the initial
+position (at most 24 hours). Playlist-only, channel, search, clip, credential-bearing,
+nonstandard-port YouTube URLs are rejected before playback
 changes. A watch link with a playlist still plays only its selected video.
 
 YouTube runs its supported embedded web player; EchoLocal does not resolve watch
@@ -81,7 +83,7 @@ address that same player, including the native fullscreen controls.
 Closing the controlling browser does not stop playback.
 
 Loading is asynchronous. Node acceptance is not playback success. Inspect
-\`audio.status.video\`, the existing Video API GET, or the web page for
+`audio.status.video`, the existing Video API GET, or the web page for
 loading/playing/paused/idle/error, actual decoder video frames, and a sanitized
 error. Startup times out after one minute rather than remaining silently loading.
 Malformed links are rejected immediately; removed/private videos, disabled

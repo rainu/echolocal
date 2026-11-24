@@ -104,7 +104,7 @@ func TestVideoEntityTracksWebControlsErrorsAndMediaVolume(t *testing.T) {
 func TestSpeakerYouTubeRoutingAndOrdinaryAudioFallback(t *testing.T) {
 	p := &fakePlayer{state: "idle"}
 	r := newReceiver(p, &fakeVolume{})
-	for _, raw := range []string{"https://youtube.com/watch?v=M7lc1UVf-VE", "https://youtu.be/M7lc1UVf-VE", "https://music.youtube.com/watch?v=M7lc1UVf-VE"} {
+	for _, raw := range []string{"https://youtube.com/watch?v=M7lc1UVf-VE", "https://youtu.be/M7lc1UVf-VE", "https://music.youtube.com/watch?v=M7lc1UVf-VE", "https://music.youtube.com/podcast/cJjMmDeOAZ4", "https://youtube.com/live/M7lc1UVf-VE", "https://youtu.be/M7lc1UVf-VE#t=30"} {
 		handled, err := r.speaker(esphome.MediaCommand{HasMediaURL: true, MediaURL: raw, HasCommand: true, Command: esphome.MediaPlayerPlay})
 		if !handled || err != nil || p.loaded != raw {
 			t.Fatal("YouTube request lost", handled, err)
