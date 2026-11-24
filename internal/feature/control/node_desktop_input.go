@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ygelfand/echolocal/internal/feature/frontend"
+	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/echolocal/internal/hardware/display"
 	hwtouch "github.com/ygelfand/echolocal/internal/hardware/touch"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
@@ -262,6 +263,9 @@ func nodeDesktopInput(ctx context.Context, a *connection.NodeAccess, sw, sh int)
 			expected, _ := ctx.Value(desktopEpochKey{}).(uint64)
 			return !v.Password && allowed() && a.InputGeneration() == expected
 		})
+		if err == nil {
+			featureshell.Get().Touch()
+		} // Accepted remote typing is UI activity too.
 		return err
 	}, a.InputGeneration)
 }
