@@ -37,7 +37,7 @@ func (p *Player) Load(m cast.Media, at time.Duration, play bool) error {
 			return e
 		}
 		if !c.Enabled {
-			return publicError("Configure and enable the SMB media source first")
+			return publicError(playbackDiagnostic("disabled", "config", "SOURCE_DISABLED"))
 		}
 		m.ContentID = internal
 		m.ContentURL = ""
@@ -63,7 +63,7 @@ func (p *Player) Snapshot() urlplayer.Snapshot {
 		if e := p.transport.Error(); e != "" {
 			s.Error = e
 		} else {
-			s.Error = "Could not decode the network video. Use a supported MP4 (H.264/AAC), then retry."
+			s.Error = playbackDiagnostic("decode", "decode", "VIDEO_DECODE_FAILED")
 		}
 	}
 	return s

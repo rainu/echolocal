@@ -102,6 +102,26 @@ cancellation and reconnect behavior; no permanent file/session pool is retained.
 The native decoder, container/codec support and media volume controls are shared
 with ordinary URL video playback.
 
+## Playback diagnostics
+
+SMB playback and connection-test failures show a localized explanation, the
+failed step (connect, sign-in, share, path metadata, file open/stat, or data read)
+and a safe technical code. Server NTSTATUS values are preserved, including
+unknown values, rather than being replaced with a generic interruption message.
+Known statuses distinguish missing paths, invalid paths, folders, read permission
+denials, locks, expired sessions and unsupported requests. Wrapped network errors
+distinguish DNS, refusal, reset/close and timeout failures.
+
+Unknown failures explicitly remain unknown. Raw error strings, file paths,
+server addresses, usernames and passwords are not included. This is a diagnosis
+of the reported error, not proof of the underlying NAS/server configuration.
+A connection test checks the share, not each file or codec.
+
+An incomplete response is reported as a premature end of video data; normal
+EOF is not an error. Intentional body closure does not create a playback error.
+Empty files and invalid byte ranges retain the normal HTTP response semantics
+but provide an explanatory playback diagnostic.
+
 ## Reconnect and limitations
 
 Every subsequent range request reconnects and authenticates afresh. The existing

@@ -62,6 +62,9 @@ func TestLiveSMBReadRangesFailuresAndCancellation(t *testing.T) {
 			t.Fatal("range mismatch", v.raw, e)
 		}
 	}
+	if _, _, e = read("folder", "bytes=0-"); e == nil || !strings.Contains(tr.Error(), "folder") || !strings.Contains(tr.Error(), "code:") {
+		t.Fatal("directory error category", tr.Error())
+	}
 	if _, _, e = read("missing.mp4", "bytes=0-"); e == nil || !strings.Contains(tr.Error(), "not found") {
 		t.Fatal("missing-file category")
 	}
@@ -84,7 +87,7 @@ func TestLiveSMBReadRangesFailuresAndCancellation(t *testing.T) {
 	if e = s.Save(Update{Settings: changed}); e != nil {
 		t.Fatal(e)
 	}
-	if _, _, e = read("sample.mp4", "bytes=0-31"); e == nil || !strings.Contains(tr.Error(), "unavailable") {
+	if _, _, e = read("sample.mp4", "bytes=0-31"); e == nil || !strings.Contains(tr.Error(), "ECONNREFUSED") {
 		t.Fatal("offline error category")
 	}
 	if e = s.Save(Update{Settings: cfg.Settings}); e != nil {

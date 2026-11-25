@@ -48,14 +48,19 @@ func (s *Store) Test(parent context.Context, u Update) TestResult {
 	defer cancel()
 	deadline, _ := ctx.Deadline()
 	failed := func(e error, code string) TestResult {
+		e = networkCause(e)
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return testResult("test_cancelled")
 		}
 		var timeout net.Error
 		if !time.Now().Before(deadline) || errors.Is(e, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.As(e, &timeout) && timeout.Timeout() {
-			return testResult("test_timeout")
+			r := testResult("test_timeout")
+			r.Message = category(context.DeadlineExceeded, map[string]string{"test_connect": "connect", "test_auth": "auth", "test_share": "mount", "test_access": "metadata"}[code])
+			return r
 		}
-		return testResult(code)
+		r := testResult(code)
+		r.Message = category(e, map[string]string{"test_connect": "connect", "test_auth": "auth", "test_share": "mount", "test_access": "metadata"}[code])
+		return r
 	}
 	conn, e := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(u.Host, strconv.Itoa(u.Port)))
 	if e != nil {

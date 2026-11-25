@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	smb2 "github.com/cloudsoda/go-smb2"
@@ -41,34 +42,6 @@ func (t *Transport) fail(message string) error {
 	t.mu.Unlock()
 	return errors.New(message)
 }
-func category(e error, stage string) string {
-	if stage == "mount" {
-		return "SMB share unavailable or access denied. Check the configured share name and read-only account permissions."
-	}
-	if stage == "auth" {
-		return "SMB sign-in or signing negotiation failed. Check the account, password, domain, and SMB 2/3 policy."
-	}
-	var r *smb2.ResponseError
-	if errors.As(e, &r) {
-		switch r.Code {
-		case 0xc000006d, 0xc000006a, 0xc0000064, 0xc0000072, 0xc0000234:
-			return "SMB sign-in failed. Check the account, password, domain, and server NTLM policy."
-		case 0xc0000022:
-			return "SMB access denied. Check the read-only account permissions and signing policy."
-		case 0xc0000034, 0xc000003a, 0xc000000f:
-			return "Network video not found. Check the path within the configured share."
-		case 0xc00000cc, 0xc00000be:
-			return "SMB share unavailable. Check the configured share name."
-		}
-	}
-	if errors.Is(e, os.ErrNotExist) {
-		return "Network video not found. Check the path within the configured share."
-	}
-	if stage == "connect" {
-		return "SMB server unavailable or incompatible. Check connectivity and SMB 2/3 support, then retry."
-	}
-	return "SMB read interrupted. Restore connectivity and load the video again; playback does not resume automatically."
-}
 func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if r.URL.Hostname() != smburl.Host {
 		return t.Base.RoundTrip(r)
@@ -78,10 +51,10 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	cfg, e := t.Store.snapshot()
 	if e != nil {
-		return nil, e
+		return nil, t.fail(playbackDiagnostic("config", "config", "INVALID_SOURCE_SETTINGS"))
 	}
 	if !cfg.Enabled {
-		return nil, t.fail("Configure and enable the SMB media source first")
+		return nil, t.fail(playbackDiagnostic("disabled", "config", "SOURCE_DISABLED"))
 	}
 	select {
 	case t.slots <- struct{}{}:
@@ -90,18 +63,21 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	release := func() { cancel(); <-t.slots }
+	deadline, _ := ctx.Deadline()
 	conn, e := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp", net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)))
 	if e != nil {
+		e = deadlineError(ctx, deadline, e)
 		release()
 		if r.Context().Err() != nil {
 			return nil, r.Context().Err()
 		}
 		return nil, t.fail(category(e, "connect"))
 	}
-	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
+	_ = conn.SetDeadline(deadline)
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	closeConn := sync.OnceFunc(func() { stop(); _ = conn.Close(); release() })
 	failed := func(e error, stage string) (*http.Response, error) {
+		e = deadlineError(ctx, deadline, e)
 		closeConn()
 		if r.Context().Err() != nil {
 			return nil, r.Context().Err()
@@ -126,11 +102,11 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	for i := range parts {
 		fi, e := share.Lstat(strings.Join(parts[:i+1], "/"))
 		if e != nil {
-			return failed(e, "open")
+			return failed(e, "metadata")
 		}
 		if fi.Mode()&(os.ModeSymlink|os.ModeIrregular|os.ModeDevice|os.ModeNamedPipe|os.ModeSocket) != 0 {
 			closeConn()
-			return nil, t.fail("SMB links and special files are not supported. Select a regular file within the share.")
+			return nil, t.fail(playbackDiagnostic("link", "metadata", "LINK_OR_SPECIAL_FILE"))
 		}
 	}
 	f, e := share.Open(name)
@@ -139,15 +115,24 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	fi, e := f.Stat()
 	if e != nil {
-		return failed(e, "open")
+		return failed(e, "stat")
 	}
 	if !fi.Mode().IsRegular() || strings.ReplaceAll(f.Name(), "\\", "/") != name {
 		closeConn()
-		return nil, t.fail("Select a regular video file within the configured SMB share")
+		kind, code := "path", "FILE_PATH_MISMATCH"
+		if !fi.Mode().IsRegular() {
+			kind, code = "folder", "NOT_A_REGULAR_FILE"
+		}
+		return nil, t.fail(playbackDiagnostic(kind, "stat", code))
 	}
 	size := fi.Size()
 	from, to, e := byteRange(r.Header.Get("Range"), size)
 	if e != nil {
+		kind, code := "range", "RANGE_NOT_SATISFIABLE"
+		if size <= 0 {
+			kind, code = "empty", "EMPTY_VIDEO_FILE"
+		}
+		t.fail(playbackDiagnostic(kind, "stat", code))
 		closeConn()
 		return &http.Response{StatusCode: 416, Header: http.Header{"Content-Range": {fmt.Sprintf("bytes */%d", size)}}, Body: io.NopCloser(strings.NewReader("")), Request: r}, nil
 	}
@@ -157,15 +142,17 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		status = 206
 		header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, to, size))
 	}
-	body := &readBody{Reader: io.NewSectionReader(f, from, to-from+1), close: closeConn, failed: func(e error) {
+	body := &readBody{remaining: to - from + 1, Reader: io.NewSectionReader(f, from, to-from+1), close: closeConn, failed: func(e error) {
 		if r.Context().Err() == nil {
-			t.fail(category(e, "read"))
+			t.fail(category(deadlineError(ctx, deadline, e), "read"))
 		}
 	}}
 	return &http.Response{StatusCode: status, Header: header, ContentLength: to - from + 1, Body: body, Request: r}, nil
 }
 
 type readBody struct {
+	remaining int64
+	closed    atomic.Bool
 	io.Reader
 	close  func()
 	failed func(error)
@@ -173,12 +160,16 @@ type readBody struct {
 
 func (b *readBody) Read(p []byte) (int, error) {
 	n, e := b.Reader.Read(p)
-	if e != nil && e != io.EOF {
+	b.remaining -= int64(n)
+	if e == io.EOF && b.remaining > 0 {
+		e = io.ErrUnexpectedEOF
+	}
+	if e != nil && e != io.EOF && !b.closed.Load() {
 		b.failed(e)
 	}
 	return n, e
 }
-func (b *readBody) Close() error { b.close(); return nil }
+func (b *readBody) Close() error { b.closed.Store(true); b.close(); return nil }
 func byteRange(raw string, size int64) (int64, int64, error) {
 	if size <= 0 {
 		return 0, 0, errors.New("empty")
