@@ -22,7 +22,7 @@ func featuresPage() *sharedshell.Page {
 			{Key: "features.sendspin", On: c.Sendspin.Enabled, Set: sendspin.Get().SetEnabled},
 			{Key: "features.cast", Page: func() sharedshell.View { return castPage() }},
 			{Key: "features.smb", Page: func() sharedshell.View { return smbPage() }},
-{Key: "features.youtube", Page: func() sharedshell.View { return youtubePage() }},
+			{Key: "features.youtube", Page: func() sharedshell.View { return youtubePage() }},
 			{Key: "features.airplay", Page: func() sharedshell.View { return airplayPage() }},
 			{Key: "call.settings", Page: func() sharedshell.View { return callsPage() }},
 			{Key: "features.proxy", On: c.Bluetooth.Proxy, Set: bluetooth.Get().SetProxy},
