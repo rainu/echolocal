@@ -29,7 +29,6 @@ func youtubeText(key string) string {
 			"status":       "Connection",
 			"premium":      "Premium active",
 			"code":         "Activation code",
-			"hint":         "Confirm on your phone or computer. Passwords stay with Google.",
 			"connect":      "Sign in / try again",
 			"refresh":      "Check connection",
 			"cancel":       "Cancel sign-in",
@@ -48,7 +47,6 @@ func youtubeText(key string) string {
 			"status":       "Verbindung",
 			"premium":      "Premium aktiv",
 			"code":         "Aktivierungscode",
-			"hint":         "Am Handy oder Computer bestätigen. Passwörter bleiben bei Google.",
 			"connect":      "Anmelden / erneut versuchen",
 			"refresh":      "Verbindung prüfen",
 			"cancel":       "Anmeldung abbrechen",
@@ -67,7 +65,6 @@ func youtubeText(key string) string {
 			"status":       "Connessione",
 			"premium":      "Premium attivo",
 			"code":         "Codice di attivazione",
-			"hint":         "Conferma dal telefono o computer. Le password restano con Google.",
 			"connect":      "Accedi / riprova",
 			"refresh":      "Verifica connessione",
 			"cancel":       "Annulla accesso",
@@ -86,7 +83,6 @@ func youtubeText(key string) string {
 			"status":       "Kết nối",
 			"premium":      "Premium đang hoạt động",
 			"code":         "Mã kích hoạt",
-			"hint":         "Xác nhận trên điện thoại hoặc máy tính. Mật khẩu chỉ nhập tại Google.",
 			"connect":      "Đăng nhập / thử lại",
 			"refresh":      "Kiểm tra kết nối",
 			"cancel":       "Hủy đăng nhập",
@@ -127,7 +123,6 @@ func youtubePage() *sharedshell.Page {
 					menu.Row{Label: youtubeText("code"), Value: s.Code, Kind: menu.Plain},
 					menu.Row{
 						Label:   "yt.be/activate",
-						Hint:    youtubeText("hint"),
 						Kind:    menu.Plain,
 						Preview: youtubeActivationQR{},
 					},
@@ -149,7 +144,6 @@ func youtubePage() *sharedshell.Page {
 					rows,
 					menu.Row{
 						Label: youtubeText("connect"),
-						Hint:  youtubeText("hint"),
 						Kind:  menu.Plain,
 					},
 				)

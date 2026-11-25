@@ -13,7 +13,7 @@ func TestYouTubeConnectionLabelsAndServiceEntryAreLocalized(t *testing.T) {
 	t.Cleanup(func() { say.Use(before) })
 	for _, lang := range []string{"en", "de", "it", "vi"} {
 		say.Use(lang)
-		for _, key := range []string{"checking", "disconnected", "linking", "connected", "expired", "error", "status", "premium", "code", "hint", "connect", "refresh", "cancel", "disconnect", "confirm", "remove", "back"} {
+		for _, key := range []string{"checking", "disconnected", "linking", "connected", "expired", "error", "status", "premium", "code", "connect", "refresh", "cancel", "disconnect", "confirm", "remove", "back"} {
 			if youtubeText(key) == "" {
 				t.Errorf("missing %s/%s", lang, key)
 			}
