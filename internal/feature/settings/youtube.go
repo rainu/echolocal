@@ -5,8 +5,11 @@ package settings
 import (
 	"sync"
 
+	gogui "github.com/go-gui-org/go-gui/gui"
+
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
+	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/media/cast/protocols/webreceiver"
 	"github.com/ygelfand/libcountertop/pkg/say"
 
@@ -122,7 +125,12 @@ func youtubePage() *sharedshell.Page {
 				rows = append(
 					rows,
 					menu.Row{Label: youtubeText("code"), Value: s.Code, Kind: menu.Plain},
-					menu.Row{Label: "yt.be/activate", Hint: youtubeText("hint"), Kind: menu.Plain},
+					menu.Row{
+						Label:   "yt.be/activate",
+						Hint:    youtubeText("hint"),
+						Kind:    menu.Plain,
+						Preview: youtubeActivationQR{},
+					},
 				)
 			}
 			if s.Error != "" {
@@ -186,4 +194,11 @@ func youtubePage() *sharedshell.Page {
 			}},
 		},
 	}
+}
+
+// youtubeActivationQR contains only the public activation website, never the code.
+type youtubeActivationQR struct{}
+
+func (youtubeActivationQR) View(_ *gogui.Window, _, _ float32) gogui.View {
+	return widgets.QR("https://yt.be/activate", 144, 144, gogui.RGB(0, 0, 0))
 }

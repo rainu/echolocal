@@ -122,6 +122,8 @@ public content that the device can play anonymously.
 
 Manage the device connection under **Connected services → YouTube** in the web
 frontend or **Settings → Connected services → YouTube** on the touchscreen.
+A locally rendered QR code sits to the right of the activation website in both UIs.
+It encodes only the public website URL, never the activation code, and needs no external QR service.
 Sign in starts Google's official device activation: open `https://yt.be/activate`
 on your phone/computer and confirm the short-lived code there. No Google password
 is entered in EchoLocal. Status, retry/check and cancel are shared by both UIs.
