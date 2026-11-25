@@ -7,7 +7,7 @@ This is unrelated to managed-file/WebDAV server features.
 ## Configure and play
 
 On a panel device, open **Settings → Connected services → SMB network videos**.
-The owner web interface has the same configuration under **Video → SMB**.
+The owner web interface has the same configuration under **Connected services → SMB**.
 Set the server hostname (no URL), TCP port (normally 445), share name, username,
 optional NTLM domain, and a password. Enable the source and select **Save settings**.
 
