@@ -3,8 +3,9 @@
 package settings
 
 import (
-	"github.com/ygelfand/libcountertop/pkg/say"
 	"testing"
+
+	"github.com/ygelfand/libcountertop/pkg/say"
 )
 
 func TestYouTubeConnectionLabelsAndServiceEntryAreLocalized(t *testing.T) {
