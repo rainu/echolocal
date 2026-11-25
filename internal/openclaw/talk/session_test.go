@@ -276,3 +276,106 @@ func TestProviderReadinessGatesCueAndMicrophoneDuringSlowSetup(t *testing.T) {
 		})
 	}
 }
+
+type muteProbe struct {
+	frames  chan []int16
+	packets atomic.Uint64
+	level   atomic.Int64
+}
+
+func (p *muteProbe) Frames() (<-chan []int16, func()) { return p.frames, func() {} }
+func (p *muteProbe) Play(pcm []int16) {
+	var total int64
+	for _, v := range pcm {
+		if v < 0 {
+			total -= int64(v)
+		} else {
+			total += int64(v)
+		}
+	}
+	if len(pcm) > 0 {
+		p.level.Store(total / int64(len(pcm)))
+	}
+	p.packets.Add(1)
+}
+
+type muteDevice struct {
+	fakeDevice
+	probe *muteProbe
+}
+
+func (d *muteDevice) Frames() (<-chan []int16, func()) { return d.probe.Frames() }
+func (d *muteDevice) Play(pcm []int16)                 { d.probe.Play(pcm) }
+
+func TestSessionMuteKeepsBidirectionalTransportAndSameSession(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	local := &muteProbe{frames: make(chan []int16, 2)}
+	remote := &muteProbe{frames: make(chan []int16, 2)}
+	device := &muteDevice{probe: local}
+	peer, err := rtc.NewAudioOnly(rtc.Media{Audio: remote}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	control := &fakeControl{event: make(chan connection.TalkEvent, 8), peer: peer, capable: true}
+	session := NewSession(control, "agent:synthetic:kept", device)
+	session.nativeMedia = false
+	// Mute before the link exists must be applied at publication, not lost.
+	session.SetInputMuted(true)
+	if err := session.Open(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	link := session.statsLink.Load()
+	id := session.id
+	if !link.Muted() {
+		t.Fatal("setup lost encoder mute")
+	}
+	go func() {
+		tick := time.NewTicker(20 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				pcm := make([]int16, rtc.FrameSamples)
+				for i := range pcm {
+					if i%32 < 16 {
+						pcm[i] = 12000
+					} else {
+						pcm[i] = -12000
+					}
+				}
+				for _, out := range []chan []int16{local.frames, remote.frames} {
+					select {
+					case out <- pcm:
+					default:
+					}
+				}
+			}
+		}
+	}()
+	await(t, func() bool { return local.level.Load() > 1000 && remote.packets.Load() > 5 })
+	session.SetInputMuted(false)
+	await(t, func() bool { return remote.level.Load() > 1000 })
+	for _, period := range []time.Duration{120 * time.Millisecond, 750 * time.Millisecond} {
+		session.SetInputMuted(true)
+		await(t, func() bool { return remote.level.Load() < 300 })
+		before := local.packets.Load()
+		time.Sleep(period)
+		if !link.Muted() || local.packets.Load() <= before || local.level.Load() < 1000 || remote.level.Load() >= 300 {
+			t.Fatal("mute stopped output or forwarded microphone")
+		}
+		if session.statsLink.Load() != link || session.id != id || session.Target != "agent:synthetic:kept" || control.createCalls != 1 || device.closed.Load() != 0 {
+			t.Fatal("mute replaced session")
+		}
+		session.SetInputMuted(false)
+		await(t, func() bool { return remote.level.Load() > 1000 })
+	}
+	session.Close()
+	if control.closed.Load() != 1 || device.closed.Load() != 1 {
+		t.Fatal("hangup did not close once")
+	}
+}

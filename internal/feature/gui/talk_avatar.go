@@ -38,7 +38,7 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 			if len(p.Actions) > 0 {
 				p.Actions[len(p.Actions)-1].Do()
 			}
-		})
+		}, p.InputMuted != nil && p.InputMuted())
 	}
 	s := p.Renderer.Snapshot()
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
@@ -139,10 +139,10 @@ func talkAvatarViewport(width, height int) avatar.Viewport {
 }
 
 // Must match native ControlCutouts: 72px circles, 24px gap, 20px bottom inset.
-func fullscreenComposition(width, height int, switchMode, end func()) gogui.View {
+func fullscreenComposition(width, height int, switchMode, end func(), muted ...bool) gogui.View {
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
 	controls := gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen-controls", Width: 168, Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Spacing: gogui.SpacingPx(24), Content: []gogui.View{
-		talkModeButton("talk-fullscreen-switch", gogui.IconColumns, text("switch_split"), false, switchMode), talkModeButton("talk-fullscreen-stop", gogui.IconPhone, text("end_talk"), true, end),
+		talkModeButton("talk-fullscreen-switch", gogui.IconColumns, text("switch_split"), false, switchMode, len(muted) > 0 && muted[0]), talkModeButton("talk-fullscreen-stop", gogui.IconPhone, text("end_talk"), true, end),
 	}})
 	return gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen", Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(0), Spacing: gogui.NoSpacing, Content: []gogui.View{
 		gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Height: float32(height - 92), Sizing: gogui.FillFixed, Padding: gogui.NoPadding}),
@@ -152,7 +152,7 @@ func fullscreenComposition(width, height int, switchMode, end func()) gogui.View
 	}})
 }
 
-func talkModeButton(id, icon, label string, stop bool, do func()) gogui.View {
+func talkModeButton(id, icon, label string, stop bool, do func(), muted ...bool) gogui.View {
 	st := gogui.CurrentTheme().TextStyleIconLarge
 	st.Size = 32
 	st.Color = gogui.Hex(0xFFFFFF)
@@ -160,8 +160,25 @@ func talkModeButton(id, icon, label string, stop bool, do func()) gogui.View {
 	if stop {
 		color = gogui.Hex(0x74343D)
 	}
+	content := []gogui.View{gogui.Text(gogui.TextCfg{Text: icon, TextStyle: st})}
+	if len(muted) > 0 && muted[0] {
+		color = gogui.Hex(0x74343D)
+		label = say.T("camera.muted") + " · " + label
+		st.Size = 26
+		content = []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FitFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: []gogui.View{
+			gogui.Text(gogui.TextCfg{Text: icon, TextStyle: st}),
+			gogui.DrawCanvas(gogui.DrawCanvasCfg{ID: "talk-muted-badge", Width: 22, Height: 28, OnDraw: func(dc *gogui.DrawContext) {
+				dc.RoundedRect(8, 2, 7, 13, 3, gogui.White, 2)
+				dc.Polyline([]float32{4, 10, 4, 14, 7, 19, 15, 19, 19, 14, 19, 10}, gogui.White, 2)
+				dc.Line(11, 19, 11, 24, gogui.White, 2)
+				dc.Line(6, 25, 16, 25, gogui.White, 2)
+				dc.Line(2, 2, 21, 26, gogui.Hex(0x74343D), 5)
+				dc.Line(2, 2, 21, 26, gogui.White, 2)
+			}}),
+		}})}
+	}
 	return gogui.Button(gogui.ButtonCfg{ID: id, A11YCfg: gogui.A11YCfg{A11YLabel: label}, Width: 72, Height: 72, MinWidth: 72, MinHeight: 72, Sizing: gogui.FixedFixed, Radius: gogui.RadiusPx(36), Color: color,
-		Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: icon, TextStyle: st})}, OnClick: func(e gogui.EventCtx) {
+		Content: content, OnClick: func(e gogui.EventCtx) {
 			if do != nil {
 				do()
 			}

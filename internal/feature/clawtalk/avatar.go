@@ -10,6 +10,7 @@ import (
 	shellfeature "github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/layout"
+	"github.com/ygelfand/echolocal/internal/openclaw/talk"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"sync"
 	"time"
@@ -32,6 +33,7 @@ type AvatarPage struct {
 	mu          sync.Mutex
 	closed      bool
 	Fullscreen  bool
+	InputMuted  func() bool
 	composition config.Avatar
 }
 
@@ -103,7 +105,7 @@ func (m *Manager) standalonePage() sharedshell.View {
 	m.mu.Lock()
 	m.avatarRenderer = c
 	m.mu.Unlock()
-	return &AvatarPage{CaptionPage: captions, Renderer: c, Fullscreen: full, composition: saved}
+	return &AvatarPage{CaptionPage: captions, Renderer: c, Fullscreen: full, composition: saved, InputMuted: func() bool { return m.state() == talk.Muted }}
 }
 
 // SwitchMode is presentation-only: it never calls the Talk manager or restarts

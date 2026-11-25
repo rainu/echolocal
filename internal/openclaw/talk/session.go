@@ -67,6 +67,8 @@ type Session struct {
 	pendingTools      atomic.Int32
 	tools, utterances atomic.Uint64
 	responseEpoch     atomic.Uint64
+	inputMu           sync.Mutex
+	inputMuted        atomic.Bool
 	providerReady     sync.Once
 	rejected          sync.Once
 }
@@ -226,7 +228,10 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		return errors.New("talk_peer_failed")
 	}
 	s.link = link
+	s.inputMu.Lock()
 	s.statsLink.Store(link)
+	link.Mute(s.inputMuted.Load())
+	s.inputMu.Unlock()
 	s.stage.Store(4)
 	offer, err := link.Offer(startup)
 	if err != nil {
@@ -284,6 +289,17 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		close(s.audioGate)
 	}
 	return nil
+}
+
+// SetInputMuted gates the actual encoder, including already queued PCM.
+// It is independent of output, provider context and transport cancellation.
+func (s *Session) SetInputMuted(on bool) {
+	s.inputMu.Lock()
+	defer s.inputMu.Unlock()
+	s.inputMuted.Store(on)
+	if link := s.statsLink.Load(); link != nil {
+		link.Mute(on)
+	}
 }
 func (s *Session) Close() error {
 	s.once.Do(func() {

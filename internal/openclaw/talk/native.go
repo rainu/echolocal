@@ -367,7 +367,7 @@ type preReadyAudio struct {
 func (a preReadyAudio) Play(pcm []int16) { a.device.Play(pcm) }
 func (a preReadyAudio) Frames() (<-chan []int16, func()) {
 	ctx, cancel := context.WithCancel(a.ctx)
-	out := make(chan []int16, 8)
+	out := make(chan []int16)
 	frames, release := a.device.Frames()
 	go func() {
 		defer close(out)

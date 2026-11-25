@@ -43,10 +43,18 @@ type activation struct {
 	timeout  time.Duration
 	deadline time.Time
 	ending   bool
+	muted    bool
 }
 
-func New() *Controller             { return &Controller{state: Ended} }
-func (c *Controller) State() State { c.mu.Lock(); defer c.mu.Unlock(); return c.state }
+func New() *Controller { return &Controller{state: Ended} }
+func (c *Controller) State() State {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.current != nil && c.current.muted {
+		return Muted
+	}
+	return c.state
+}
 
 // Start claims ownership before opening any transport. Duplicate activations
 // cannot acquire another microphone, including while the first is connecting.
@@ -83,13 +91,16 @@ func (c *Controller) Start(ctx context.Context, b Backend, timeout time.Duration
 	return nil
 }
 func (c *Controller) arm(a *activation) {
+	if a.muted {
+		return
+	}
 	if a.timer != nil {
 		a.timer.Stop()
 	}
 	a.deadline = time.Now().Add(a.timeout)
 	a.timer = time.AfterFunc(a.timeout, func() {
 		c.mu.Lock()
-		expired := c.current == a && c.state == Listening && !time.Now().Before(a.deadline)
+		expired := c.current == a && c.state == Listening && !a.muted && !time.Now().Before(a.deadline)
 		if expired {
 			a.ending = true
 		}
@@ -124,9 +135,27 @@ func (c *Controller) Activity(s State) {
 }
 func (c *Controller) Stop() { c.end(Ended) }
 
-// Mute terminates capture rather than merely changing the presentation state.
-// Unmuting does not automatically restart an intentionally ended session.
-func (c *Controller) Mute() { c.end(Muted) }
+// SetMuted changes input presentation and suspends local inactivity expiry.
+// Capture/transport gating belongs to the audio backend; ownership, response
+// activity and the selected session survive. Unmute never starts a new call.
+func (c *Controller) SetMuted(on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	a := c.current
+	if a == nil || a.ending || a.muted == on {
+		return
+	}
+	a.muted = on
+	if on {
+		if a.timer != nil {
+			a.timer.Stop()
+			a.timer = nil
+		}
+	} else if c.state == Listening {
+		c.arm(a)
+	}
+}
+func (c *Controller) Mute() { c.SetMuted(true) }
 func (c *Controller) Fail() { c.end(Failed) }
 func (c *Controller) end(s State) {
 	c.mu.Lock()

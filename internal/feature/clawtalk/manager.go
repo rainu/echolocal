@@ -42,11 +42,7 @@ type Manager struct {
 
 var Get = sync.OnceValue(func() *Manager {
 	m := &Manager{Store: load(layout.StateDir + "/openclaw-assistants.json"), Controller: talk.New(), ctx: context.Background()}
-	mute.Get().Changed.Listen(func(on bool) {
-		if on {
-			m.Mute()
-		}
-	})
+	mute.Get().Changed.Listen(m.SetMuted)
 	return m
 })
 
@@ -205,7 +201,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		return
 	}
 	sink.readyChoice = v.StartTone
-	a := newAudio(ctx, func() { m.markOwned(generation, talk.Muted); cancel() })
+	a := newAudio(ctx, func(on bool) { m.setMutedOwned(generation, on) })
 	a.startTone, a.endTone = v.StartTone, v.EndTone
 	a.feedback = feedback
 	bound, bindErr := claw.Get().BindTalk()
@@ -234,6 +230,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	m.mu.Lock()
 	m.lastBackend = b
 	m.lastAudio = a
+	b.SetInputMuted(m.forcedMuted)
 	m.mu.Unlock()
 	b.Activity = func(state talk.State) { m.activityOwned(generation, state) }
 	a.onPlay = b.Playback
@@ -273,6 +270,9 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		}
 		return
 	}
+	m.mu.Lock()
+	m.Controller.SetMuted(m.forcedMuted)
+	m.mu.Unlock()
 	launch.notify(nil)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -302,7 +302,7 @@ func (m *Manager) setError() { m.mu.Lock(); m.error = true; m.mu.Unlock(); shell
 func (m *Manager) state() talk.State {
 	m.mu.Lock()
 	bad := m.error
-	muted := m.forcedMuted
+	muted := m.active && m.forcedMuted
 	m.mu.Unlock()
 	if muted {
 		return talk.Muted
@@ -313,15 +313,35 @@ func (m *Manager) state() talk.State {
 	return m.Controller.State()
 }
 
-func (m *Manager) Mute() {
+// Mute is input-only. The dedicated Stop/StopOwned path still ends Talk.
+func (m *Manager) Mute() { m.SetMuted(true) }
+func (m *Manager) SetMuted(on bool) {
 	m.mu.Lock()
-	m.forcedMuted = true
-	cancel := m.cancel
-	m.mu.Unlock()
-	m.Controller.Mute()
-	if cancel != nil {
-		cancel()
+	defer m.mu.Unlock()
+	m.setMutedLocked(on)
+}
+func (m *Manager) setMutedOwned(generation uint64, on bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.active || m.generation != generation {
+		return
 	}
+	m.setMutedLocked(on)
+}
+func (m *Manager) setMutedLocked(on bool) {
+	if !m.active {
+		return
+	}
+	m.forcedMuted = on
+	if m.lastBackend != nil {
+		m.lastBackend.SetInputMuted(on)
+	}
+	if m.lastAudio != nil {
+		m.lastAudio.inputMuted.Store(on)
+		m.lastAudio.lastCaptureMS.Store(0)
+	}
+	m.Controller.SetMuted(on)
+	m.uiDirty = true
 }
 
 type Status struct {

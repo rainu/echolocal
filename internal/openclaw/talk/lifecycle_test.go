@@ -73,7 +73,7 @@ func TestExclusiveActivationAndStop(t *testing.T) {
 		t.Fatal("non-idempotent shutdown")
 	}
 }
-func TestStopDuringOpenAndMuteDoesNotRestart(t *testing.T) {
+func TestMuteDuringOpenRetainsOwnershipAndStopStillCancels(t *testing.T) {
 	c := New()
 	entered := make(chan struct{})
 	b := &backend{open: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() }}
@@ -81,17 +81,81 @@ func TestStopDuringOpenAndMuteDoesNotRestart(t *testing.T) {
 	go func() { done <- c.Start(context.Background(), b, time.Hour) }()
 	<-entered
 	c.Mute()
+	if !c.Busy() || c.State() != Muted || b.closed.Load() != 0 {
+		t.Fatal("mute cancelled setup")
+	}
+	c.SetMuted(false)
+	if c.State() != Connecting {
+		t.Fatal("lost connecting state")
+	}
+	c.Stop()
 	if err := <-done; err == nil {
-		t.Fatal("cancelled start succeeded")
+		t.Fatal("stopped setup succeeded")
 	}
-	if c.State() != Muted || b.closed.Load() != 1 {
-		t.Fatal("mute did not terminate")
-	}
-	time.Sleep(10 * time.Millisecond)
-	if b.opened.Load() != 1 {
-		t.Fatal("automatic restart")
+	if c.State() != Ended || b.closed.Load() != 1 {
+		t.Fatal("stop did not terminate")
 	}
 }
+
+func TestMuteSuspendsExpiryAndPreservesResponseActivity(t *testing.T) {
+	c := New()
+	b := &backend{}
+	if err := c.Start(context.Background(), b, 30*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	defer c.Stop()
+	for _, state := range []State{Listening, Thinking, Speaking} {
+		c.Activity(state)
+		c.Mute()
+		c.Mute()
+		time.Sleep(65 * time.Millisecond)
+		c.Activity(Speaking)
+		if !c.Busy() || c.State() != Muted || b.closed.Load() != 0 {
+			t.Fatal("mute lost call")
+		}
+		c.SetMuted(false)
+		if c.State() != Speaking {
+			t.Fatal("activity while muted was lost")
+		}
+	}
+	c.Mute()
+	c.Activity(Listening)
+	time.Sleep(65 * time.Millisecond)
+	if !c.Busy() {
+		t.Fatal("expiry while muted")
+	}
+	c.SetMuted(false)
+	await(t, func() bool { return !c.Busy() })
+	if c.State() != Ended || b.opened.Load() != 1 || b.closed.Load() != 1 {
+		t.Fatal("unmute restarted or expiry broken")
+	}
+	c.SetMuted(false)
+	if c.Busy() {
+		t.Fatal("unmute restarted ended call")
+	}
+}
+
+func TestMutedConversationCanStillEndOrFail(t *testing.T) {
+	for _, failure := range []bool{false, true} {
+		c := New()
+		b := &backend{}
+		if err := c.Start(context.Background(), b, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+		c.Mute()
+		want := Ended
+		if failure {
+			c.Fail()
+			want = Failed
+		} else {
+			c.Stop()
+		}
+		if c.State() != want || c.Busy() || b.closed.Load() != 1 {
+			t.Fatal("mute blocked termination")
+		}
+	}
+}
+
 func TestInactivitySuspendedWhileResponseInProgress(t *testing.T) {
 	c := New()
 	b := &backend{}

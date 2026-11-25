@@ -42,12 +42,13 @@ type deviceAudio struct {
 	release                            func()
 	captured, drops, played, overflows atomic.Uint64
 	onPlay                             func()
-	onMute                             func()
+	onMute                             func(bool)
+	inputMuted                         atomic.Bool
 }
 
-func newAudio(parent context.Context, onMute func()) *deviceAudio {
+func newAudio(parent context.Context, onMute func(bool)) *deviceAudio {
 	ctx, cancel := context.WithCancel(parent)
-	a := &deviceAudio{ctx: ctx, cancel: cancel, start: make(chan struct{}), done: make(chan struct{}), frames: make(chan []int16, 8), playDone: make(chan struct{}), onMute: onMute}
+	a := &deviceAudio{ctx: ctx, cancel: cancel, start: make(chan struct{}), done: make(chan struct{}), frames: make(chan []int16), playDone: make(chan struct{}), onMute: onMute}
 	go a.pump()
 	go a.playoutPump()
 	return a
@@ -57,8 +58,12 @@ func (a *deviceAudio) Start(ctx context.Context) error {
 		return errors.New("talk_audio_unavailable")
 	}
 	muted, e := mute.Get().Muted()
-	if e != nil || muted {
+	if e != nil {
 		return errors.New("talk_muted")
+	}
+	a.inputMuted.Store(muted)
+	if a.onMute != nil {
+		a.onMute(muted)
 	}
 	a.source, a.release = mic.Get().Listen("openclaw-talk")
 	select {
@@ -84,34 +89,21 @@ func (a *deviceAudio) pump() {
 	case <-a.start:
 	}
 	defer a.release()
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		case f, ok := <-a.source:
-			if !ok {
-				return
+	runCapture(a.ctx, a.source, a.frames, captureHooks{
+		muted: func() bool {
+			muted, err := mute.Get().Muted()
+			on := err != nil || muted // Unknown hardware state is fail-closed.
+			if a.inputMuted.Swap(on) != on && a.onMute != nil {
+				a.onMute(on)
 			}
-			muted, e := mute.Get().Muted()
-			if e != nil || muted {
-				if a.onMute != nil {
-					go a.onMute()
-				}
-				return
-			}
-			// Discard feedback and its acoustic tail instead of buffering user input.
-			if !a.ready.Load() || speaker.Get().Heard(config.StreamFeedback, 250*time.Millisecond) {
-				continue
-			}
-			a.captured.Add(1)
-			a.lastCaptureMS.Store(time.Now().UnixMilli())
-			select {
-			case a.frames <- f:
-			default:
-				a.drops.Add(1)
-			}
-		}
-	}
+			return on
+		},
+		ready: func() bool {
+			return a.ready.Load() && !speaker.Get().Heard(config.StreamFeedback, 250*time.Millisecond)
+		},
+		captured: func() { a.captured.Add(1); a.lastCaptureMS.Store(time.Now().UnixMilli()) },
+		dropped:  func() { a.drops.Add(1) },
+	})
 }
 func (a *deviceAudio) Frames() (<-chan []int16, func()) { return a.frames, func() {} }
 func (a *deviceAudio) Play(pcm []int16) {
