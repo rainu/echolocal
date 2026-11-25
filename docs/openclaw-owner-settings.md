@@ -128,3 +128,7 @@ there is no device speaker output, microphone capture or Talk interruption.
 The empty choice uses the same cue defaults as the native UI; `none` returns
 short silence. Uploaded tones use the same stored clip and level as device
 feedback. Prompt-context previews retain their existing JSON contract.
+
+## SMB source
+
+The separately persisted SMB source has equivalent native and owner web configuration, documented in [SMB network videos](smb-network-video.md). The owner-only `/smb/` API never returns its password. This source is deliberately absent from restricted Node settings and portable configuration exports.

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,9 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/playout"
 	"github.com/ygelfand/echolocal/internal/hardware/display"
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
+	"github.com/ygelfand/echolocal/internal/layout"
+	"github.com/ygelfand/echolocal/internal/networkmedia"
+	"github.com/ygelfand/libcountertop/pkg/fetch"
 )
 
 func init() {
@@ -49,12 +53,16 @@ type Receiver struct {
 	volume  Volume
 	handler http.Handler
 	youtube *webreceiver.YouTube
+	network *networkmedia.Player
 }
 
 var Get = sync.OnceValue(func() *Receiver {
 	output := playout.New()
+	client := fetch.Client(0)
+	transport := networkmedia.NewTransport(Source(), client.Transport)
+	client.Transport = transport
 	p := urlplayer.New(urlplayer.Options{
-		Output: output, Screen: true,
+		Output: output, Screen: true, HTTP: client,
 		Target: func() playback.Target { return video.Target(display.Get(), component.Board().MaxFPS) },
 		Resample: func(from int) func([]int16) []int16 {
 			return resample.NewRational(from, speaker.Rate, speaker.Channels).Run
@@ -67,8 +75,11 @@ var Get = sync.OnceValue(func() *Receiver {
 			return resample.NewRational(from, speaker.Rate, speaker.Channels).Run
 		},
 	}, webreceiver.Options{Engine: chromecast.Engine()})
-	r := newReceiver(shared.Route(p, y), mediaVolume{})
+	network := networkmedia.Wrap(shared.Route(p, y), Source(), transport)
+	r := newReceiver(network, mediaVolume{})
+	r.network = network
 	r.youtube = y
+	Source().Changed = func() { _ = r.player.Stop() }
 	media.Get().SetURLHandler(r.speaker)
 	return r
 })
@@ -139,7 +150,7 @@ func (r *Receiver) command(c esphome.MediaCommand) {
 func (r *Receiver) Command(c esphome.MediaCommand) error {
 	if c.HasMediaURL && c.MediaURL != "" {
 		if c.Announcement || !shared.ValidURL(c.MediaURL) {
-			return errors.New("use an HTTP(S) media URL; video announcements are not supported")
+			return errors.New("use an HTTP(S) media URL or smb://media/path; video announcements are not supported")
 		}
 		if _, _, err := youtubeurl.Parse(c.MediaURL); err != nil {
 			return err
@@ -197,6 +208,9 @@ func (mediaVolume) Mute(v bool)    { media.Get().Levels.Mute(config.StreamMedia,
 // Non-YouTube audio and announcements retain their original implementation.
 func (r *Receiver) speaker(c esphome.MediaCommand) (bool, error) {
 	if c.HasMediaURL && c.MediaURL != "" {
+		if strings.HasPrefix(c.MediaURL, "smb:") {
+			return true, r.Command(c)
+		}
 		_, recognized, err := youtubeurl.Parse(c.MediaURL)
 		if recognized {
 			if err != nil {
@@ -207,12 +221,12 @@ func (r *Receiver) speaker(c esphome.MediaCommand) (bool, error) {
 			}
 			return true, r.Command(c)
 		}
-		if !c.Announcement && r.youtube != nil && r.youtube.Active() {
+		if !c.Announcement && ((r.youtube != nil && r.youtube.Active()) || (r.network != nil && r.network.Active())) {
 			_ = r.player.Stop()
 		}
 		return false, nil
 	}
-	if r.youtube != nil && r.youtube.Active() && c.HasCommand {
+	if ((r.youtube != nil && r.youtube.Active()) || (r.network != nil && r.network.Active())) && c.HasCommand {
 		switch c.Command {
 		case esphome.MediaPlayerPlay, esphome.MediaPlayerPause, esphome.MediaPlayerStop, esphome.MediaPlayerToggle:
 			return true, r.Command(c)
@@ -222,3 +236,7 @@ func (r *Receiver) speaker(c esphome.MediaCommand) (bool, error) {
 }
 
 func (r *Receiver) Snapshot() urlplayer.Snapshot { return r.player.Snapshot() }
+
+var source = sync.OnceValue(func() *networkmedia.Store { return networkmedia.New(layout.StateDir + "/smb-media.json") })
+
+func Source() *networkmedia.Store { return source() }

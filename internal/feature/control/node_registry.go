@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"net/url"
+	"strings"
 
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/feature/localvideo"
@@ -15,6 +16,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/tones"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	esphome "github.com/ygelfand/go-esphome-device"
+	"github.com/ygelfand/libcountertop/pkg/media/smburl"
 	"github.com/ygelfand/libcountertop/pkg/media/youtubeurl"
 )
 
@@ -102,8 +104,8 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 				continue
 			}
 			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.control." + e.ObjectID, Group: "audio",
-				Description: "Control this speaker media-player entity: play/pause/stop/mute/unmute/volume_up/volume_down/toggle, optional HTTP(S) media URL including public YouTube/YouTube Music video links (no announcements for YouTube), volume 0..1. announcement applies only with a URL. Speaker mute is not microphone mute.",
-				Parameters:  nodeObject(nodeSchema{"command": nodeEnum("", "play", "pause", "stop", "mute", "unmute", "volume_up", "volume_down", "toggle"), "volume": nodeNumber("number", 0, 1), "url": nodeString(2048, "HTTP(S) URL with a host and no embedded credentials; empty means no media change."), "announcement": nodeBool()}),
+				Description: "Control this speaker media-player entity: play/pause/stop/mute/unmute/volume_up/volume_down/toggle, optional HTTP(S) media URL including public YouTube/YouTube Music video links, or smb://media/path from the owner-configured share (no announcements for YouTube or SMB), volume 0..1. announcement applies only with a URL. Speaker mute is not microphone mute.",
+				Parameters:  nodeObject(nodeSchema{"command": nodeEnum("", "play", "pause", "stop", "mute", "unmute", "volume_up", "volume_down", "toggle"), "volume": nodeNumber("number", 0, 1), "url": nodeString(2048, "HTTP(S) URL without credentials or smb://media/folder/video.mp4; empty means no media change."), "announcement": nodeBool()}),
 				Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 					var p struct {
 						Command      string   `json:"command"`
@@ -133,7 +135,8 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 					}
 					if p.URL != "" {
 						u, err := url.Parse(p.URL)
-						if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || len(p.URL) > 2048 {
+						_, smbErr := smburl.Parse(p.URL)
+						if err != nil || ((u.Scheme != "https" && u.Scheme != "http") && smbErr != nil) || u.Host == "" || u.User != nil || len(p.URL) > 2048 {
 							return nil, errors.New("invalid_params")
 						}
 						cmd.HasMediaURL = true
@@ -157,8 +160,8 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 						return nil, err
 					}
 					// URL loading is asynchronous: acceptance is not proof of playback.
-					if _, youtube, _ := youtubeurl.Parse(cmd.MediaURL); cmd.HasMediaURL && youtube {
-						return map[string]any{"accepted": true, "status": "loading", "message": "Playback is asynchronous; inspect audio.status.video for YouTube errors"}, nil
+					if _, youtube, _ := youtubeurl.Parse(cmd.MediaURL); cmd.HasMediaURL && (youtube || strings.HasPrefix(cmd.MediaURL, "smb:")) {
+						return map[string]any{"accepted": true, "status": "loading", "message": "Playback is asynchronous; inspect audio.status.video for source and decoder errors"}, nil
 					}
 					return map[string]bool{"done": true}, nil
 				}})
