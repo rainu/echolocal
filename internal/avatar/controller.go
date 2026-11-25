@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/layout"
+	"image"
 	"io"
 	"math"
 	"os"
@@ -65,6 +66,7 @@ type Controller struct {
 	background           func() string
 	source               func() string
 	resolve              func(string) (AssetSet, string, string, error)
+	overlay              func() image.Rectangle
 	talkLayout           bool
 	fullscreen           bool
 	fullscreenBackground func() string
@@ -417,6 +419,7 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 			}
 			c.mu.Lock()
 			talk, full, occluded := c.talkLayout, c.fullscreen, c.labOccluded
+			overlay := c.overlay
 			c.mu.Unlock()
 			if !talk {
 				if _, err := fmt.Fprintf(stdin, "K %d\n", bit(occluded)); err != nil {
@@ -425,6 +428,14 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 				}
 			}
 			if talk {
+				r := image.Rectangle{}
+				if overlay != nil {
+					r = overlay().Intersect(image.Rect(0, 0, 4096, 4096))
+				}
+				if _, err := fmt.Fprintf(stdin, "V %d %d %d %d\n", r.Min.X, r.Min.Y, r.Dx(), r.Dy()); err != nil {
+					cancel()
+					return
+				}
 				if _, err := fmt.Fprintf(stdin, "T %d\n", bit(full)); err != nil {
 					cancel()
 					return
@@ -624,4 +635,12 @@ func (c *Controller) SetLabOccluded(hidden bool) {
 	c.mu.Lock()
 	c.labOccluded = hidden
 	c.mu.Unlock()
+}
+
+// SetOverlay reveals an application-owned transient card through the Talk surface.
+// The source is sampled with the scalar control feed; no audio or UI ownership changes.
+func (c *Controller) SetOverlay(source func() image.Rectangle) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.overlay = source
 }

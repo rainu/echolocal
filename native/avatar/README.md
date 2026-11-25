@@ -25,6 +25,13 @@ local mic level; levels are finite 0..1. Yaw is finite -180..180 degrees and tur
 has a per-frame input budget. Invalid state lines are ignored; oversized
 lines terminate control. EOF terminates the process. SIGTERM closes the surface.
 
+Optional Talk-only line: `V X Y WIDTH HEIGHT` exposes a rectangular application
+overlay through the native surface, using top-left physical panel coordinates.
+All integers are nonnegative, bounded to 4096 including the far edges; zero
+width/height clears the aperture. The GUI reports the actual arranged volume
+card bounds, so collapsed/expanded cards on either edge share the normal
+widget and its expiry. The native helper never handles slider input or volume.
+
 stdout emits `AVATAR_READY=4` after the first rendered frame, periodic
 `AVATAR_STATS FPS FRAMES SECONDS MOUTH WORK_MS`, and bounded structured
 `AVATAR_ERROR=model_invalid|motion_invalid|gpu_failed|protocol_error` on failure.

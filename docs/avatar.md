@@ -415,3 +415,13 @@ normal accessible, focusable GUI controls below it. Input stays in the GUI.
 
 See [Avatar Lab pose library](avatar-poses.md) for local joint handles, camera
 navigation, model-bound named poses and current experimental limitations.
+
+
+### Transient volume feedback during Talk
+
+Fullscreen and split-screen Talk expose the same transient volume card as other
+views when volume buttons are used. Its actual arranged bounds are passed to the
+native avatar as a transparent aperture; the renderer and conversation continue.
+Both edges, channel selection, expansion, slider interaction and the existing
+auto-dismiss timer remain owned by the normal volume widget. No saved avatar
+framing, output routing or volume-button targeting is changed.

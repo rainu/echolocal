@@ -11,6 +11,7 @@ import (
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"image"
 	"strings"
 )
 
@@ -25,6 +26,9 @@ func extendTalkAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) 
 }
 
 func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
+	if c, ok := p.Renderer.(interface{ SetOverlay(func() image.Rectangle) }); ok {
+		c.SetOverlay(talkVolumeBounds)
+	}
 	width, height := w.WindowSize()
 	if width/2 >= 128 && height >= 128 {
 		p.Start(avatar.Viewport{Width: width, Height: height})
