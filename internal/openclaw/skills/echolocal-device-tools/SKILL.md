@@ -14,7 +14,7 @@ parameters as params. Never substitute a tool name for a command.
 
 Registry action tools are different: put action fields inside args (an object).
 YouTube TV is the configured channel-guide/cast integration, NOT an arbitrary
-YouTube URL player. Supported operations are watch and whats_on; omitted/empty
+YouTube URL player. For a public YouTube or YouTube Music video URL, use the existing audio.control.speaker or audio.control.video URL argument. Playback starts asynchronously; inspect audio.status.video for actual state and safe errors. Do not claim success from acceptance alone. Supported operations are watch and whats_on; omitted/empty
 operation defaults to watching. channel is a channel/show name, device is an
 optional configured TV name. Without device it prefers this device, then the
 configured default. Missing guide/target/channel can return an explanatory answer

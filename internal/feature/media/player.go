@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
 	"sync"
@@ -35,7 +36,11 @@ const VolumeSteps = speaker.VolumeSteps
 
 const volumeFlash = 2 * time.Second
 
+type URLHandler func(esphome.MediaCommand) (bool, error)
+
 type Player struct {
+	command    func(esphome.MediaCommand)
+	urlHandler atomic.Pointer[URLHandler]
 	*mediaplayer.Player[*speaker.Player]
 
 	jack *esphome.BinarySensor
@@ -130,6 +135,12 @@ func build() *Player {
 		Changed:  p.refresh,
 		Device:   component.DevicePlayback,
 	})
+	p.command = p.Entity().OnCommand
+	p.Entity().OnCommand = func(c esphome.MediaCommand) {
+		if err := p.Command(c); err != nil {
+			slog.Warn("media request rejected", "reason", err)
+		}
+	}
 	p.layers = noiselayer.New(p.Stream(), component.DevicePlayback)
 	component.Bind(p.resampling, speaker.Resamplings(), speaker.Get().SetResampling,
 		config.Set().Speaker().Resampling)
@@ -296,3 +307,20 @@ func (p *Player) show(fraction float64) {
 
 func (p *Player) Start(ctx context.Context) error { p.Player.Start(ctx); return nil }
 func (p *Player) Run(ctx context.Context) error   { <-ctx.Done(); return nil }
+
+// SetURLHandler integrates display-only URL players without importing the screen
+// player in headless builds. Existing non-YouTube/announcement paths stay intact.
+func (p *Player) SetURLHandler(h URLHandler) { p.urlHandler.Store(&h) }
+func (p *Player) Command(c esphome.MediaCommand) error {
+	if h := p.urlHandler.Load(); h != nil {
+		handled, err := (*h)(c)
+		if handled || err != nil {
+			return err
+		}
+	}
+	if p.command == nil {
+		return errors.New("media player is unavailable")
+	}
+	p.command(c)
+	return nil
+}

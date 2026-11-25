@@ -73,7 +73,7 @@ func nodeContract(name string) (string, nodeSchema) {
 	case "display.power.set":
 		return "Turn the backlight off/on; wake and restore remembered brightness/automatic mode. NOT device shutdown.", nodeObject(nodeSchema{"on": nodeBool()}, "on")
 	case "audio.status":
-		return "Read speaker channel volumes (0..100) and mute states; NOT microphone mute.", empty
+		return "Read speaker channel volumes (0..100), mute states, and URL-free video/YouTube playback state, progress and safe errors. URL acceptance is not playback success. NOT microphone mute.", empty
 	case "audio.volume.set":
 		return "Set a speaker channel's 0..100 percent volume (rounded); omitted channel means main.", nodeObject(nodeSchema{"channel": channel(), "volume": nodeNumber("number", 0, 100)}, "volume")
 	case "audio.mute.set":

@@ -4,6 +4,7 @@ package localvideo
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
 	"net/http"
@@ -14,14 +15,17 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/audio/resample"
 	"github.com/ygelfand/libcountertop/pkg/display/video"
 	"github.com/ygelfand/libcountertop/pkg/media/cast"
+	"github.com/ygelfand/libcountertop/pkg/media/cast/protocols/webreceiver"
 	shared "github.com/ygelfand/libcountertop/pkg/media/localvideo"
 	"github.com/ygelfand/libcountertop/pkg/media/playback"
 	"github.com/ygelfand/libcountertop/pkg/media/urlplayer"
+	"github.com/ygelfand/libcountertop/pkg/media/youtubeurl"
 	sharedcomponent "github.com/ygelfand/libcountertop/pkg/runtime/component"
 
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/config"
+	"github.com/ygelfand/echolocal/internal/feature/chromecast"
 	"github.com/ygelfand/echolocal/internal/feature/media"
 	"github.com/ygelfand/echolocal/internal/feature/playout"
 	"github.com/ygelfand/echolocal/internal/hardware/display"
@@ -44,6 +48,7 @@ type Receiver struct {
 	entity  *esphome.MediaPlayer
 	volume  Volume
 	handler http.Handler
+	youtube *webreceiver.YouTube
 }
 
 var Get = sync.OnceValue(func() *Receiver {
@@ -55,7 +60,17 @@ var Get = sync.OnceValue(func() *Receiver {
 			return resample.NewRational(from, speaker.Rate, speaker.Channels).Run
 		},
 	})
-	return newReceiver(p, mediaVolume{})
+	y := webreceiver.NewYouTube(cast.Env{
+		Output: output,
+		Video:  func() playback.Target { return video.Target(display.Get(), component.Board().MaxFPS) },
+		Resample: func(from int) func([]int16) []int16 {
+			return resample.NewRational(from, speaker.Rate, speaker.Channels).Run
+		},
+	}, webreceiver.Options{Engine: chromecast.Engine()})
+	r := newReceiver(shared.Route(p, y), mediaVolume{})
+	r.youtube = y
+	media.Get().SetURLHandler(r.speaker)
+	return r
 })
 
 func newReceiver(p shared.Player, volume Volume) *Receiver {
@@ -73,10 +88,15 @@ func newReceiver(p shared.Player, volume Volume) *Receiver {
 	return r
 }
 
+func Account() *webreceiver.YouTubeAccount { return Get().youtube.Account() }
+
 func Handler() http.Handler                    { return Get().handler }
 func (r *Receiver) Name() string               { return "video player" }
 func (r *Receiver) Entities() []esphome.Entity { return []esphome.Entity{r.entity} }
 func (r *Receiver) Run(ctx context.Context) error {
+	if r.youtube != nil {
+		go func() { _ = r.youtube.Run(ctx) }()
+	}
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -111,19 +131,32 @@ func (r *Receiver) syncState() {
 }
 
 func (r *Receiver) command(c esphome.MediaCommand) {
+	if err := r.Command(c); err != nil {
+		slog.Warn("video player rejected a media request", "reason", err)
+	}
+}
+
+func (r *Receiver) Command(c esphome.MediaCommand) error {
+	if c.HasMediaURL && c.MediaURL != "" {
+		if c.Announcement || !shared.ValidURL(c.MediaURL) {
+			return errors.New("use an HTTP(S) media URL; video announcements are not supported")
+		}
+		if _, _, err := youtubeurl.Parse(c.MediaURL); err != nil {
+			return err
+		}
+	}
+
 	if c.HasVolume {
 		r.volume.SetLevel(int(math.Round(float64(c.Volume) * 100)))
 	}
 	var err error
 	if c.HasMediaURL && c.MediaURL != "" {
-		// Announcements stay on the existing speaker entity and its dedicated voice path.
-		if c.Announcement || !shared.ValidURL(c.MediaURL) {
-			slog.Warn("video player rejected an unsupported media request")
-			return
-		}
 		err = r.player.Load(cast.Media{ContentID: c.MediaURL, StreamType: cast.StreamBuffered, Metadata: cast.Metadata{Title: "Video"}}, 0, true)
 	}
-	if c.HasCommand {
+	if err != nil {
+		return err
+	}
+	if c.HasCommand && !(c.HasMediaURL && c.MediaURL != "" && c.Command == esphome.MediaPlayerPlay) {
 		switch c.Command {
 		case esphome.MediaPlayerPlay:
 			err = r.player.Play()
@@ -137,17 +170,20 @@ func (r *Receiver) command(c esphome.MediaCommand) {
 			} else {
 				err = r.player.Pause()
 			}
+		case esphome.MediaPlayerVolumeUp:
+			r.volume.SetLevel(min(100, r.volume.Level()+5))
+		case esphome.MediaPlayerVolumeDown:
+			r.volume.SetLevel(max(0, r.volume.Level()-5))
 		case esphome.MediaPlayerMute:
 			r.volume.Mute(true)
 		case esphome.MediaPlayerUnmute:
 			r.volume.Mute(false)
 		}
 	}
-	if err != nil {
-		slog.Warn("video player could not apply a media command")
-	}
+
 	// Do not wait for decoder metadata in the native API command callback.
 	// The component loop publishes asynchronous open/error and native/web controls.
+	return err
 }
 
 type mediaVolume struct{}
@@ -156,3 +192,33 @@ func (mediaVolume) Level() int     { return media.Get().Levels.Level(config.Stre
 func (mediaVolume) SetLevel(v int) { media.Get().Levels.Set(config.StreamMedia, max(0, min(100, v))) }
 func (mediaVolume) Muted() bool    { return media.Get().Levels.Muted(config.StreamMedia) }
 func (mediaVolume) Mute(v bool)    { media.Get().Levels.Mute(config.StreamMedia, v) }
+
+// Speaker URL requests reuse the same YouTube player as the web/API Video action.
+// Non-YouTube audio and announcements retain their original implementation.
+func (r *Receiver) speaker(c esphome.MediaCommand) (bool, error) {
+	if c.HasMediaURL && c.MediaURL != "" {
+		_, recognized, err := youtubeurl.Parse(c.MediaURL)
+		if recognized {
+			if err != nil {
+				return true, err
+			}
+			if c.Announcement {
+				return true, errors.New("announcements with YouTube URLs are not supported")
+			}
+			return true, r.Command(c)
+		}
+		if !c.Announcement && r.youtube != nil && r.youtube.Active() {
+			_ = r.player.Stop()
+		}
+		return false, nil
+	}
+	if r.youtube != nil && r.youtube.Active() && c.HasCommand {
+		switch c.Command {
+		case esphome.MediaPlayerPlay, esphome.MediaPlayerPause, esphome.MediaPlayerStop, esphome.MediaPlayerToggle:
+			return true, r.Command(c)
+		}
+	}
+	return false, nil
+}
+
+func (r *Receiver) Snapshot() urlplayer.Snapshot { return r.player.Snapshot() }

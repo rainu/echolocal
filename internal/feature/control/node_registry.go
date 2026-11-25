@@ -10,9 +10,12 @@ import (
 	"net/url"
 
 	"github.com/ygelfand/echolocal/internal/component"
+	"github.com/ygelfand/echolocal/internal/feature/localvideo"
+	"github.com/ygelfand/echolocal/internal/feature/media"
 	"github.com/ygelfand/echolocal/internal/feature/tones"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	esphome "github.com/ygelfand/go-esphome-device"
+	"github.com/ygelfand/libcountertop/pkg/media/youtubeurl"
 )
 
 func registerNodeRegistry(a *connection.NodeAccess) {
@@ -99,7 +102,7 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 				continue
 			}
 			_ = nodeRegister(a, connection.NodeOperation{Command: "audio.control." + e.ObjectID, Group: "audio",
-				Description: "Control this speaker media-player entity: play/pause/stop/mute/unmute/volume_up/volume_down/toggle, optional HTTP(S) media URL, volume 0..1. announcement applies only with a URL. Speaker mute is not microphone mute.",
+				Description: "Control this speaker media-player entity: play/pause/stop/mute/unmute/volume_up/volume_down/toggle, optional HTTP(S) media URL including public YouTube/YouTube Music video links (no announcements for YouTube), volume 0..1. announcement applies only with a URL. Speaker mute is not microphone mute.",
 				Parameters:  nodeObject(nodeSchema{"command": nodeEnum("", "play", "pause", "stop", "mute", "unmute", "volume_up", "volume_down", "toggle"), "volume": nodeNumber("number", 0, 1), "url": nodeString(2048, "HTTP(S) URL with a host and no embedded credentials; empty means no media change."), "announcement": nodeBool()}),
 				Run: func(ctx context.Context, raw json.RawMessage) (any, error) {
 					var p struct {
@@ -141,7 +144,22 @@ func registerNodeRegistry(a *connection.NodeAccess) {
 					if ctx.Err() != nil || !a.Granted("audio") {
 						return nil, errors.New("cancelled")
 					}
-					e.OnCommand(cmd)
+					var err error
+					switch e.ObjectID {
+					case "speaker":
+						err = media.Get().Command(cmd)
+					case "video":
+						err = localvideo.Get().Command(cmd)
+					default:
+						e.OnCommand(cmd)
+					}
+					if err != nil {
+						return nil, err
+					}
+					// URL loading is asynchronous: acceptance is not proof of playback.
+					if _, youtube, _ := youtubeurl.Parse(cmd.MediaURL); cmd.HasMediaURL && youtube {
+						return map[string]any{"accepted": true, "status": "loading", "message": "Playback is asynchronous; inspect audio.status.video for YouTube errors"}, nil
+					}
 					return map[string]bool{"done": true}, nil
 				}})
 		case *esphome.Button:
