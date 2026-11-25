@@ -3,10 +3,12 @@
 package settings
 
 import (
+	"github.com/ygelfand/echolocal/internal/avatar"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/avatarlab"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
+	"github.com/ygelfand/libcountertop/pkg/say"
 	setting "github.com/ygelfand/libcountertop/pkg/settings"
 	"testing"
 )
@@ -149,5 +151,27 @@ func TestAllAvatarAssetRowsUsePickerAndKeepValidation(t *testing.T) {
 		if count != 1 {
 			t.Fatal("expected one picker per page", count)
 		}
+	}
+}
+
+func TestFullscreenBackgroundClearPreservesComposition(t *testing.T) {
+	value := config.Avatar{Path: "/model.vrm", Background: "/normal.png", FullscreenBackground: "/selected.png", FullscreenZoom: 468, FullscreenYaw: -10, FullscreenPitch: 1, FullscreenX: -5, FullscreenY: 168, TalkMode: "fullscreen"}
+	before := value
+	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	p := avatarFullscreenPageFor(c)
+	rows, actions := p.Build()
+	found := false
+	for i, r := range rows {
+		if r.Label == avatar.Text(say.Chosen(), "background_reset") {
+			actions[i](0)
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("missing per-background clear action")
+	}
+	before.FullscreenBackground = ""
+	if value != before {
+		t.Fatal("image clear reset another setting", value, before)
 	}
 }

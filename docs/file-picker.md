@@ -62,7 +62,7 @@ loader/validation remains authoritative.
 | --- | --- |
 | Avatar Lab: VRM model | Shared picker; .vrm; existing path validation and model load behavior retained; default-model reset retained |
 | Avatar Lab: background image | Shared picker; .png/.jpg/.jpeg; existing bounded image decoder validation and save retained; clear/reset retained |
-| Fullscreen Talk: background image | Same image picker; same registry validation/save; independent framing and reset retained |
+| Fullscreen Talk: background image | Same image picker; same registry validation/save; per-image clear preserves independent framing; composition reset retained |
 | Avatar renderer/preview/Talk | Consume the above persisted settings; no independent path input |
 | Other native settings, including shared libcountertop settings | No additional local file/directory path input found |
 | SMB server/share/folder credentials | Remote SMB location, not a local directory; intentionally unchanged |

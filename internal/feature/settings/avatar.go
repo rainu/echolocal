@@ -157,6 +157,8 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 			if row.Name == "fullscreen_background" {
 				rows = append(rows, avatarFileRow(row.Title(), row.Read(&a), []string{".png", ".jpg", ".jpeg"}, func(v string) error { return save(row.Name, v) }))
 				acts = append(acts, nil)
+				rows = append(rows, menu.Row{Label: avatar.Text(say.Chosen(), "background_reset"), Kind: menu.Plain})
+				acts = append(acts, func(int) { _ = save(row.Name, "") })
 				continue
 			}
 			rows = append(rows, menu.Row{Label: row.Title(), Hint: row.OptionalText("help"), Value: row.Read(&a), Kind: menu.Field, Save: func(v string) { save(row.Name, v) }})
