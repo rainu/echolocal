@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Isolated FFmpeg demux/decoder. No URLs, credentials, files or network protocols.
-// fd 3 requests source ranges; fd 4 supplies them. stdout is bounded ELV1 records.
+// Isolated FFmpeg demux/decoder. No URLs, credentials, files or network
+// protocols. fd 3 requests source ranges; fd 4 supplies them. stdout is bounded
+// ELV1 records.
 #include <errno.h>
 #include <libavcodec/avcodec.h>
 #include <libavcodec/bsf.h>
@@ -19,9 +20,12 @@
 
 #define RAW 0x41424752U
 #define AVC 0x34363248U
+#define HEVC 0x43564548U
+#define VP9 0x30395056U
 static int64_t pos, size, start_us, origin;
 static int seekable, vw, vh;
 static struct SwsContext *scale;
+static uint8_t *repeat_pixels;
 static SwrContext *resample;
 static AVBSFContext *bsf;
 static AVCodecContext *vc, *ac;
@@ -105,15 +109,34 @@ static AVCodecContext *decoder(int stream) {
     AVCodecContext *c = avcodec_alloc_context3(codec);
     if (!c || avcodec_parameters_to_context(c, p) < 0)
 	fail("DECODER_MEMORY");
-    c->thread_count = 2;
+    c->pkt_timebase = fmt->streams[stream]->time_base;
+    // Theora repeat packets need the preceding picture immediately; frame
+    // threading would defer that picture until the next non-empty packet.
+    c->thread_count = p->codec_id == AV_CODEC_ID_THEORA ? 1 : 2;
     c->max_pixels = 1280 * 720;
     if (avcodec_open2(c, codec, NULL) < 0)
 	fail("UNSUPPORTED_CODEC_PROFILE");
     return c;
 }
 static void frames(AVCodecContext *c, int video, AVPacket *p) {
-    if (avcodec_send_packet(c, p) < 0)
+    // Theora represents unchanged pictures by empty packets. Sending those to
+    // avcodec would be mistaken for a drain request. Preserve their timestamps
+    // and repeat only the last bounded, already-converted picture instead.
+    if (video && c->codec_id == AV_CODEC_ID_THEORA && p && p->size == 0) {
+	int64_t pts = timestamp(p->pts == AV_NOPTS_VALUE ? p->dts : p->pts, vi);
+	if (pts < start_us)
+	    return;
+	if (!repeat_pixels)
+	    fail("INVALID_COMPRESSED_DATA");
+	record(3, pts, repeat_pixels, vw * vh * 4);
+	return;
+    }
+    int sent = avcodec_send_packet(c, p);
+    if (sent < 0) {
+	fprintf(stderr, "decode rejected codec=%s video=%d bytes=%d flags=%d error=%d\n",
+		c->codec->name, video, p ? p->size : -1, p ? p->flags : 0, sent);
 	fail("INVALID_COMPRESSED_DATA");
+    }
     AVFrame *f = av_frame_alloc();
     if (!f)
 	fail("DECODER_MEMORY");
@@ -131,7 +154,7 @@ static void frames(AVCodecContext *c, int video, AVPacket *p) {
 	    if (f->width != c->width || f->height != c->height || f->width < 1 || f->height < 1 ||
 		(int64_t)f->width * f->height > 1280 * 720)
 		fail("VIDEO_RESOURCE_LIMIT");
-	    if (pts < start_us) {
+	    if (pts < start_us && c->codec_id != AV_CODEC_ID_THEORA) {
 		av_frame_unref(f);
 		continue;
 	    }
@@ -145,8 +168,13 @@ static void frames(AVCodecContext *c, int video, AVPacket *p) {
 	    if (sws_scale(scale, (const uint8_t *const *)f->data, f->linesize, 0, f->height, out,
 			  lines) != vh)
 		fail("VIDEO_CONVERSION_FAILED");
-	    record(3, pts, pixels, vw * vh * 4);
-	    av_free(pixels);
+	    if (pts >= start_us)
+		record(3, pts, pixels, vw * vh * 4);
+	    if (c->codec_id == AV_CODEC_ID_THEORA) {
+		av_free(repeat_pixels);
+		repeat_pixels = pixels;
+	    } else
+		av_free(pixels);
 	} else {
 	    if (!resample) {
 		AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
@@ -183,17 +211,27 @@ static void frames(AVCodecContext *c, int video, AVPacket *p) {
     if (err != AVERROR(EAGAIN) && err != AVERROR_EOF)
 	fail("DECODE_FAILED");
 }
+static void packet_record(const AVPacket *p) {
+    if (p->size < 0 || p->size > (4 << 20))
+	fail("VIDEO_RESOURCE_LIMIT");
+    record(3,
+	   timestamp(p->pts == AV_NOPTS_VALUE && fmt->streams[vi]->codecpar->video_delay == 0
+			 ? p->dts
+			 : p->pts,
+		     vi),
+	   p->data, p->size);
+}
 static void compressed(AVPacket *p) {
+    if (!bsf) {
+	if (p)
+	    packet_record(p);
+	return;
+    }
     if (av_bsf_send_packet(bsf, p) < 0)
-	fail("H264_PACKET_FAILED");
+	fail("VIDEO_PACKET_FAILED");
     AVPacket *out = av_packet_alloc();
     while (av_bsf_receive_packet(bsf, out) >= 0) {
-	record(3,
-	       timestamp(out->pts == AV_NOPTS_VALUE && fmt->streams[vi]->codecpar->video_delay == 0
-			     ? out->dts
-			     : out->pts,
-			 vi),
-	       out->data, out->size);
+	packet_record(out);
 	av_packet_unref(out);
     }
     av_packet_free(&out);
@@ -302,22 +340,32 @@ int main(int argc, char **argv) {
     AVRational rate = fmt->streams[vi]->avg_frame_rate;
     if (!rate.num || !rate.den)
 	rate = av_guess_frame_rate(fmt, fmt->streams[vi], NULL);
-    int hardware = v->codec_id == AV_CODEC_ID_H264;
-    int max_pixels = hardware ? 1920 * 1080 : 1280 * 720;
+    uint32_t platform = v->codec_id == AV_CODEC_ID_H264	  ? AVC
+			: v->codec_id == AV_CODEC_ID_HEVC ? HEVC
+			: v->codec_id == AV_CODEC_ID_VP9  ? VP9
+							  : 0;
+    // Existing platform paths support HEVC Main 8-bit and VP9 profile 0.
+    // Do not silently feed 10/12-bit or unsupported chroma to this device.
+    if ((platform == HEVC && v->profile != AV_PROFILE_HEVC_MAIN) ||
+	(platform == VP9 && v->profile != 0))
+	fail("UNSUPPORTED_CODEC_PROFILE");
+    int wide = platform == AVC || platform == HEVC;
+    int max_pixels = wide ? 1920 * 1080 : 1280 * 720;
     if (v->width < 1 || v->height < 1 || (int64_t)v->width * v->height > max_pixels ||
-	(rate.den && av_q2d(rate) > (hardware ? 60 : 30.1)))
+	(rate.den && av_q2d(rate) > (wide ? 60 : 30.1)))
 	fail("VIDEO_RESOURCE_LIMIT");
     vw = v->width;
     vh = v->height;
-    if (hardware) {
-	const AVBitStreamFilter *filter = av_bsf_get_by_name("h264_mp4toannexb");
+    if (platform && platform != VP9) {
+	const char *name = platform == HEVC ? "hevc_mp4toannexb" : "h264_mp4toannexb";
+	const AVBitStreamFilter *filter = av_bsf_get_by_name(name);
 	if (!filter || av_bsf_alloc(filter, &bsf) < 0 ||
 	    avcodec_parameters_copy(bsf->par_in, v) < 0)
-	    fail("H264_PACKET_FAILED");
+	    fail("VIDEO_PACKET_FAILED");
 	bsf->time_base_in = fmt->streams[vi]->time_base;
 	if (av_bsf_init(bsf) < 0)
-	    fail("H264_PACKET_FAILED");
-    } else {
+	    fail("VIDEO_PACKET_FAILED");
+    } else if (!platform) {
 	vc = decoder(vi);
 	AVRational sar = av_guess_sample_aspect_ratio(fmt, fmt->streams[vi], NULL);
 	double aspect = (double)vw / vh * (sar.num && sar.den ? av_q2d(sar) : 1);
@@ -339,14 +387,14 @@ int main(int argc, char **argv) {
     uint8_t meta[24];
     AV_WL32(meta, vw);
     AV_WL32(meta + 4, vh);
-    AV_WL32(meta + 8, hardware ? AVC : RAW);
+    AV_WL32(meta + 8, platform ? platform : RAW);
     AV_WL32(meta + 12, ai >= 0);
     AV_WL64(meta + 16, fmt->duration == AV_NOPTS_VALUE ? 0 : fmt->duration);
     record(1, 0, meta, sizeof meta);
     AVPacket *p;
     while ((p = ordered_packet()) != NULL) {
 	if (p->stream_index == vi) {
-	    if (hardware)
+	    if (platform)
 		compressed(p);
 	    else
 		frames(vc, 1, p);
@@ -354,7 +402,7 @@ int main(int argc, char **argv) {
 	    frames(ac, 0, p);
 	av_packet_free(&p);
     }
-    if (hardware)
+    if (platform)
 	compressed(NULL);
     else
 	frames(vc, 1, NULL);
@@ -374,6 +422,7 @@ int main(int argc, char **argv) {
     av_bsf_free(&bsf);
     swr_free(&resample);
     sws_freeContext(scale);
+    av_free(repeat_pixels);
     AVIOContext *io = fmt->pb;
     avformat_close_input(&fmt);
     av_freep(&io->buffer);

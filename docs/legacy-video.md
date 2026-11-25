@@ -16,8 +16,10 @@ transcoding. Cache contents are released on close and are never persisted.
 
 Unsupported containers/codecs
 reopen through the existing transport and a separate CGO-independent ARM helper.
-H.264 in fallback containers is demuxed to Annex-B for the existing hardware
-decoder, not re-encoded. Other selected video codecs decode locally to bounded
+H.264 and HEVC in fallback containers are demuxed to Annex-B for the existing
+platform decoder; VP9 packets are passed through unchanged. No re-encoding is
+performed, and a platform decoder is not necessarily hardware-accelerated.
+Other selected video codecs decode locally to bounded
 RGBA, scale while preserving display aspect ratio, and use the existing display
 surface, fullscreen controls and audio-derived presentation clock. Audio is
 locally decoded/downmixed/resampled to 48 kHz stereo through the existing media
@@ -31,11 +33,20 @@ every file bearing one of the following extensions will work.
 
 | Container | Video | Audio |
 | --- | --- | --- |
-| ASF/WMV | WMV1, WMV2, WMV3 Main; MPEG-4 Part 2 | WMA v2 |
-| AVI | MPEG-4 SP/ASP, MSMPEG4 v2/v3, H.264, WMV3 | MP3, MP2, PCM u8/s16le |
+| ASF/WMV | WMV1/2, WMV3 Main, MPEG-4 Part 2 | WMA v1/v2 |
+| AVI | MPEG-4 SP/ASP, MSMPEG4 v2/v3, H.264, WMV3; H.263, Cinepak, Indeo 2/3/4/5, DV, HuffYUV/FFVHuff, MS Video 1, MS RLE | MP3/MP2, PCM u8/s16/s24/s32, A-law, MS/IMA ADPCM |
 | MPEG Program Stream | MPEG-1/2 Video | MP2, AC-3 |
-| FLV | H.264, VP6F | AAC, MP3 |
-| MOV/MP4 | SVQ3, MPEG-4 Part 2, MJPEG, H.264 | QDM2, AC-3, AAC-LC, HE-AAC |
+| FLV | H.264, VP6F, FLV1/Sorenson Spark | AAC, MP3 |
+| MOV/MP4/3GP | SVQ1/SVQ3, RPZA, MPEG-4 Part 2, MJPEG, H.263, H.264 | QDM2, AC-3/E-AC-3, AAC-LC/HE-AAC, ALAC, IMA4, big-endian PCM |
+| Matroska/WebM | H.264, HEVC Main8, VP9 profile0, VP8, FFV1, MPEG-4 Part 2 | AAC, DTS core, FLAC, Vorbis, Opus, float32/float64 PCM |
+| Ogg | Theora | Vorbis |
+| MPEG-TS | MPEG-2 Video, H.264, HEVC Main8 | MP2, AAC, E-AC-3 |
+
+This is a family/combination guide, not a Cartesian product of every listed
+codec and container. Some audio codecs already existed in the builtin player;
+their native fallback combinations are additional coverage, not entirely new
+standalone audio features. Codec identifiers absent from the fixture manifest
+are not implied to have device validation.
 
 A codec name alone is not a profile/resolution/bitrate guarantee. The generated
 and hash-pinned public matrix records actual profiles, dimensions, frame/sample
@@ -46,8 +57,12 @@ Admission limits for this first fallback:
 
 - Software decode: at most 1280x720 pixels and approximately 30 fps; output at
   most 854x480, aspect-correct. It can still be too expensive for complex streams.
-- Fallback H.264: at most 1920x1080 pixels and 60 fps; actual hardware profile,
+- Platform H.264/HEVC: at most 1920x1080 pixels and 60 fps; actual hardware profile,
   level, frame reordering and bitrate compatibility still apply.
+- Platform VP9: profile 0 / 8-bit SDR, at most 1280x720 pixels and 30 fps.
+  Athena selects `OMX.google.vp9.decoder` (software), not a hardware decoder.
+  H.264 and HEVC select the MediaTek platform decoders. HEVC Main10 and VP9
+  profile 2 are explicitly rejected; no HDR tone mapping is added.
 - Decoder process: 512 MiB address-space ceiling, 64 MiB individual FFmpeg
   allocation ceiling, two decode threads; 4 MiB probe/5 s analysis budget and a
   30 s wall-clock startup deadline. Frame/packet and Go/native queues are bounded.
@@ -137,3 +152,24 @@ The candidate PR lists observed real-device frame/clock/control/resource results
 and any unverified physical listening or hardware-limit boundaries explicitly.
 
 Refs #79.
+
+
+## Additional-codec regression inputs
+
+`python3 native/legacy/extended_fixtures.py extended --seconds 4 --public`
+generates the extended synthetic matrix and hash-verifies five additional
+public references (VC-1 Advanced and Indeo 2/3/4/5). Do not commit or rehost
+public reference media; their download availability is not a redistribution
+license. The generated `manifest.json` records actual codec/profile/pixel/sample
+formats and hashes. Static flashes intentionally exercise Theora empty-packet
+repeats; timing assertions must not be weakened to hide silence or missing
+frames. Theora seek retains only the last bounded converted preroll picture.
+
+The expanded opt-in native tests also cover platform-profile rejection and
+Theora/HEVC/VP9 seek/stop/reaping. Decoding/routing is separate from actual
+platform presentation, steady pacing, pause/resume and acoustic acceptance.
+DV/interlaced material is not deinterlaced, and fixture success is not proof of
+universal resolution/bitrate/profile support. AV1 is unavailable on this
+platform and no external AV1 decoder is bundled. RealMedia was evaluated but
+not enabled in this extension because the evaluated paths require additional
+timestamp handling.

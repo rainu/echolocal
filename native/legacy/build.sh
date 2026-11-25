@@ -28,10 +28,10 @@ if [ ! -f config.h ] || [ "$(cat config.sha256 2>/dev/null || true)" != "$config
     --disable-shared --enable-static --enable-pic --enable-neon \
     --disable-gpl --disable-nonfree --disable-version3 \
     --enable-avcodec --enable-avformat --enable-swscale --enable-swresample \
-    --enable-demuxer=asf,avi,mpegps,mpegvideo,mp3,ac3,aac,h264,m4v,flv,mov,matroska \
-    --enable-decoder=wmv1,wmv2,wmv3,mpeg4,msmpeg4v2,msmpeg4v3,mpeg1video,mpeg2video,vp6f,svq3,mjpeg,h264,mpegvideo,wmav2,mp3,mp2,pcm_u8,pcm_s16le,ac3,aac,qdm2 \
-    --enable-parser=h264,mpeg4video,mpegvideo,mpegaudio,aac,ac3,vc1 \
-    --enable-bsf=h264_mp4toannexb \
+    --enable-demuxer=asf,avi,mpegps,mpegts,mpegvideo,mp3,ac3,aac,h264,hevc,m4v,flv,mov,matroska,ogg,vc1,h263,dts,ivf \
+    --enable-decoder=wmv1,wmv2,wmv3,mpeg4,msmpeg4v2,msmpeg4v3,mpeg1video,mpeg2video,vp6f,svq3,mjpeg,h264,mpegvideo,wmav2,mp3,mp2,pcm_u8,pcm_s16le,ac3,aac,qdm2,vc1,h263,h263i,flv,vp8,vp9,hevc,theora,cinepak,indeo2,indeo3,indeo4,indeo5,dvvideo,ffv1,huffyuv,ffvhuff,rpza,svq1,msrle,msvideo1,eac3,dca,alac,flac,vorbis,opus,wmav1,adpcm_ms,adpcm_ima_wav,adpcm_ima_qt,pcm_s24le,pcm_s32le,pcm_f32le,pcm_f64le,pcm_s16be,pcm_s24be,pcm_s32be,pcm_f32be,pcm_f64be,pcm_alaw,pcm_mulaw \
+    --enable-parser=h264,hevc,vp8,vp9,h263,mpeg4video,mpegvideo,mpegaudio,aac,ac3,vc1,dca,flac,opus,vorbis \
+    --enable-bsf=h264_mp4toannexb,hevc_mp4toannexb \
     --extra-cflags='-O2 -D_GNU_SOURCE -ffunction-sections -fdata-sections' \
     --extra-ldflags='-Wl,--gc-sections'
   printf '%s\n' "$config_hash" > config.sha256
