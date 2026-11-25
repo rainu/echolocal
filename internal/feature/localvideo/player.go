@@ -62,7 +62,7 @@ var Get = sync.OnceValue(func() *Receiver {
 	transport := networkmedia.NewTransport(Source(), client.Transport)
 	client.Transport = transport
 	p := urlplayer.New(urlplayer.Options{
-		Output: output, Screen: true, HTTP: client,
+		Output: output, Screen: true, HTTP: client, Native: nativeDecoder(),
 		Target: func() playback.Target { return video.Target(display.Get(), component.Board().MaxFPS) },
 		Resample: func(from int) func([]int16) []int16 {
 			return resample.NewRational(from, speaker.Rate, speaker.Channels).Run

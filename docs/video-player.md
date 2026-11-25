@@ -167,3 +167,7 @@ A stalled route may be retried even if the page has not created a video element.
 ## Configured SMB source
 
 [SMB network videos](smb-network-video.md) use the same player and controls, with credential-free `smb://media/path` references.
+
+## Legacy on-device formats (Athena)
+
+See [legacy video formats](legacy-video.md) for the native FFmpeg fallback, exact codec/profile limits, reproducible fixture matrix, licenses and update procedure. The same URL/SMB interfaces and fullscreen controls are used. Other boards retain their existing codec coverage.
