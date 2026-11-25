@@ -163,3 +163,7 @@ browser probes are limited to 3 seconds. Cancellation interrupts initialization.
 Decoder metadata is deliberately not a prerequisite: requesting the video and
 initiating the TV application's media load must happen first.
 A stalled route may be retried even if the page has not created a video element.
+
+## Configured SMB source
+
+[SMB network videos](smb-network-video.md) use the same player and controls, with credential-free `smb://media/path` references.

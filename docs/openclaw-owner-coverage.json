@@ -117,6 +117,43 @@
         "web": "Assistant / End conversation",
         "api": "PUT /slots/{1|2} ending"
       }
+    },
+    "SMBSettings": {
+      "enabled": {
+        "device": "Connected services / SMB",
+        "web": "Video / SMB source",
+        "api": "GET/PUT /smb/ (owner only)"
+      },
+      "host": {
+        "device": "Connected services / SMB",
+        "web": "Video / SMB source",
+        "api": "GET/PUT /smb/ (owner only)"
+      },
+      "port": {
+        "device": "Connected services / SMB",
+        "web": "Video / SMB source",
+        "api": "GET/PUT /smb/ (owner only)"
+      },
+      "share": {
+        "device": "Connected services / SMB",
+        "web": "Video / SMB source",
+        "api": "GET/PUT /smb/ (owner only)"
+      },
+      "username": {
+        "device": "Connected services / SMB",
+        "web": "Video / SMB source",
+        "api": "GET/PUT /smb/ (owner only)"
+      },
+      "domain": {
+        "device": "Connected services / SMB",
+        "web": "Video / SMB source",
+        "api": "GET/PUT /smb/ (owner only)"
+      },
+      "password": {
+        "device": "Write-only replacement / explicit clear",
+        "web": "Write-only replacement / explicit clear",
+        "api": "PUT /smb/ only; read returns password_set, never password"
+      }
     }
   },
   "actions": [

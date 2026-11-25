@@ -57,6 +57,7 @@ func Open() { shell.Get().Push(root()) }
 
 var pages = map[string]func() sharedshell.View{
 	"settings": func() sharedshell.View { return root() },
+	"smb":      func() sharedshell.View { return smbPage() },
 	"youtube":  func() sharedshell.View { return youtubePage() },
 	"features": func() sharedshell.View { return featuresPage() },
 	"camera":   func() sharedshell.View { return cameraPage() },
