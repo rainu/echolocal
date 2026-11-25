@@ -20,7 +20,7 @@ func (m *Manager) captionOwned(generation uint64, role, text, id string) {
 	}
 }
 func microphoneLive(active bool, a *deviceAudio, now int64) bool {
-	return active && a != nil && a.ctx.Err() == nil && a.lastCaptureMS.Load() > 0 && now-a.lastCaptureMS.Load() < 500
+	return active && a != nil && a.ctx.Err() == nil && !a.inputMuted.Load() && a.lastCaptureMS.Load() > 0 && now-a.lastCaptureMS.Load() < 500
 }
 func captionRows(entries []talk.Caption) []menu.Row {
 	// Newest-first keeps the current turn visible without stealing scroll focus.
@@ -49,13 +49,17 @@ func (m *Manager) conversationPage() *CaptionPage {
 		active, a, generation := m.active, m.lastAudio, m.generation
 		m.mu.Unlock()
 		micKey := "clawtalk.mic_off"
-		if active {
+		if active && state != talk.Muted {
 			micKey = "clawtalk.mic_wait"
 		}
 		if microphoneLive(active, a, time.Now().UnixMilli()) {
 			micKey = "clawtalk.mic_live"
 		}
-		rows := []menu.Row{{Label: say.T("clawtalk.state." + string(state)), Hint: say.T("clawtalk.end_hint"), Kind: menu.Plain}, {Label: say.T(micKey), Hint: say.T("clawtalk.caption_hint"), Kind: menu.Plain}}
+		stateLabel := say.T("clawtalk.state." + string(state))
+		if state == talk.Muted {
+			stateLabel = say.T("camera.muted")
+		}
+		rows := []menu.Row{{Label: stateLabel, Hint: say.T("clawtalk.end_hint"), Kind: menu.Plain}, {Label: say.T(micKey), Hint: say.T("clawtalk.caption_hint"), Kind: menu.Plain}}
 		calls := m.captions.Snapshot()
 		var entries []talk.Caption
 		for _, c := range calls {

@@ -73,3 +73,31 @@ func TestFullscreenPreviewSwitchKeepsUnsavedFramingAndNoCapture(t *testing.T) {
 		t.Fatal("unsaved preview or capture", c.Snapshot())
 	}
 }
+
+func TestFullscreenMutedBadgeKeepsBothActionsAndTheirApertures(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de", "it", "vi"} {
+		say.Use(lang)
+		for _, size := range [][2]int{{1280, 800}, {800, 480}} {
+			w := gogui.NewWindow(gogui.WindowCfg{State: new(int), Width: size[0], Height: size[1]})
+			switches, ends := 0, 0
+			root := w.TestRender(func(w *gogui.Window) gogui.View {
+				return fullscreenComposition(size[0], size[1], func() { switches++ }, func() { ends++ }, true)
+			})
+			badge := avatarCaptionShape(t, root, "talk-muted-badge")
+			button := avatarCaptionShape(t, root, "talk-fullscreen-switch")
+			if badge.Width != 22 || badge.Height != 28 || badge.X < button.X || badge.X+badge.Width > button.X+72 || badge.Y < button.Y || badge.Y+badge.Height > button.Y+72 {
+				t.Fatal("badge outside visible native aperture", lang, badge, button)
+			}
+			for _, id := range []string{"talk-fullscreen-switch", "talk-fullscreen-stop"} {
+				if err := w.TestClick(avatarCaptionID(t, w, id)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if switches != 1 || ends != 1 {
+				t.Fatal("muted badge intercepted actions")
+			}
+		}
+	}
+}

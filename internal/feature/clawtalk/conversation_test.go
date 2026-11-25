@@ -68,3 +68,24 @@ func TestBusyTonePreviewIsInert(t *testing.T) {
 		t.Fatal("preview interrupted a conversation")
 	}
 }
+
+func TestMutedConversationLabelDoesNotClaimItEnded(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	m := &Manager{active: true, forcedMuted: true, Controller: talk.New()}
+	for _, lang := range say.Languages() {
+		say.Use(lang)
+		rows, _ := m.conversationPage().Build()
+		if rows[0].Label != say.T("camera.muted") || rows[1].Label != say.T("clawtalk.mic_off") {
+			t.Fatal("incorrect muted UI", lang, rows[:2])
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a := &deviceAudio{ctx: ctx}
+	a.lastCaptureMS.Store(time.Now().UnixMilli())
+	a.inputMuted.Store(true)
+	if microphoneLive(true, a, time.Now().UnixMilli()) {
+		t.Fatal("muted microphone shown live")
+	}
+}
