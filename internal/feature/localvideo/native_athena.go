@@ -3,8 +3,9 @@
 package localvideo
 
 import (
-	"github.com/ygelfand/echolocal/internal/layout"
 	"github.com/ygelfand/libcountertop/pkg/media/urlplayer"
+
+	"github.com/ygelfand/echolocal/internal/layout"
 )
 
 func nativeDecoder() *urlplayer.Native { return &urlplayer.Native{Helper: layout.LegacyDecoder} }
