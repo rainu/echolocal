@@ -35,13 +35,17 @@ func TestFilteringOrderingAndLargeDirectory(t *testing.T) {
 	if err := syscall.Mkfifo(filepath.Join(root, "pipe.vrm"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(root, "model-000.VRM"), filepath.Join(root, "link.vrm")); err != nil {
+	if err := os.Symlink(
+		filepath.Join(root, "model-000.VRM"),
+		filepath.Join(root, "link.vrm"),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.Navigate(root); err != nil {
 		t.Fatal(err)
 	}
-	if len(b.Entries) != 302 || !b.Entries[0].Directory || b.Entries[1].Name != long || b.Entries[2].Name != "model-000.VRM" {
+	if len(b.Entries) != 302 || !b.Entries[0].Directory || b.Entries[1].Name != long ||
+		b.Entries[2].Name != "model-000.VRM" {
 		t.Fatal("filter/order/long names", len(b.Entries), b.Entries[:3])
 	}
 	b.Select(filepath.Join(root, long))
@@ -56,7 +60,7 @@ func TestInitialMissingParentEmptyAndDirectoryMode(t *testing.T) {
 	if b.Current != root || b.Err == nil || b.Selected != "" {
 		t.Fatal("missing initial", b)
 	}
-	b.Navigate(root)
+	requireNoError(t, b.Navigate(root))
 	if len(b.Entries) != 0 || b.Err != nil {
 		t.Fatal("empty folder")
 	}
@@ -69,7 +73,7 @@ func TestInitialMissingParentEmptyAndDirectoryMode(t *testing.T) {
 		t.Fatal("virtual parent")
 	}
 	dir := filepath.Join(root, "folder")
-	os.Mkdir(dir, 0700)
+	requireNoError(t, os.Mkdir(dir, 0700))
 	write(t, filepath.Join(root, "a.vrm"))
 	d := New(Options{Locations: []Location{{"files", root}}, Directory: true, Initial: dir})
 	d.Start()
@@ -90,7 +94,7 @@ func TestInitialFileAndRevalidation(t *testing.T) {
 	if b.Selected != name {
 		t.Fatal("lost initial file")
 	}
-	os.Remove(name)
+	requireNoError(t, os.Remove(name))
 	if _, err := b.Confirm(); err == nil {
 		t.Fatal("accepted removed file")
 	}
@@ -98,8 +102,8 @@ func TestInitialFileAndRevalidation(t *testing.T) {
 	b.Select(name)
 	outside := filepath.Join(t.TempDir(), "secret.vrm")
 	write(t, outside)
-	os.Remove(name)
-	os.Symlink(outside, name)
+	requireNoError(t, os.Remove(name))
+	requireNoError(t, os.Symlink(outside, name))
 	if _, err := b.Confirm(); err == nil {
 		t.Fatal("accepted replaced symlink")
 	}
@@ -113,8 +117,8 @@ func TestInitialFileAndRevalidation(t *testing.T) {
 		}
 	}
 	// Reject a symlinked directory even when its target is inside the root.
-	os.Mkdir(filepath.Join(root, "real"), 0700)
-	os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "alias"))
+	requireNoError(t, os.Mkdir(filepath.Join(root, "real"), 0700))
+	requireNoError(t, os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "alias")))
 	if b.Navigate(filepath.Join(root, "alias")) == nil {
 		t.Fatal("followed directory symlink")
 	}
@@ -134,13 +138,20 @@ func TestPinnedRegularOpenRejectsSpecialReplacement(t *testing.T) {
 	root, b := fixture(t)
 	name := filepath.Join(root, "test.vrm")
 	write(t, name)
-	b.Navigate(root)
+	requireNoError(t, b.Navigate(root))
 	b.Select(name)
-	os.Remove(name)
+	requireNoError(t, os.Remove(name))
 	if err := syscall.Mkfifo(name, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := b.Confirm(); err == nil {
 		t.Fatal("opened FIFO")
+	}
+}
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

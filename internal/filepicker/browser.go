@@ -61,7 +61,7 @@ func (b *Browser) Start() {
 	}
 	info, err := os.Lstat(name)
 	if err == nil && info.IsDir() {
-		b.Navigate(name)
+		_ = b.Navigate(name)
 		return
 	}
 	parent := filepath.Dir(name)
@@ -86,7 +86,8 @@ func (b *Browser) Start() {
 	b.Err = ErrUnavailable
 }
 func valid(name string) bool {
-	if !filepath.IsAbs(name) || filepath.Clean(name) != name || !utf8.ValidString(name) || strings.ContainsAny(name, "\\\x00") {
+	if !filepath.IsAbs(name) || filepath.Clean(name) != name || !utf8.ValidString(name) ||
+		strings.ContainsAny(name, "\\\x00") {
 		return false
 	}
 	for _, part := range strings.Split(name, "/") {
@@ -113,7 +114,11 @@ func (b *Browser) location(name string) string {
 	return ""
 }
 func (b *Browser) accepts(name string) bool {
-	return len(b.options.Extensions) == 0 || slices.ContainsFunc(b.options.Extensions, func(ext string) bool { return strings.EqualFold(filepath.Ext(name), ext) })
+	return len(b.options.Extensions) == 0 ||
+		slices.ContainsFunc(
+			b.options.Extensions,
+			func(ext string) bool { return strings.EqualFold(filepath.Ext(name), ext) },
+		)
 }
 func (b *Browser) openDir(name string) (*os.File, error) {
 	root := b.location(name)

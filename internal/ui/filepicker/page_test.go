@@ -10,10 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	browser "github.com/ygelfand/echolocal/internal/filepicker"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	"github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
+
+	browser "github.com/ygelfand/echolocal/internal/filepicker"
 )
 
 func action(t *testing.T, p *shell.Page, label string) {
@@ -36,22 +37,33 @@ func TestNavigationExplicitConfirmCancelAndFailure(t *testing.T) {
 	for _, lang := range []string{"en", "de"} {
 		say.Use(lang)
 		root := t.TempDir()
-		os.Mkdir(filepath.Join(root, "folder"), 0700)
+		requireNoError(t, os.Mkdir(filepath.Join(root, "folder"), 0700))
 		file := filepath.Join(root, "folder", "model.vrm")
-		os.WriteFile(file, []byte("fixture"), 0600)
+		requireNoError(t, os.WriteFile(file, []byte("fixture"), 0600))
 		stack := shell.New()
 		origin := &shell.Page{Title: "origin"}
 		stack.Push(origin)
 		value := "previous"
 		fail := false
 		makePage := func() *shell.Page {
-			return New(Config{Title: "model", Shell: stack, Browser: browser.Options{Locations: []browser.Location{{Label: "files", Path: root}}, Extensions: []string{".vrm"}, Initial: root}, Choose: func(s string) error {
-				if fail {
-					return errors.New("validation failed")
-				}
-				value = s
-				return nil
-			}})
+			return New(
+				Config{
+					Title: "model",
+					Shell: stack,
+					Browser: browser.Options{
+						Locations:  []browser.Location{{Label: "files", Path: root}},
+						Extensions: []string{".vrm"},
+						Initial:    root,
+					},
+					Choose: func(s string) error {
+						if fail {
+							return errors.New("validation failed")
+						}
+						value = s
+						return nil
+					},
+				},
+			)
 		}
 		p := makePage()
 		if rows, _ := p.Build(); len(rows) != 0 {
@@ -101,10 +113,21 @@ func TestManyEntriesPagingAndWrappingPaths(t *testing.T) {
 	say.Use("en")
 	root := t.TempDir()
 	for i := 0; i < 150; i++ {
-		os.WriteFile(filepath.Join(root, fmt.Sprintf("file-%03d.vrm", i)), nil, 0600)
+		requireNoError(
+			t,
+			os.WriteFile(filepath.Join(root, fmt.Sprintf("file-%03d.vrm", i)), nil, 0600),
+		)
 	}
 	stack := shell.New()
-	p := New(Config{Shell: stack, Browser: browser.Options{Locations: []browser.Location{{Label: "files", Path: root}}, Initial: root}})
+	p := New(
+		Config{
+			Shell: stack,
+			Browser: browser.Options{
+				Locations: []browser.Location{{Label: "files", Path: root}},
+				Initial:   root,
+			},
+		},
+	)
 	stack.Push(p)
 	action(t, p, "Next entries")
 	action(t, p, "file-064.vrm")
@@ -133,7 +156,19 @@ func TestDirectoryConfirmationAndUnavailableLocation(t *testing.T) {
 	root := t.TempDir()
 	stack := shell.New()
 	selected := ""
-	p := New(Config{Shell: stack, Browser: browser.Options{Locations: []browser.Location{{Label: "files", Path: root}, {Label: "missing", Path: filepath.Join(root, "missing")}}, Directory: true}, Choose: func(v string) error { selected = v; return nil }})
+	p := New(
+		Config{
+			Shell: stack,
+			Browser: browser.Options{
+				Locations: []browser.Location{
+					{Label: "files", Path: root},
+					{Label: "missing", Path: filepath.Join(root, "missing")},
+				},
+				Directory: true,
+			},
+			Choose: func(v string) error { selected = v; return nil },
+		},
+	)
 	stack.Push(p)
 	action(t, p, "missing")
 	if rows, _ := p.Build(); len(rows) < 3 {
@@ -145,4 +180,11 @@ func TestDirectoryConfirmationAndUnavailableLocation(t *testing.T) {
 		t.Fatal("directory not selected", selected)
 	}
 	stack.Close()
+}
+
+func requireNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

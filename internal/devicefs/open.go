@@ -2,12 +2,13 @@ package devicefs
 
 import (
 	"errors"
-	"golang.org/x/sys/unix"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 )
 
 // OpenRegular uses the same trusted root, canonical symlink policy and pinned
@@ -16,7 +17,8 @@ import (
 var errUnsupported = errors.New("unsupported_file")
 
 func OpenRegular(root, name string) (*os.File, error) {
-	if !utf8.ValidString(name) || len(name) > 4096 || !strings.HasPrefix(name, "/") || strings.ContainsAny(name, "\x00\\") {
+	if !utf8.ValidString(name) || len(name) > 4096 || !strings.HasPrefix(name, "/") ||
+		strings.ContainsAny(name, "\x00\\") {
 		return nil, errors.New("invalid_path")
 	}
 	for _, part := range strings.Split(name, "/") {
@@ -59,7 +61,11 @@ func OpenRegularAt(d *os.File, name string) (*os.File, error) {
 	if st.Mode&unix.S_IFMT != unix.S_IFREG {
 		return nil, errUnsupported
 	}
-	fd, err := unix.Open("/proc/self/fd/"+strconv.Itoa(pinned), unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+	fd, err := unix.Open(
+		"/proc/self/fd/"+strconv.Itoa(pinned),
+		unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NONBLOCK,
+		0,
+	)
 	if err != nil {
 		return nil, err
 	}

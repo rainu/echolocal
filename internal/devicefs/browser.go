@@ -50,7 +50,12 @@ func Handler() http.Handler { return handler("/") }
 
 // handler takes a trusted root only for isolated fixture tests, never from HTTP.
 func handler(root string) http.Handler { return NewService(root, "").Handler() }
-func handlerShared(root string, uploads *sync.Mutex, guard func(string) (func(), error)) http.Handler {
+
+func handlerShared(
+	root string,
+	uploads *sync.Mutex,
+	guard func(string) (func(), error),
+) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -59,7 +64,8 @@ func handlerShared(root string, uploads *sync.Mutex, guard func(string) (func(),
 		if name == "" {
 			name = "/"
 		}
-		if len(name) > 4096 || !utf8.ValidString(name) || !strings.HasPrefix(name, "/") || strings.ContainsAny(name, "\x00\\") {
+		if len(name) > 4096 || !utf8.ValidString(name) || !strings.HasPrefix(name, "/") ||
+			strings.ContainsAny(name, "\x00\\") {
 			failure(w, 400, "invalid_path")
 			return
 		}
@@ -211,7 +217,11 @@ func parent(name string) string {
 // Pin every directory component; no symlinks (including intermediate ones),
 // magic links, devices, pipes or regular files can be opened as directories.
 func openDirectory(root, name string) (*os.File, error) {
-	fd, err := syscall.Open(root, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	fd, err := syscall.Open(
+		root,
+		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW,
+		0,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -219,8 +229,13 @@ func openDirectory(root, name string) (*os.File, error) {
 		if part == "" {
 			continue
 		}
-		next, e := syscall.Openat(fd, part, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-		syscall.Close(fd)
+		next, e := syscall.Openat(
+			fd,
+			part,
+			syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK,
+			0,
+		)
+		_ = syscall.Close(fd)
 		if e != nil {
 			return nil, e
 		}
@@ -279,7 +294,8 @@ func resolve(root, name string) (string, error) {
 // OpenDirectory pins every component without following symlinks. The trusted
 // root is chosen by the application, never by a remote request or picker entry.
 func OpenDirectory(root, name string) (*os.File, error) {
-	if !strings.HasPrefix(name, "/") || path.Clean(name) != name || strings.ContainsAny(name, "\x00\\") {
+	if !strings.HasPrefix(name, "/") || path.Clean(name) != name ||
+		strings.ContainsAny(name, "\x00\\") {
 		return nil, errOutside
 	}
 	return openDirectory(root, name)

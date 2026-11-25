@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ygelfand/echolocal/internal/filepicker"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	"github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
+
+	"github.com/ygelfand/echolocal/internal/filepicker"
 )
 
 type Config struct {
@@ -52,14 +53,22 @@ func New(cfg Config) *shell.Page {
 				err = cfg.Choose(name)
 			}
 			if err != nil {
-				note = text("Selection unavailable or invalid.", "Auswahl nicht verfügbar oder ungültig.")
+				note = text(
+					"Selection unavailable or invalid.",
+					"Auswahl nicht verfügbar oder ungültig.",
+				)
 				p.Reveal = text("Location", "Ort")
 				refresh()
 				return
 			}
 			cfg.Shell.Remove(p)
 		}},
-		{Label: text("Cancel", "Abbrechen"), MinHeight: 64, Role: shell.Plain, Do: func() { cfg.Shell.Remove(p) }},
+		{
+			Label:     text("Cancel", "Abbrechen"),
+			MinHeight: 64,
+			Role:      shell.Plain,
+			Do:        func() { cfg.Shell.Remove(p) },
+		},
 	}
 	p.Build = func() ([]menu.Row, []func(int)) {
 		// Settings search may construct/build this page without opening it.
@@ -75,15 +84,25 @@ func New(cfg Config) *shell.Page {
 		}
 		add(menu.Row{Label: text("Location", "Ort"), Hint: location, Dim: true}, nil)
 		if b.Current != "" {
-			add(menu.Row{Label: text("Parent folder", "Übergeordneter Ordner"), Glyph: "mdi:arrow-up", Kind: menu.Chevron}, func(int) {
-				b.Parent()
-				note = ""
-				p.Reveal = text("Location", "Ort")
-				refresh()
-			})
+			add(
+				menu.Row{
+					Label: text("Parent folder", "Übergeordneter Ordner"),
+					Glyph: "mdi:arrow-up",
+					Kind:  menu.Chevron,
+				},
+				func(int) {
+					b.Parent()
+					note = ""
+					p.Reveal = text("Location", "Ort")
+					refresh()
+				},
+			)
 		}
 		if b.Err != nil {
-			msg := text("Folder or previous selection unavailable.", "Ordner oder bisherige Auswahl nicht verfügbar.")
+			msg := text(
+				"Folder or previous selection unavailable.",
+				"Ordner oder bisherige Auswahl nicht verfügbar.",
+			)
 			if errors.Is(b.Err, filepicker.ErrLimit) {
 				msg = text("Folder has too many entries.", "Ordner enthält zu viele Einträge.")
 			}
@@ -95,7 +114,15 @@ func New(cfg Config) *shell.Page {
 		if b.Current == "" {
 			for _, loc := range b.Locations() {
 				loc := loc
-				add(menu.Row{Label: loc.Label, Hint: loc.Path, Glyph: "mdi:folder", Kind: menu.Chevron}, func(int) { navigate(loc.Path) })
+				add(
+					menu.Row{
+						Label: loc.Label,
+						Hint:  loc.Path,
+						Glyph: "mdi:folder",
+						Kind:  menu.Chevron,
+					},
+					func(int) { navigate(loc.Path) },
+				)
 			}
 			return rows, actions
 		}
@@ -108,16 +135,28 @@ func New(cfg Config) *shell.Page {
 		if len(b.Entries) > filepicker.PageSize {
 			detail += fmt.Sprintf(" · %d–%d / %d", b.Offset+1, end, len(b.Entries))
 		}
-		add(menu.Row{Label: text("Refresh", "Aktualisieren"), Hint: detail, Glyph: "mdi:refresh"}, func(int) { navigate(b.Current) })
+		add(
+			menu.Row{Label: text("Refresh", "Aktualisieren"), Hint: detail, Glyph: "mdi:refresh"},
+			func(int) { navigate(b.Current) },
+		)
 		if len(b.Entries) == 0 {
-			add(menu.Row{Label: text("No matching entries.", "Keine passenden Einträge."), Dim: true}, nil)
+			add(
+				menu.Row{
+					Label: text("No matching entries.", "Keine passenden Einträge."),
+					Dim:   true,
+				},
+				nil,
+			)
 		}
 		if b.Offset > 0 {
-			add(menu.Row{Label: text("Previous entries", "Vorherige Einträge"), Kind: menu.Chevron}, func(int) {
-				b.Offset -= filepicker.PageSize
-				p.Reveal = text("Location", "Ort")
-				refresh()
-			})
+			add(
+				menu.Row{Label: text("Previous entries", "Vorherige Einträge"), Kind: menu.Chevron},
+				func(int) {
+					b.Offset -= filepicker.PageSize
+					p.Reveal = text("Location", "Ort")
+					refresh()
+				},
+			)
 		}
 		for _, e := range b.Entries[b.Offset:end] {
 			e := e
@@ -137,11 +176,14 @@ func New(cfg Config) *shell.Page {
 			})
 		}
 		if end < len(b.Entries) {
-			add(menu.Row{Label: text("Next entries", "Weitere Einträge"), Kind: menu.Chevron}, func(int) {
-				b.Offset += filepicker.PageSize
-				p.Reveal = text("Location", "Ort")
-				refresh()
-			})
+			add(
+				menu.Row{Label: text("Next entries", "Weitere Einträge"), Kind: menu.Chevron},
+				func(int) {
+					b.Offset += filepicker.PageSize
+					p.Reveal = text("Location", "Ort")
+					refresh()
+				},
+			)
 		}
 		return rows, actions
 	}

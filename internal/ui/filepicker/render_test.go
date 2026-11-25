@@ -10,11 +10,12 @@ import (
 	"testing"
 
 	gui "github.com/go-gui-org/go-gui/gui"
-	browser "github.com/ygelfand/echolocal/internal/filepicker"
 	"github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/say"
 	"github.com/ygelfand/libcountertop/pkg/settings/schema"
+
+	browser "github.com/ygelfand/echolocal/internal/filepicker"
 )
 
 type screenSettings struct{}
@@ -41,11 +42,30 @@ func TestTouchLayoutLongNamesScrollAndPinnedActions(t *testing.T) {
 			t.Run(fmt.Sprintf("%s-%dx%d", lang, size[0], size[1]), func(t *testing.T) {
 				root := t.TempDir()
 				for i := 0; i < 90; i++ {
-					os.WriteFile(filepath.Join(root, fmt.Sprintf("%03d-%s.vrm", i, strings.Repeat("long name ", 12))), nil, 0600)
+					requireNoError(
+						t,
+						os.WriteFile(
+							filepath.Join(
+								root,
+								fmt.Sprintf("%03d-%s.vrm", i, strings.Repeat("long name ", 12)),
+							),
+							nil,
+							0600,
+						),
+					)
 				}
 				stack := shell.New()
 				defer stack.Close()
-				p := New(Config{Title: "Files", Shell: stack, Browser: browser.Options{Locations: []browser.Location{{Label: "files", Path: root}}, Initial: root}})
+				p := New(
+					Config{
+						Title: "Files",
+						Shell: stack,
+						Browser: browser.Options{
+							Locations: []browser.Location{{Label: "files", Path: root}},
+							Initial:   root,
+						},
+					},
+				)
 				stack.Push(p)
 				u := widgets.NewUI(screenSettings{})
 				// Exercise the actual shared widgets; bypass hold animation only.
@@ -57,7 +77,15 @@ func TestTouchLayoutLongNamesScrollAndPinnedActions(t *testing.T) {
 				}
 				w := gui.NewWindow(gui.WindowCfg{State: new(int), Width: size[0], Height: size[1]})
 				w.SetView(func(w *gui.Window) gui.View {
-					return u.Toolkit.PageFrame(w, widgets.FrameOptions{Title: p.Title, Back: stack.Pop, Build: func(w *gui.Window) gui.View { return widgets.PageBody(w, p, widgets.PageRenderer{Row: u.Row}) }, Foot: func(w *gui.Window) gui.View { return u.Toolkit.ActionBar(w, p.Actions, u.Palette()) }})
+					return u.Toolkit.PageFrame(
+						w,
+						widgets.FrameOptions{
+							Title: p.Title,
+							Back:  stack.Pop,
+							Build: func(w *gui.Window) gui.View { return widgets.PageBody(w, p, widgets.PageRenderer{Row: u.Row}) },
+							Foot:  func(w *gui.Window) gui.View { return u.Toolkit.ActionBar(w, p.Actions, u.Palette()) },
+						},
+					)
 				})
 				tree := w.TestRender(nil)
 				get := func(id string) *gui.Shape {
@@ -73,13 +101,16 @@ func TestTouchLayoutLongNamesScrollAndPinnedActions(t *testing.T) {
 				}
 				for _, id := range []string{"action-0", "action-1", "back"} {
 					s := get(id)
-					if s.X < 0 || s.X+s.Width > float32(size[0])+.5 || s.Y < 0 || s.Y+s.Height > float32(size[1])+.5 || s.Height < 48 {
+					if s.X < 0 || s.X+s.Width > float32(size[0])+.5 || s.Y < 0 ||
+						s.Y+s.Height > float32(size[1])+.5 ||
+						s.Height < 48 {
 						t.Fatal("inaccessible touch target", id, s)
 					}
 				}
 				footer := get("action-0").Y
 				scroller := get("page")
-				if !scroller.Scrollable || scroller.Height < 100 || scroller.Y+scroller.Height > footer+.5 {
+				if !scroller.Scrollable || scroller.Height < 100 ||
+					scroller.Y+scroller.Height > footer+.5 {
 					t.Fatal("unusable scroller", scroller)
 				}
 				rows, _ := p.Build()
