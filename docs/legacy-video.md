@@ -6,6 +6,14 @@ entity and Node video controls, with the same HTTP(S) and configured SMB sources
 No transcoding service, conversion of user files, format-specific endpoint,
 settings, credential export or extra listening port is required.
 
+The primary MP4/H.264/AAC-LC path is retained. In-band H.264/H.265
+parameter sets take precedence over stale container configuration; missing sets
+are still supplied from the container. Configured SMB sources retain at most
+32 aligned 256 KiB source chunks (8 MiB) per ranged reader across seeks. This
+bounded, per-playback working set avoids repeated signed SMB setup when a MOV
+alternates between distant audio/video chunks; it is not whole-file caching or
+transcoding. Cache contents are released on close and are never persisted.
+
 The primary MP4/H.264/AAC-LC path is retained. Unsupported containers/codecs
 reopen through the existing transport and a separate CGO-independent ARM helper.
 H.264 in fallback containers is demuxed to Annex-B for the existing hardware
