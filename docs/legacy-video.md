@@ -14,7 +14,7 @@ bounded, per-playback working set avoids repeated signed SMB setup when a MOV
 alternates between distant audio/video chunks; it is not whole-file caching or
 transcoding. Cache contents are released on close and are never persisted.
 
-The primary MP4/H.264/AAC-LC path is retained. Unsupported containers/codecs
+Unsupported containers/codecs
 reopen through the existing transport and a separate CGO-independent ARM helper.
 H.264 in fallback containers is demuxed to Annex-B for the existing hardware
 decoder, not re-encoded. Other selected video codecs decode locally to bounded
