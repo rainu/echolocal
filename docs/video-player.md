@@ -153,3 +153,13 @@ unrelated Google-service data, delete the account/subscription, or revoke the
 remote Google device authorization. The next sign-in may require a new code.
 Account status/actions use owner-authenticated `/api/v1/youtube/`; this is a
 connection-management endpoint, not a separate YouTube playback endpoint.
+
+### Authenticated YouTube startup readiness
+
+The TV page is probed immediately, then every 250 ms until its document and
+signed-in profile are ready. No minimum startup delay is imposed. Initialization
+has a 30-second timeout within the overall 90-second startup deadline; individual
+browser probes are limited to 3 seconds. Cancellation interrupts initialization.
+Decoder metadata is deliberately not a prerequisite: requesting the video and
+initiating the TV application's media load must happen first.
+A stalled route may be retried even if the page has not created a video element.
