@@ -17,7 +17,9 @@ joins the loop, removes queued progress, waits for already submitted hardware
 audio, and plays readiness only after peer/provider/audio readiness. It never
 waits for a complete ring cycle. Fast setup preserves the acknowledgment.
 Failure and setup timeout stop progress before the failure cue; intentional
-cancellation, dismissal, mute and preemption stop progress without readiness.
+cancellation, dismissal and preemption stop progress without readiness.
+Microphone mute now gates input without cancelling an accepted setup or an
+active Talk; see [Talk microphone mute](openclaw-talk-mute.md).
 Existing activation ownership consumes duplicate wakes without a second setup.
 
 Microphone frames are discarded until readiness playback and a 250 ms acoustic
