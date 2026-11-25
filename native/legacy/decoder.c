@@ -198,6 +198,76 @@ static void compressed(AVPacket *p) {
     }
     av_packet_free(&out);
 }
+
+// Demux order is not playback order: PS may contain a long video burst before
+// its next audio packet. Buffer only compressed packets, then merge the stream
+// heads by DTS. Bounded raw-picture backpressure can never hide earlier audio.
+typedef struct pending {
+    AVPacket *packet;
+    struct pending *next;
+} pending;
+static pending *head[2], *tail[2];
+static int input_ended, held_packets;
+static int64_t held_bytes;
+static void lookahead(void) {
+    while (!input_ended && (!head[0] || (ai >= 0 && !head[1]))) {
+	AVPacket *p = av_packet_alloc();
+	if (!p)
+	    fail("DECODER_MEMORY");
+	int err = av_read_frame(fmt, p);
+	if (err < 0) {
+	    av_packet_free(&p);
+	    if (err != AVERROR_EOF)
+		fail("MEDIA_READ_FAILED");
+	    input_ended = 1;
+	    break;
+	}
+	int lane = p->stream_index == vi ? 0 : p->stream_index == ai ? 1 : -1;
+	if (lane < 0) {
+	    av_packet_free(&p);
+	    continue;
+	}
+	if (p->size < 0)
+	    fail("INVALID_COMPRESSED_DATA");
+	held_bytes += p->size;
+	if (++held_packets > 512 || held_bytes > (8U << 20))
+	    fail("DECODER_MEMORY");
+	pending *item = av_mallocz(sizeof *item);
+	if (!item)
+	    fail("DECODER_MEMORY");
+	item->packet = p;
+	if (tail[lane])
+	    tail[lane]->next = item;
+	else
+	    head[lane] = item;
+	tail[lane] = item;
+    }
+}
+static int64_t decode_time(const AVPacket *p) {
+    int64_t at = p->dts == AV_NOPTS_VALUE ? p->pts : p->dts;
+    if (at == AV_NOPTS_VALUE)
+	return 0;
+    return av_rescale_q(at, fmt->streams[p->stream_index]->time_base, AV_TIME_BASE_Q);
+}
+static AVPacket *ordered_packet(void) {
+    lookahead();
+    if (!head[0] && !head[1])
+	return NULL;
+    int lane = !head[0]							     ? 1
+	       : !head[1]						     ? 0
+	       : decode_time(head[1]->packet) < decode_time(head[0]->packet) ? 1
+									     : 0;
+    pending *item = head[lane];
+    AVPacket *p = item->packet;
+    head[lane] = item->next;
+    if (!head[lane])
+	tail[lane] = NULL;
+    held_packets--;
+    held_bytes -= p->size;
+    av_free(item);
+    return p;
+}
+
 int main(int argc, char **argv) {
     if (argc != 4)
 	return 2;
@@ -273,11 +343,8 @@ int main(int argc, char **argv) {
     AV_WL32(meta + 12, ai >= 0);
     AV_WL64(meta + 16, fmt->duration == AV_NOPTS_VALUE ? 0 : fmt->duration);
     record(1, 0, meta, sizeof meta);
-    AVPacket *p = av_packet_alloc();
-    if (!p)
-	fail("DECODER_MEMORY");
-    int err;
-    while ((err = av_read_frame(fmt, p)) >= 0) {
+    AVPacket *p;
+    while ((p = ordered_packet()) != NULL) {
 	if (p->stream_index == vi) {
 	    if (hardware)
 		compressed(p);
@@ -285,10 +352,8 @@ int main(int argc, char **argv) {
 		frames(vc, 1, p);
 	} else if (p->stream_index == ai)
 	    frames(ac, 0, p);
-	av_packet_unref(p);
+	av_packet_free(&p);
     }
-    if (err != AVERROR_EOF)
-	fail("MEDIA_READ_FAILED");
     if (hardware)
 	compressed(NULL);
     else

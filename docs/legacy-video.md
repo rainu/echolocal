@@ -69,6 +69,8 @@ for this small non-Java daemon. A bounded custom-AVIO FFmpeg executable provides
 the needed demuxers, decoders and converters without changing the CGO-disabled
 Go build or depending on Android framework/JNI playback.
 
+The helper merges selected compressed-packet stream heads by DTS, with at most 512 pending packets / 8 MiB. This bounded lookahead prevents video bursts in MPEG-PS from blocking earlier audio behind a full raw-frame queue. DECODER_MEMORY also reports this compressed-lookahead limit. Implicit SBR is checked in an isolated initial AAC frame probe before selecting the fallback; later unsupported-profile changes fail explicitly.
+
 The minimal build disables auto-discovered external libraries, programs, filters,
 file/network protocols, GPL, version3 and nonfree components. Selected raw
 demuxer probes are also necessary to identify elementary tracks inside MPEG-PS;
