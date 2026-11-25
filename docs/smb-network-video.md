@@ -9,7 +9,7 @@ This is unrelated to managed-file/WebDAV server features.
 On a panel device, open **Settings → Connected services → SMB network videos**.
 The owner web interface has the same configuration under **Video → SMB**.
 Set the server hostname (no URL), TCP port (normally 445), share name, username,
-optional NTLM domain, and a replacement password. Enable and save the source.
+optional NTLM domain, and a password. Enable the source and select **Save settings**.
 
 Use a dedicated account restricted on the server to the intended read-only
 share. The complete configured share is the access boundary; no client-side
@@ -28,7 +28,7 @@ supported. Ordinary HTTP(S) and YouTube playback retain their existing paths.
 
 Saving source configuration stops the active video so a stream cannot continue
 with a mixture of credentials or share settings. An omitted password retains the
-saved password; a nonempty replacement changes it. **Clear password and disable**
+saved password; a nonempty replacement changes it. **Disconnect**
 explicitly clears it and disables the source. The device and web UI use this same
 persistent source of truth. Configuration is panel-only; no source configuration
 or credentials are exposed through restricted Node settings.
