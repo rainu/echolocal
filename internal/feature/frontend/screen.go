@@ -20,6 +20,7 @@ var shot = func() (image.Image, error) { return screencmd.Composed(display.Get()
 
 func addDesktop(pages map[string]http.Handler, input *textentry.Controller) {
 	pages["video"] = localvideo.Handler()
+	pages["youtube"] = localvideo.Account().Handler()
 	pages["desktop"] = desktop.New(
 		display.Get(),
 		func(c touch.Contact) { hwtouch.Get().Feed(c) },

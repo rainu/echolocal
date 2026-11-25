@@ -88,6 +88,8 @@ func newReceiver(p shared.Player, volume Volume) *Receiver {
 	return r
 }
 
+func Account() *webreceiver.YouTubeAccount { return Get().youtube.Account() }
+
 func Handler() http.Handler                    { return Get().handler }
 func (r *Receiver) Name() string               { return "video player" }
 func (r *Receiver) Entities() []esphome.Entity { return []esphome.Entity{r.entity} }

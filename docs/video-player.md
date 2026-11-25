@@ -92,12 +92,12 @@ Closing the controlling browser does not stop playback.
 Loading is asynchronous. Node acceptance is not playback success. Inspect
 `audio.status.video`, the existing Video API GET, or the web page for
 loading/playing/paused/idle/error, actual decoder video frames, and a sanitized
-error. Startup times out after one minute rather than remaining silently loading.
+error. Startup times out after 90 seconds rather than remaining silently loading.
 Malformed links are rejected immediately; removed/private videos, disabled
 embedding, player identification failures, autoplay blocks and decoder failures
 produce distinct safe errors without exposing source URLs.
 
-Limitations: display-capable builds only; no sign-in/Premium integration, playlist
+Limitations: display-capable builds only; no playlist
 queue, guaranteed ad-free playback, restricted/age-gated/region-locked content,
 or guarantee that every public video permits embedding or the device codecs.
 YouTube Music links play the corresponding YouTube video, not a separate Music
@@ -116,3 +116,38 @@ network before attributing a refusal to missing cookies or recommending cookies.
 A successful page/player state is not sufficient: verify decoder frames and
 position, controls and the device output path. No cookie export is needed for
 public content that the device can play anonymously.
+
+
+### YouTube account connection
+
+Manage the device connection under **Connected services → YouTube** in the web
+frontend or **Settings → Connected services → YouTube** on the touchscreen.
+Sign in starts Google's official device activation: open `https://yt.be/activate`
+on your phone/computer and confirm the short-lived code there. No Google password
+is entered in EchoLocal. Status, retry/check and cancel are shared by both UIs.
+Codes are memory-only, not settings or diagnostics; responses must not be logged.
+The UI discards a displayed code after ten minutes (Google may expire it earlier).
+Cancel closes the local flow but cannot undo a confirmation already made at Google.
+
+A confirmed device connection routes existing YouTube and YouTube Music URL
+requests through the official TV website using the same native decoder and media
+controls. The normal website/embed and TV sessions are not interchangeable. The
+connection status is checked on startup before selecting playback; a connection
+error must be resolved or explicitly signed out rather than silently switching
+an existing account to anonymous playback. Premium is reported only when the
+signed-in first-party TV UI also shows its Premium logo. Benefits depend on the
+membership and eligible content; EchoLocal does not remove ads or bypass access
+restrictions. The TV website DOM is not a stable public API.
+
+Session data remains in the device's existing persistent Chromium profile, which
+is shared with its existing YouTube browser playback. The app never reads or
+exports cookies, tokens, account identity or private browser-cookie files.
+A service restart stops playback but must retain the connection. This is not a
+separate Google account selector or a claim that all YouTube content is supported.
+
+**Sign out on this device** asks for confirmation, stops playback and clears
+YouTube-origin local site data (including consent state). It does not clear
+unrelated Google-service data, delete the account/subscription, or revoke the
+remote Google device authorization. The next sign-in may require a new code.
+Account status/actions use owner-authenticated `/api/v1/youtube/`; this is a
+connection-management endpoint, not a separate YouTube playback endpoint.
