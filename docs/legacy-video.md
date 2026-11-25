@@ -173,3 +173,5 @@ universal resolution/bitrate/profile support. AV1 is unavailable on this
 platform and no external AV1 decoder is bundled. RealMedia was evaluated but
 not enabled in this extension because the evaluated paths require additional
 timestamp handling.
+
+QuickTime IMA4 startup is covered by TestNativeSmallAudioStartup: the helper groups tiny PCM frames into 20ms records using a fixed 3840-byte buffer. Timestamp discontinuities flush partial records rather than being concealed; EOF retains the final partial block. This prevents packet-count backpressure from starving asynchronous first-presentation reporting.

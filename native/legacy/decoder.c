@@ -54,6 +54,34 @@ static void record(uint32_t kind, int64_t pts, const void *data, uint32_t n) {
     if (transfer(1, h, sizeof h, 1) || (n && transfer(1, (void *)data, n, 1)))
 	exit(0);
 }
+// Normalize tiny decoder frames (notably QuickTime IMA4) into bounded 20ms
+// records. Queue capacity must represent time, not the codec's packet count;
+// otherwise audio blocks the next picture before the display starts its clock.
+static uint8_t audio_pending[960 * 4];
+static int audio_frames;
+static int64_t audio_pts;
+static void audio_flush(void) {
+    if (audio_frames)
+	record(2, audio_pts, audio_pending, audio_frames * 4);
+    audio_frames = 0;
+}
+static void audio_record(int64_t pts, const uint8_t *pcm, int frames) {
+    if (audio_frames && llabs(pts - audio_pts - av_rescale(audio_frames, AV_TIME_BASE, 48000)) > 2)
+	audio_flush(); // Preserve timestamp discontinuities rather than hiding them.
+    int consumed = 0;
+    while (consumed < frames) {
+	if (!audio_frames)
+	    audio_pts = pts + av_rescale(consumed, AV_TIME_BASE, 48000);
+	int n = frames - consumed;
+	if (n > 960 - audio_frames)
+	    n = 960 - audio_frames;
+	memcpy(audio_pending + audio_frames * 4, pcm + consumed * 4, n * 4);
+	audio_frames += n;
+	consumed += n;
+	if (audio_frames == 960)
+	    audio_flush();
+    }
+}
 static void fail(const char *code) {
     record(4, 0, code, strlen(code));
     exit(1);
@@ -201,8 +229,7 @@ static void frames(AVCodecContext *c, int video, AVPacket *p) {
 	    pts -= av_rescale(delay, AV_TIME_BASE, 48000);
 	    int skip = pts < start_us ? (int)av_rescale(start_us - pts, 48000, AV_TIME_BASE) : 0;
 	    if (skip < n)
-		record(2, pts + av_rescale(skip, AV_TIME_BASE, 48000), pcm + skip * 4,
-		       (n - skip) * 4);
+		audio_record(pts + av_rescale(skip, AV_TIME_BASE, 48000), pcm + skip * 4, n - skip);
 	    av_free(pcm);
 	}
 	av_frame_unref(f);
@@ -408,6 +435,7 @@ int main(int argc, char **argv) {
 	frames(vc, 1, NULL);
     if (ac)
 	frames(ac, 0, NULL);
+    audio_flush();
     if (resample) {
 	uint8_t tail[16384], *out[] = {tail};
 	int n = swr_convert(resample, out, 4096, NULL, 0);
