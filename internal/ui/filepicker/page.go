@@ -131,14 +131,6 @@ func New(cfg Config) *shell.Page {
 			add(menu.Row{Label: text("Selection", "Auswahl"), Hint: candidate, Dim: true}, nil)
 		}
 		end := min(b.Offset+filepicker.PageSize, len(b.Entries))
-		detail := strings.Join(cfg.Browser.Extensions, " / ")
-		if len(b.Entries) > filepicker.PageSize {
-			detail += fmt.Sprintf(" · %d–%d / %d", b.Offset+1, end, len(b.Entries))
-		}
-		add(
-			menu.Row{Label: text("Refresh", "Aktualisieren"), Hint: detail, Glyph: "mdi:refresh"},
-			func(int) { navigate(b.Current) },
-		)
 		if len(b.Entries) == 0 {
 			add(
 				menu.Row{
@@ -185,6 +177,18 @@ func New(cfg Config) *shell.Page {
 				},
 			)
 		}
+		// Passive status follows the entries, never masquerading as a file or action.
+		detail := strings.Join(cfg.Browser.Extensions, " / ")
+		if detail == "" {
+			detail = text("All permitted types", "Alle zulässigen Typen")
+		}
+		if cfg.Browser.Directory {
+			detail = text("Folders", "Ordner")
+		}
+		if len(b.Entries) > filepicker.PageSize {
+			detail += fmt.Sprintf(" · %d–%d / %d", b.Offset+1, end, len(b.Entries))
+		}
+		add(menu.Row{Label: text("File types", "Dateitypen"), Hint: detail, Dim: true}, nil)
 		return rows, actions
 	}
 	return p

@@ -28,7 +28,7 @@ in internal/filepicker; internal/ui/filepicker supplies the shared touch UI.
   column. The selection remains visible when changing entry pages.
 - Extensions are case-insensitive. Unsupported files, hidden names, symlinks and
   special files are consistently hidden. Directories remain visible.
-- Directories are read only on open/navigation/refresh, never on every frame or
+- Directories are read only on open/navigation, never on every frame or
   during settings search. A bounded snapshot is sorted globally folder-first,
   then case-insensitively by name. Each scrollable page holds 64 entries;
   Previous/Next handles larger directories. More than 65,536 raw entries produces
@@ -38,7 +38,11 @@ in internal/filepicker; internal/ui/filepicker supplies the shared touch UI.
   location leaves the prior usable location/chooser intact. Empty directories
   display an explicit empty state.
 - Select rechecks existence/type/readability. Caller validation/save errors keep
-  the picker open and preserve the prior setting. Refresh reloads external edits.
+  the picker open and preserve the prior setting. Re-entering a folder reloads
+  external edits; there is no separate Refresh row.
+- Active file types and, for large folders, the entry range are passive wrapping
+  footer/status information below the list. They have no tap action and are not a
+  search query. Select/Cancel stay pinned independently of this scrollable status.
 
 ## Access boundary
 

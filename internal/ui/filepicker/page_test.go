@@ -188,3 +188,52 @@ func requireNoError(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+func TestPassiveFilterFooterAndAutomaticDirectoryReload(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de"} {
+		t.Run(lang, func(t *testing.T) {
+			say.Use(lang)
+			root := t.TempDir()
+			folder := filepath.Join(root, "folder")
+			requireNoError(t, os.Mkdir(folder, 0700))
+			stack := shell.New()
+			defer stack.Close()
+			p := New(Config{Shell: stack, Browser: browser.Options{
+				Locations: []browser.Location{{Label: "files", Path: root}},
+				Initial:   root, Extensions: []string{".png", ".jpg"},
+			}})
+			stack.Push(p)
+			check := func() {
+				t.Helper()
+				rows, acts := p.Build()
+				last := len(rows) - 1
+				if last < 0 || rows[last].Label != text("File types", "Dateitypen") ||
+					rows[last].Hint != ".png / .jpg" || !rows[last].Dim || acts[last] != nil {
+					t.Fatal("missing passive filter footer", rows)
+				}
+				for _, r := range rows {
+					if r.Label == "Refresh" || r.Label == "Aktualisieren" {
+						t.Fatal("refresh competes with directory entries")
+					}
+				}
+			}
+			check()
+			action(t, p, "folder")
+			check()
+			requireNoError(t, os.WriteFile(filepath.Join(folder, "new.png"), nil, 0600))
+			requireNoError(t, os.WriteFile(filepath.Join(folder, "hidden.txt"), nil, 0600))
+			action(t, p, text("Parent folder", "Übergeordneter Ordner"))
+			action(t, p, "folder")
+			action(t, p, "new.png")
+			check()
+			rows, _ := p.Build()
+			for _, r := range rows {
+				if r.Label == "hidden.txt" {
+					t.Fatal("filter changed on navigation")
+				}
+			}
+		})
+	}
+}
