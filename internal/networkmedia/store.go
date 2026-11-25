@@ -37,15 +37,16 @@ type View struct {
 	Labels      map[string]string `json:"labels"`
 }
 type Store struct {
-	mu      sync.Mutex
-	path    string
-	current saved
-	loadErr error
-	Changed func()
+	mu        sync.Mutex
+	path      string
+	current   saved
+	loadErr   error
+	testSlots chan struct{}
+	Changed   func()
 }
 
 func New(path string) *Store {
-	s := &Store{path: path, current: saved{Settings: Settings{Port: 445}}}
+	s := &Store{testSlots: make(chan struct{}, 1), path: path, current: saved{Settings: Settings{Port: 445}}}
 	b, e := os.ReadFile(path)
 	if e == nil {
 		e = json.Unmarshal(b, &s.current)

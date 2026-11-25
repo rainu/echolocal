@@ -6,9 +6,34 @@ import (
 	"net/http"
 )
 
+func decodeUpdate(w http.ResponseWriter, r *http.Request) (Update, bool) {
+	var u Update
+	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
+	d.DisallowUnknownFields()
+	if d.Decode(&u) != nil || d.Decode(new(any)) != io.EOF {
+		http.Error(w, "Invalid SMB settings request", 400)
+		return u, false
+	}
+	return u, true
+}
+
 func (s *Store) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		if r.URL.Path == "/test" || r.URL.Path == "/test/" {
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", "POST")
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			u, ok := decodeUpdate(w, r)
+			if !ok {
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(s.Test(r.Context(), u))
+			return
+		}
 		if r.URL.Path != "/" && r.URL.Path != "" {
 			http.NotFound(w, r)
 			return
@@ -18,11 +43,8 @@ func (s *Store) Handler() http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(s.View())
 		case http.MethodPut:
-			var u Update
-			d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
-			d.DisallowUnknownFields()
-			if d.Decode(&u) != nil || d.Decode(new(any)) != io.EOF {
-				http.Error(w, "Invalid SMB settings request", 400)
+			u, ok := decodeUpdate(w, r)
+			if !ok {
 				return
 			}
 			if e := s.Save(u); e != nil {

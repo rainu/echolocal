@@ -33,12 +33,33 @@ explicitly clears it and disables the source. The device and web UI use this sam
 persistent source of truth. Configuration is panel-only; no source configuration
 or credentials are exposed through restricted Node settings.
 
+## Test connection
+
+Use **Test connection** in the device or owner web settings before saving.
+It checks the current draft even if the source is disabled. An empty password
+field uses the saved password; a typed password is used only for the test and
+remains available for an explicit save. Testing never persists configuration,
+enables the source, clears a password, or stops playback.
+
+The test connects with the same SMB signing and NTLM policy as playback,
+authenticates, mounts the selected share and reads its root metadata. It does
+not list, create or modify files. Success is not a video-format or per-file
+read-permission test. Connection, sign-in, share/access and timeout failures
+have localized, credential-free messages. One test may run at a time; it has
+a 15-second overall deadline and a five-second TCP connection deadline.
+The device offers cancellation.
+
 ## Owner API
 
 `GET /api/v1/smb/` and `PUT /api/v1/smb/` use the existing owner-authenticated
 HTTPS API. Read responses are no-store and contain `enabled`, `host`, `port`,
 `share`, `username`, `domain`, `password_set`, and localized `labels`.
 They never contain the password.
+
+`POST /api/v1/smb/test` accepts the same draft fields and optional password,
+but not credential clearing. It uses the same owner authentication and no-store
+policy and returns `{ok, code, message}`. A failed connection is a structured
+result, not a configuration change. Malformed/oversized requests are rejected.
 
 PUT takes the six configuration fields plus optional `password` (nonempty
 replacement) or `clear_password: true` (with `enabled: false`). Omission preserves

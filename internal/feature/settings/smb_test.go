@@ -8,6 +8,7 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/say"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSMBNativeSharedConfigurationAndSecretSemantics(t *testing.T) {
@@ -16,7 +17,8 @@ func TestSMBNativeSharedConfigurationAndSecretSemantics(t *testing.T) {
 	for _, lang := range []string{"en", "de", "it", "vi"} {
 		say.Use(lang)
 		s := networkmedia.New(filepath.Join(t.TempDir(), "source.json"))
-		page := smbPageFor(s, func() {})
+		redraw := make(chan struct{}, 4)
+		page := smbPageFor(s, func() { redraw <- struct{}{} })
 		rows, taps := page.Build()
 		if len(rows) != 9 || rows[7].Kind != menu.Password || rows[7].Value != "" || rows[1].Kind != menu.Toggle {
 			t.Fatal("missing native source fields", lang)
@@ -26,6 +28,21 @@ func TestSMBNativeSharedConfigurationAndSecretSemantics(t *testing.T) {
 				t.Fatal("missing native label", lang)
 			}
 		}
+		page.Actions[1].Do()
+		<-redraw
+		select {
+		case <-redraw:
+		case <-time.After(time.Second):
+			t.Fatal("native test blocked")
+		}
+		if _, busy := page.Busy(); busy {
+			t.Fatal("native test did not finish")
+		}
+		tested, _ := page.Build()
+		if tested[len(tested)-1].Label != networkmedia.Labels()["test_invalid"] || s.View().PasswordSet {
+			t.Fatal("native test notice/persistence")
+		}
+		// Subsequent save actions may redraw without blocking the test.
 		rows[2].Save("server.example")
 		rows[4].Save("videos")
 		rows[5].Save("reader")
@@ -52,7 +69,7 @@ func TestSMBNativeSharedConfigurationAndSecretSemantics(t *testing.T) {
 		if !s.View().PasswordSet {
 			t.Fatal("omission erased password")
 		}
-		page.Actions[1].Do()
+		page.Actions[2].Do()
 		if s.View().Enabled || s.View().PasswordSet {
 			t.Fatal("native clear")
 		}

@@ -3,6 +3,7 @@
 package settings
 
 import (
+	"context"
 	"strconv"
 	"sync"
 
@@ -20,24 +21,30 @@ func smbPageFor(source *networkmedia.Store, redraw func()) *sharedshell.Page {
 	password := ""
 	dirty := false
 	notice := ""
+	testing := false
+	var cancelTest context.CancelFunc
 	labels := networkmedia.Labels()
 	page := &sharedshell.Page{Title: labels["title"]}
 	page.Build = func() ([]menu.Row, []func(int)) {
 		mu.Lock()
 		defer mu.Unlock()
 		if !dirty {
-			draft = source.View().Settings
+			latest := source.View().Settings
+			if draft != latest {
+				notice = ""
+			}
+			draft = latest
 		}
 		rows := []menu.Row{{Label: labels["help"], Kind: menu.Plain}, {Label: labels["enabled"], Kind: menu.Toggle, On: draft.Enabled}}
 		edit := func(k, value string, set func(string)) {
-			rows = append(rows, menu.Row{Label: labels[k], Value: value, Kind: menu.Field, Save: func(v string) { mu.Lock(); set(v); dirty = true; mu.Unlock() }})
+			rows = append(rows, menu.Row{Label: labels[k], Value: value, Kind: menu.Field, Save: func(v string) { mu.Lock(); set(v); dirty = true; notice = ""; mu.Unlock() }})
 		}
 		edit("host", draft.Host, func(v string) { draft.Host = v })
 		edit("port", strconv.Itoa(draft.Port), func(v string) { draft.Port, _ = strconv.Atoi(v) })
 		edit("share", draft.Share, func(v string) { draft.Share = v })
 		edit("username", draft.Username, func(v string) { draft.Username = v })
 		edit("domain", draft.Domain, func(v string) { draft.Domain = v })
-		rows = append(rows, menu.Row{Label: labels["password"], Value: password, Kind: menu.Password, Save: func(v string) { mu.Lock(); password = v; dirty = true; mu.Unlock() }})
+		rows = append(rows, menu.Row{Label: labels["password"], Value: password, Kind: menu.Password, Save: func(v string) { mu.Lock(); password = v; dirty = true; notice = ""; mu.Unlock() }})
 		key := "password_unset"
 		if source.View().PasswordSet {
 			key = "password_set"
@@ -47,11 +54,15 @@ func smbPageFor(source *networkmedia.Store, redraw func()) *sharedshell.Page {
 			rows = append(rows, menu.Row{Label: notice, Kind: menu.Plain})
 		}
 		taps := make([]func(int), len(rows))
-		taps[1] = func(int) { mu.Lock(); draft.Enabled = !draft.Enabled; dirty = true; mu.Unlock() }
+		taps[1] = func(int) { mu.Lock(); draft.Enabled = !draft.Enabled; dirty = true; notice = ""; mu.Unlock() }
 		return rows, taps
 	}
 	save := func(clear bool) {
 		mu.Lock()
+		if testing {
+			mu.Unlock()
+			return
+		}
 		u := networkmedia.Update{Settings: draft, ClearPassword: clear}
 		if clear {
 			u.Enabled = false
@@ -73,8 +84,49 @@ func smbPageFor(source *networkmedia.Store, redraw func()) *sharedshell.Page {
 		mu.Unlock()
 		redraw()
 	}
+	page.Busy = func() (sharedshell.Busy, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		return sharedshell.Busy{Text: labels["testing"], Outcome: sharedshell.Working, Buttons: []sharedshell.BusyButton{{ID: "cancel", Label: labels["test_cancel"], Do: func() {
+			mu.Lock()
+			cancel := cancelTest
+			mu.Unlock()
+			if cancel != nil {
+				cancel()
+			}
+		}}}}, testing
+	}
+	test := func() {
+		mu.Lock()
+		if testing {
+			mu.Unlock()
+			return
+		}
+		u := networkmedia.Update{Settings: draft}
+		if password != "" {
+			v := password
+			u.Password = &v
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancelTest = cancel
+		testing = true
+		notice = ""
+		mu.Unlock()
+		redraw()
+		go func() {
+			result := source.Test(ctx, u)
+			cancel()
+			mu.Lock()
+			testing = false
+			cancelTest = nil
+			notice = result.Message
+			mu.Unlock()
+			redraw()
+		}()
+	}
 	page.Actions = []sharedshell.Action{
 		{Label: labels["save"], MinHeight: 64, Role: sharedshell.Primary, Do: func() { save(false) }},
+		{Label: labels["test"], MinHeight: 64, Role: sharedshell.Plain, Do: test},
 		{Label: labels["clear"], MinHeight: 64, Role: sharedshell.Danger, Do: func() { save(true) }},
 	}
 	return page
