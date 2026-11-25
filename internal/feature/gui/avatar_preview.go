@@ -35,6 +35,7 @@ func (v *avatarView) openPreview() {
 	c.SetBackground(func() string { return saved.Background })
 	c.EnableTalkLayout(func() string { return saved.FullscreenBackground })
 	c.SetTalkMode(v.fullscreen)
+	c.SetOverlay(talkVolumeBounds)
 	o := s.Options
 	o.Mouth = avatar.MouthClosed
 	c.Configure(o)

@@ -11,6 +11,7 @@ struct RendererControl {
   bool enabled = false, idle = true, blink = true, animation = true,
        ended = false;
   int mode = 0;
+  int overlayX=0, overlayY=0, overlayW=0, overlayH=0;
  bool poseEdit=false, poseActive=false; int selected=-1;
  std::array<std::array<float,3>,54> pose{};
   bool fullscreen = false, hidden=false;
@@ -20,6 +21,8 @@ struct RendererControl {
   explicit RendererControl(bool on) : enabled(on) {}
   void parse(const std::string &s) {
     int i, b, a, m;
+    char overlayTail;
+    if (sscanf(s.c_str(), "V %5d %5d %5d %5d %c", &i, &b, &a, &m, &overlayTail)==4 && i>=0 && b>=0 && a>=0 && m>=0 && a<=4096 && m<=4096 && i<=4096-a && b<=4096-m) { overlayX=i; overlayY=b; overlayW=a; overlayH=m; return; }
     float rx,ry,rz; char trailing;
     if(sscanf(s.c_str(),"E %d %d %d %c",&i,&b,&a,&trailing)==3 && i>=0&&i<=1&&b>=-1&&b<54&&a>=0&&a<=1){poseEdit=i;selected=b;poseActive=a;return;}
     if(sscanf(s.c_str(),"P %d %f %f %f %c",&i,&rx,&ry,&rz,&trailing)==4&&i>=0&&i<54&&std::isfinite(rx)&&std::isfinite(ry)&&std::isfinite(rz)&&fabsf(rx)<=90&&fabsf(ry)<=90&&fabsf(rz)<=90){pose[i]={rx,ry,rz};return;}

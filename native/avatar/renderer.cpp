@@ -1400,6 +1400,15 @@ int main(int argc, char **argv) {
         glDisable(GL_SCISSOR_TEST);
         if(appMode && controls.poseEdit)poseOverlay.draw(scene,view,controls.selected,w,h);
         if(full)cutouts.draw(w,h);
+        // Expose only the actual application volume card, on either edge and
+        // in either Talk layout. The app retains slider input and its timer.
+        if(talkLayout && controls.overlayW>0 && controls.overlayH>0) {
+          int x=std::min(w,controls.overlayX), y=std::min(h,controls.overlayY);
+          int rw=std::min(controls.overlayW,w-x), rh=std::min(controls.overlayH,h-y);
+          glEnable(GL_SCISSOR_TEST);glScissor(x,h-y-rh,rw,rh);
+          glClearColor(0,0,0,0);glClear(GL_COLOR_BUFFER_BIT);
+          glDisable(GL_SCISSOR_TEST);
+        }
         // The native layer must not cover the application's full-width keyboard.
         // Keep all pose/model state alive; transparent pixels expose native UI.
         if(appMode && !talkLayout && controls.hidden){
