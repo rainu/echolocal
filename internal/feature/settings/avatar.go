@@ -31,9 +31,9 @@ func avatarModelPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
 			return err
 		}
 		rows := []menu.Row{
-			avatarFileRow(text("path"), c.Read().Path, []string{".vrm"}, save),
+			avatarFileRow(pickerWords("Choose VRM file", "VRM-Datei auswählen"), c.Read().Path, []string{".vrm"}, save),
 			{Label: text("default"), Kind: menu.Plain},
-			{Label: text("help"), Kind: menu.Plain},
+			{Label: pickerWords("Upload your VRM using Files or WebDAV, then choose it here.", "VRM über Dateien oder WebDAV hochladen und hier auswählen."), Kind: menu.Plain},
 		}
 		acts := []func(int){nil, func(int) { save("") }, nil}
 		if note != "" {
