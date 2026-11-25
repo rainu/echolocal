@@ -99,8 +99,9 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	// DFS referrals or connect to a second share/server. The server must itself
 	// enforce its share boundary (including server-side Unix symlinks).
 	parts := strings.Split(name, "/")
+	var fi os.FileInfo
 	for i := range parts {
-		fi, e := share.Lstat(strings.Join(parts[:i+1], "/"))
+		fi, e = share.Lstat(strings.Join(parts[:i+1], "/"))
 		if e != nil {
 			return failed(e, "metadata")
 		}
@@ -109,21 +110,22 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 			return nil, t.fail(playbackDiagnostic("link", "metadata", "LINK_OR_SPECIAL_FILE"))
 		}
 	}
+	// Lstat already obtained size and attributes from SMB CREATE, without a
+	// large QUERY_INFO request. The pinned client's File.Stat ignores a reduced
+	// credit grant for that query, which strict SMB servers can disconnect.
+	// Stable regular files are required; concurrent path/content changes remain
+	// unsupported, just as they are for range playback in general.
+	if !fi.Mode().IsRegular() {
+		closeConn()
+		return nil, t.fail(playbackDiagnostic("folder", "metadata", "NOT_A_REGULAR_FILE"))
+	}
 	f, e := share.Open(name)
 	if e != nil {
 		return failed(e, "open")
 	}
-	fi, e := f.Stat()
-	if e != nil {
-		return failed(e, "stat")
-	}
-	if !fi.Mode().IsRegular() || strings.ReplaceAll(f.Name(), "\\", "/") != name {
+	if strings.ReplaceAll(f.Name(), "\\", "/") != name {
 		closeConn()
-		kind, code := "path", "FILE_PATH_MISMATCH"
-		if !fi.Mode().IsRegular() {
-			kind, code = "folder", "NOT_A_REGULAR_FILE"
-		}
-		return nil, t.fail(playbackDiagnostic(kind, "stat", code))
+		return nil, t.fail(playbackDiagnostic("path", "open", "FILE_PATH_MISMATCH"))
 	}
 	size := fi.Size()
 	from, to, e := byteRange(r.Header.Get("Range"), size)

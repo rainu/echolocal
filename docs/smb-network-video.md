@@ -93,6 +93,13 @@ upgrades require the authentication, boundary and device regression tests.
 A platform CIFS mount would need kernel/mount support and additional privileges
 on Android, so it is not used. No custom SMB protocol implementation is included.
 
+File size/type come from the existing per-component Lstat SMB CREATE responses.
+The extra handle File.Stat/QUERY_INFO call is deliberately avoided: the pinned
+SMB client can request a 1 MiB response while borrowing fewer credits, causing
+strict servers to disconnect. Read requests already honor granted payload size.
+No dialect downgrade or signing/encryption relaxation is used. Files and paths
+must stay stable between metadata lookup, open and range reads.
+
 The transport opens a new bounded SMB session for each byte-range request. There
 are at most four outstanding requests, a five-second TCP connect limit and a
 15-second request deadline. It streams bytes directly into the existing bounded
@@ -151,3 +158,11 @@ of physical interaction or successful playback on every NAS/codec combination.
 
 Device-tested results and any remaining hardware limits are recorded with the
 specific tested candidate in the pull request.
+
+For the low-credit regression, set `ECHOLOCAL_SMB_STRICT_CREDITS=1` only against
+an isolated server granting fewer than 16 credits, advertising at least 1 MiB
+MaxTransactSize and rejecting QUERY_INFO buffers larger than the charged credits.
+Its synthetic `large.bin` must be 4 GiB + 128 bytes (a sparse file is sufficient),
+with `0123456789ABCDEF0123456789ABCDEF` as its final 32 bytes, plus an empty
+`folder` directory. The test checks range offsets beyond 4 GiB on ARM and
+retained directory rejection.
