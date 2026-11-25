@@ -1,5 +1,5 @@
-// Package devicefs provides owner-only real filesystem browsing and transfers.
-// It must only be mounted in the owner-authenticated HTTPS API.
+// Package devicefs provides pinned filesystem access for the owner API and
+// explicitly restricted on-device asset selection. HTTP handlers are owner-only.
 package devicefs
 
 import (
@@ -274,4 +274,13 @@ func resolve(root, name string) (string, error) {
 		return "/", nil
 	}
 	return "/" + filepath.ToSlash(relative), nil
+}
+
+// OpenDirectory pins every component without following symlinks. The trusted
+// root is chosen by the application, never by a remote request or picker entry.
+func OpenDirectory(root, name string) (*os.File, error) {
+	if !strings.HasPrefix(name, "/") || path.Clean(name) != name || strings.ContainsAny(name, "\x00\\") {
+		return nil, errOutside
+	}
+	return openDirectory(root, name)
 }

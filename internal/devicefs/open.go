@@ -38,7 +38,16 @@ func OpenRegular(root, name string) (*os.File, error) {
 		return nil, err
 	}
 	defer d.Close()
-	pinned, err := unix.Openat(int(d.Fd()), path.Base(resolved), unix.O_PATH|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	return OpenRegularAt(d, path.Base(resolved))
+}
+
+// OpenRegularAt opens a regular basename relative to a pinned directory.
+// It rejects symlinks and special files before opening a read descriptor.
+func OpenRegularAt(d *os.File, name string) (*os.File, error) {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") {
+		return nil, errUnsupported
+	}
+	pinned, err := unix.Openat(int(d.Fd()), name, unix.O_PATH|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
 	}

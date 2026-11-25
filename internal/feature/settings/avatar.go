@@ -6,6 +6,10 @@ import (
 	"github.com/ygelfand/echolocal/internal/avatar"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/avatarlab"
+	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
+	"github.com/ygelfand/echolocal/internal/filepicker"
+	"github.com/ygelfand/echolocal/internal/layout"
+	pickerui "github.com/ygelfand/echolocal/internal/ui/filepicker"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
@@ -18,14 +22,16 @@ func avatarModelPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
 	note := ""
 	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), "model"), Build: func() ([]menu.Row, []func(int)) {
 		text := func(k string) string { return avatar.Text(say.Chosen(), k) }
-		save := func(v string) {
+		save := func(v string) error {
 			note = ""
-			if err := c.ChangeRaw("path", v); err != nil {
+			err := c.ChangeRaw("path", v)
+			if err != nil {
 				note = text("invalid_path")
 			}
+			return err
 		}
 		rows := []menu.Row{
-			{Label: text("path"), Value: c.Read().Path, Kind: menu.Field, Save: save},
+			avatarFileRow(text("path"), c.Read().Path, []string{".vrm"}, save),
 			{Label: text("default"), Kind: menu.Plain},
 			{Label: text("help"), Kind: menu.Plain},
 		}
@@ -92,19 +98,21 @@ func avatarPresentationPageFor(c *setting.Controls[config.Avatar]) *sharedshell.
 	}}
 }
 
-func AvatarBackgroundPage() *sharedshell.Page {
-	c := avatarlab.Controls()
+func AvatarBackgroundPage() *sharedshell.Page { return avatarBackgroundPageFor(avatarlab.Controls()) }
+func avatarBackgroundPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
 	note := ""
 	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), "background"), Build: func() ([]menu.Row, []func(int)) {
 		text := func(k string) string { return avatar.Text(say.Chosen(), k) }
-		save := func(v string) {
+		save := func(v string) error {
 			note = ""
-			if e := c.ChangeRaw("background", v); e != nil {
-				note = e.Error()
+			err := c.ChangeRaw("background", v)
+			if err != nil {
+				note = err.Error()
 			}
+			return err
 		}
 		rows := []menu.Row{
-			{Label: text("background"), Value: c.Read().Background, Kind: menu.Field, Save: save},
+			avatarFileRow(text("background"), c.Read().Background, []string{".png", ".jpg", ".jpeg"}, save),
 			{Label: text("background_reset"), Kind: menu.Plain},
 		}
 		acts := []func(int){nil, func(int) { save("") }}
@@ -123,11 +131,13 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), "fullscreen_mode"), Build: func() ([]menu.Row, []func(int)) {
 		rows := []menu.Row{}
 		acts := []func(int){}
-		save := func(name, value string) {
+		save := func(name, value string) error {
 			note = ""
-			if c.ChangeRaw(name, value) != nil {
+			err := c.ChangeRaw(name, value)
+			if err != nil {
 				note = avatar.Text(say.Chosen(), "save_failed")
 			}
+			return err
 		}
 		for _, row := range c.Table.In("fullscreen") {
 			row := row
@@ -142,6 +152,11 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 					rows = append(rows, menu.Row{Label: avatar.Text(say.Chosen(), "talk_mode") + ": " + avatar.Text(say.Chosen(), key), Hint: row.OptionalText("help"), Kind: menu.Toggle, On: a.Mode() == mode})
 					acts = append(acts, func(int) { save("talk_mode", mode) })
 				}
+				continue
+			}
+			if row.Name == "fullscreen_background" {
+				rows = append(rows, avatarFileRow(row.Title(), row.Read(&a), []string{".png", ".jpg", ".jpeg"}, func(v string) error { return save(row.Name, v) }))
+				acts = append(acts, nil)
 				continue
 			}
 			rows = append(rows, menu.Row{Label: row.Title(), Hint: row.OptionalText("help"), Value: row.Read(&a), Kind: menu.Field, Save: func(v string) { save(row.Name, v) }})
@@ -166,4 +181,22 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 		}
 		return rows, acts
 	}}
+}
+
+// Only user asset roots are exposed; the parent application state holds secrets.
+func avatarFileRow(label, current string, extensions []string, save func(string) error) menu.Row {
+	return pickerui.Row(label, current, pickerui.Config{Title: label, Shell: featureshell.Get(), Choose: save, Browser: filepicker.Options{
+		Extensions: extensions,
+		Locations: []filepicker.Location{
+			{Label: pickerWords("User files", "Benutzerdateien"), Path: layout.StateDir + "/user-files"},
+			{Label: pickerWords("Local files", "Lokale Dateien"), Path: "/data/local"},
+			{Label: pickerWords("Shared storage", "Gemeinsamer Speicher"), Path: "/data/media/0"},
+		},
+	}})
+}
+func pickerWords(en, de string) string {
+	if say.Chosen() == "de" {
+		return de
+	}
+	return en
 }

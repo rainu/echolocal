@@ -6,6 +6,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/avatarlab"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
+	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
 	setting "github.com/ygelfand/libcountertop/pkg/settings"
 	"testing"
 )
@@ -21,7 +22,7 @@ func TestAvatarNativeEditorReadsSameSettingAndResets(t *testing.T) {
 	}
 	c.ChangeRaw("path", "/data/local/tmp/other.vrm")
 	rows, _ = page.Build()
-	if rows[0].Value != value.Path {
+	if rows[0].Hint != value.Path {
 		t.Fatal("external update missing")
 	}
 	rows[0].Save("../bad.vrm")
@@ -32,7 +33,7 @@ func TestAvatarNativeEditorReadsSameSettingAndResets(t *testing.T) {
 	_, acts := page.Build()
 	acts[1](0)
 	rows, _ = page.Build()
-	if value.Path != "" || rows[0].Value != "" {
+	if value.Path != "" || rows[0].Hint != "" {
 		t.Fatal("reset failed")
 	}
 }
@@ -115,5 +116,38 @@ func TestNativeMouthIntensityEditAndReset(t *testing.T) {
 	acts[9](0)
 	if value.MouthPercent() != 50 {
 		t.Fatal("reset", value)
+	}
+}
+
+func TestAllAvatarAssetRowsUsePickerAndKeepValidation(t *testing.T) {
+	value := config.Avatar{Path: "/model.vrm", Zoom: 150}
+	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	for _, page := range []*sharedshell.Page{avatarModelPageFor(c), avatarBackgroundPageFor(c), avatarFullscreenPageFor(c)} {
+		rows, _ := page.Build()
+		count := 0
+		for _, row := range rows {
+			if row.Open == nil {
+				continue
+			}
+			count++
+			if row.Kind != menu.Chevron || row.Value != "" {
+				t.Fatal("not a picker", row)
+			}
+			before := value
+			p := row.Open().(*sharedshell.Page)
+			if contents, _ := p.Build(); len(contents) != 0 {
+				t.Fatal("constructing picker browsed disk")
+			}
+			if value != before {
+				t.Fatal("opening changed settings")
+			}
+			row.Save("/missing/not-an-asset.txt")
+			if value != before {
+				t.Fatal("bypassed existing validation")
+			}
+		}
+		if count != 1 {
+			t.Fatal("expected one picker per page", count)
+		}
 	}
 }
