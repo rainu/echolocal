@@ -113,7 +113,7 @@ build-echolocal: ## Build the host CLI into ./bin
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/echolocal ./cmd/echolocal
 
 .PHONY: build-echod
-build-echod: $(if $(filter athena,$(BOARD)),stage-avatar) stage-airplay stage-pryon $(if $(filter $(BOARD),$(PART_BOARDS)),stage-speech stage-parts) ##Cross-compile echod for the Echo Dot (DOT_ARCH=arm64 for a Fire OS 5 kernel; TAGS=noasm for the portable dot; PACK=bin/upx-5.3.0/build/upx to compress it)
+build-echod: $(if $(filter athena,$(BOARD)),stage-avatar stage-legacy) stage-airplay stage-pryon $(if $(filter $(BOARD),$(PART_BOARDS)),stage-speech stage-parts) ##Cross-compile echod for the Echo Dot (DOT_ARCH=arm64 for a Fire OS 5 kernel; TAGS=noasm for the portable dot; PACK=bin/upx-5.3.0/build/upx to compress it)
 	@mkdir -p $(BUILD_DIR)
 	$(DEVICE_ENV) go build $(DEVICE_TAGS) -ldflags "$(DEVICE_LDFLAGS)" -o $(DEVICE_BIN) ./cmd/echod
 	$(if $(PACK),$(PACK) -q $(DEVICE_BIN))
@@ -417,3 +417,12 @@ stage-avatar: build-avatar ## Include helper and licenses in the Athena daemon p
 test-avatar: ## Run native protocol and Go lifecycle/asset checks
 	$(MAKE) -C native/avatar host-test
 	go test -race ./internal/avatar
+
+.PHONY: stage-legacy
+stage-legacy: ## Build and embed the Athena-only, isolated FFmpeg decoder
+	NDK="$(NDK)" NDK_HOST="$(NDK_HOST)" sh native/legacy/build.sh
+	mkdir -p $(PARTS_DIR)
+	cp native/legacy/out/echolocal-legacy $(PARTS_DIR)/echolocal-legacy
+	cp LICENSE $(PARTS_DIR)/echolocal-legacy.LICENSE
+	cp native/legacy/out/FFmpeg.LICENSE $(PARTS_DIR)/echolocal-legacy.FFmpeg.LICENSE
+	cp native/legacy/NOTICE $(PARTS_DIR)/echolocal-legacy.NOTICE

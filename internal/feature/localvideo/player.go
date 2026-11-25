@@ -23,6 +23,8 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/media/youtubeurl"
 	sharedcomponent "github.com/ygelfand/libcountertop/pkg/runtime/component"
 
+	"github.com/ygelfand/libcountertop/pkg/fetch"
+
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/config"
@@ -33,11 +35,15 @@ import (
 	"github.com/ygelfand/echolocal/internal/hardware/speaker"
 	"github.com/ygelfand/echolocal/internal/layout"
 	"github.com/ygelfand/echolocal/internal/networkmedia"
-	"github.com/ygelfand/libcountertop/pkg/fetch"
 )
 
 func init() {
-	component.Register(sharedcomponent.Device, Get, sharedcomponent.Order(61), component.Needs(board.Panel))
+	component.Register(
+		sharedcomponent.Device,
+		Get,
+		sharedcomponent.Order(61),
+		component.Needs(board.Panel),
+	)
 }
 
 type Volume interface {
@@ -62,7 +68,10 @@ var Get = sync.OnceValue(func() *Receiver {
 	transport := networkmedia.NewTransport(Source(), client.Transport)
 	client.Transport = transport
 	p := urlplayer.New(urlplayer.Options{
-		Output: output, Screen: true, HTTP: client,
+		Output: output,
+		Screen: true,
+		HTTP:   client,
+		Native: nativeDecoder(),
 		Target: func() playback.Target { return video.Target(display.Get(), component.Board().MaxFPS) },
 		Resample: func(from int) func([]int16) []int16 {
 			return resample.NewRational(from, speaker.Rate, speaker.Channels).Run
@@ -87,7 +96,12 @@ var Get = sync.OnceValue(func() *Receiver {
 func newReceiver(p shared.Player, volume Volume) *Receiver {
 	r := &Receiver{player: p, volume: volume, handler: shared.New(p)}
 	r.entity = &esphome.MediaPlayer{
-		Base:          esphome.Base{ObjectID: "video", Name: "Video", Icon: "mdi:video", DeviceID: component.DevicePlayback},
+		Base: esphome.Base{
+			ObjectID: "video",
+			Name:     "Video",
+			Icon:     "mdi:video",
+			DeviceID: component.DevicePlayback,
+		},
 		SupportsPause: true,
 		// No default audio format: HA must pass the original video URL, not its WAV proxy.
 		Features: esphome.MediaPlayerFeaturePlayMedia | esphome.MediaPlayerFeaturePlay |
@@ -150,7 +164,9 @@ func (r *Receiver) command(c esphome.MediaCommand) {
 func (r *Receiver) Command(c esphome.MediaCommand) error {
 	if c.HasMediaURL && c.MediaURL != "" {
 		if c.Announcement || !shared.ValidURL(c.MediaURL) {
-			return errors.New("use an HTTP(S) media URL or smb://media/path; video announcements are not supported")
+			return errors.New(
+				"use an HTTP(S) media URL or smb://media/path; video announcements are not supported",
+			)
 		}
 		if _, _, err := youtubeurl.Parse(c.MediaURL); err != nil {
 			return err
@@ -162,12 +178,21 @@ func (r *Receiver) Command(c esphome.MediaCommand) error {
 	}
 	var err error
 	if c.HasMediaURL && c.MediaURL != "" {
-		err = r.player.Load(cast.Media{ContentID: c.MediaURL, StreamType: cast.StreamBuffered, Metadata: cast.Metadata{Title: "Video"}}, 0, true)
+		err = r.player.Load(
+			cast.Media{
+				ContentID:  c.MediaURL,
+				StreamType: cast.StreamBuffered,
+				Metadata:   cast.Metadata{Title: "Video"},
+			},
+			0,
+			true,
+		)
 	}
 	if err != nil {
 		return err
 	}
-	if c.HasCommand && !(c.HasMediaURL && c.MediaURL != "" && c.Command == esphome.MediaPlayerPlay) {
+	if c.HasCommand &&
+		!(c.HasMediaURL && c.MediaURL != "" && c.Command == esphome.MediaPlayerPlay) {
 		switch c.Command {
 		case esphome.MediaPlayerPlay:
 			err = r.player.Play()
@@ -199,10 +224,15 @@ func (r *Receiver) Command(c esphome.MediaCommand) error {
 
 type mediaVolume struct{}
 
-func (mediaVolume) Level() int     { return media.Get().Levels.Level(config.StreamMedia) }
-func (mediaVolume) SetLevel(v int) { media.Get().Levels.Set(config.StreamMedia, max(0, min(100, v))) }
-func (mediaVolume) Muted() bool    { return media.Get().Levels.Muted(config.StreamMedia) }
-func (mediaVolume) Mute(v bool)    { media.Get().Levels.Mute(config.StreamMedia, v) }
+func (mediaVolume) Level() int { return media.Get().Levels.Level(config.StreamMedia) }
+
+func (mediaVolume) SetLevel(
+	v int,
+) {
+	media.Get().Levels.Set(config.StreamMedia, max(0, min(100, v)))
+}
+func (mediaVolume) Muted() bool { return media.Get().Levels.Muted(config.StreamMedia) }
+func (mediaVolume) Mute(v bool) { media.Get().Levels.Mute(config.StreamMedia, v) }
 
 // Speaker URL requests reuse the same YouTube player as the web/API Video action.
 // Non-YouTube audio and announcements retain their original implementation.
@@ -221,14 +251,19 @@ func (r *Receiver) speaker(c esphome.MediaCommand) (bool, error) {
 			}
 			return true, r.Command(c)
 		}
-		if !c.Announcement && ((r.youtube != nil && r.youtube.Active()) || (r.network != nil && r.network.Active())) {
+		if !c.Announcement &&
+			((r.youtube != nil && r.youtube.Active()) || (r.network != nil && r.network.Active())) {
 			_ = r.player.Stop()
 		}
 		return false, nil
 	}
-	if ((r.youtube != nil && r.youtube.Active()) || (r.network != nil && r.network.Active())) && c.HasCommand {
+	if ((r.youtube != nil && r.youtube.Active()) || (r.network != nil && r.network.Active())) &&
+		c.HasCommand {
 		switch c.Command {
-		case esphome.MediaPlayerPlay, esphome.MediaPlayerPause, esphome.MediaPlayerStop, esphome.MediaPlayerToggle:
+		case esphome.MediaPlayerPlay,
+			esphome.MediaPlayerPause,
+			esphome.MediaPlayerStop,
+			esphome.MediaPlayerToggle:
 			return true, r.Command(c)
 		}
 	}
@@ -237,6 +272,8 @@ func (r *Receiver) speaker(c esphome.MediaCommand) (bool, error) {
 
 func (r *Receiver) Snapshot() urlplayer.Snapshot { return r.player.Snapshot() }
 
-var source = sync.OnceValue(func() *networkmedia.Store { return networkmedia.New(layout.StateDir + "/smb-media.json") })
+var source = sync.OnceValue(
+	func() *networkmedia.Store { return networkmedia.New(layout.StateDir + "/smb-media.json") },
+)
 
 func Source() *networkmedia.Store { return source() }

@@ -10,6 +10,7 @@ const (
 	Dir            = "/system/app/echod"
 	Binary         = Dir + "/echod"
 	Surface        = Dir + "/echolocal-surface"
+	LegacyDecoder  = Dir + "/echolocal-legacy"
 	AvatarRenderer = Dir + "/echolocal-avatar"
 	AvatarDir      = StateDir + "/avatar"
 	Camera         = Dir + "/echolocal-camera"

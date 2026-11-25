@@ -41,6 +41,8 @@ release:
     # build-echod-all clears bin/echod-* first, so this is exactly what this build produced.
     - glob: ./bin/echod-*
     - glob: ./bin/manifest.json
+    - glob: ./native/legacy/out/ffmpeg-9.1.tar.xz
+    - glob: ./native/legacy/out/legacy-corresponding-source.tar.gz
 
 checksum:
   name_template: "checksums.txt"
