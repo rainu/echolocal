@@ -41,7 +41,7 @@ type nativeState struct {
 func newNative() *nativeState {
 	return &nativeState{inbox: make(chan []byte, 64), done: make(chan struct{}), channelReady: make(chan struct{}), transcripts: make(chan voiceTranscript, 32), transcriptStop: make(chan struct{}), transcriptDone: make(chan struct{})}
 }
-func (s *Session) nativeFailure(reason string) { s.reason.Store(reason); s.fail() }
+func (s *Session) nativeFailure(reason string) { s.fail(reason) }
 
 // Match the Control UI: Gateway creation supplies the selected agent's initial
 // instructions and history. Opening oai-events does not send replacement
@@ -289,7 +289,7 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					go s.afterPlayback(ctx, s.responseEpoch.Load())
 				}
 			case "session.closed":
-				s.requestEnd()
+				s.nativeFailure("talk_transport_closed")
 				return
 			}
 		}

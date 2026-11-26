@@ -43,6 +43,8 @@ type Session struct {
 	Target            string
 	Provider, Model   string
 	runtimeModel      string
+	runtimeProvider   string
+	intentionalEnd    atomic.Bool
 	audibleFrames     atomic.Uint64
 	Greeting          string
 	DeviceContext     string
@@ -66,6 +68,7 @@ type Session struct {
 	stage             atomic.Int32
 	setupMS           atomic.Int64
 	reason            atomic.Value
+	failureReason     atomic.Value
 	pendingTools      atomic.Int32
 	tools, utterances atomic.Uint64
 	responseEpoch     atomic.Uint64
@@ -80,8 +83,10 @@ func NewSession(c Control, target string, a Device) *Session {
 	_, _ = rand.Read(raw)
 	return &Session{native: newNative(), nativeMedia: true, audioGate: make(chan struct{}), Client: c, Target: target, Audio: a, id: "echo-" + hex.EncodeToString(raw), ready: make(chan struct{}), failed: make(chan struct{})}
 }
-func (s *Session) fail() {
+func (s *Session) fail(reason string) {
 	s.rejected.Do(func() {
+		s.reason.Store(reason)
+		s.failureReason.Store(reason)
 		close(s.failed)
 		if s.Failure != nil {
 			go s.Failure()
@@ -138,6 +143,7 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		return err
 	}
 	s.runtimeModel = launch.Model
+	s.runtimeProvider = launch.Provider
 	slog.Info("talk session created", "provider", launch.Provider, "model", launch.Model, "transport", launch.Transport, "native_media", s.nativeMedia)
 	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" {
 		return errors.New("talk_contract_invalid")
@@ -220,10 +226,9 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		switch state {
 		case webrtc.PeerConnectionStateConnected:
 			once.Do(func() { close(connected) })
-		case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed:
+		case webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
 			if ctx.Err() == nil {
-				s.reason.Store("talk_peer_failed")
-				s.fail()
+				s.fail("talk_peer_failed")
 			}
 		}
 	})
@@ -350,8 +355,7 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 			if !ok {
 				if ctx.Err() == nil {
 					slog.Error("talk control stream closed unexpectedly")
-					s.reason.Store("control_stream_closed")
-					s.fail()
+					s.fail("control_stream_closed")
 				}
 				return
 			}
@@ -370,13 +374,12 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				if e.Event.Type == "session.replaced" {
 					reason = "provider_session_replaced"
 				}
-				s.reason.Store(reason)
 				slog.Error("talk provider event", "type", e.Event.Type, "reason", reason)
-				s.fail()
+				s.fail(reason)
 			case "session.closed":
 				slog.Info("talk provider event", "type", e.Event.Type)
 				if ctx.Err() == nil {
-					s.requestEnd()
+					s.fail("talk_transport_closed")
 				}
 				return
 			case "transcript.delta", "output.text.delta":
@@ -600,4 +603,53 @@ func (s *Session) clearPartial() {
 	if s.ClearPartial != nil {
 		s.ClearPartial()
 	}
+}
+
+// Only transport/setup availability failures are retried. Replaced sessions,
+// authentication, invalid contracts, provider errors and audio failures stop.
+func (s *Session) RecoverableFailure() bool {
+	if s.intentionalEnd.Load() {
+		return false
+	}
+	reason := s.Diagnostics().Reason
+	if first := s.failureReason.Load(); first != nil {
+		reason = first.(string)
+	}
+	switch reason {
+	case "talk_peer_failed", "talk_control_closed", "control_stream_closed",
+		"talk_transport_closed", "rpc_disconnected", "rpc_timeout", "talk_start_timeout":
+		return true
+	}
+	return false
+}
+
+// Replacement is called only after this transport has closed. Routing and
+// per-Talk settings survive; callbacks, pending media and the greeting do not.
+func (s *Session) Replacement(audio Device) *Session {
+	next := NewSession(s.Client, s.Target, audio)
+	next.Provider, next.Model = s.Provider, s.Model
+	if s.runtimeProvider != "" {
+		next.Provider = s.runtimeProvider
+	}
+	if s.runtimeModel != "" {
+		next.Model = s.runtimeModel
+	}
+	next.Ending, next.DeviceContext = s.Ending, s.DeviceContext
+	next.nativeMedia = s.nativeMedia
+	next.SetInputMuted(s.inputMuted.Load())
+	return next
+}
+func (s *Session) IntentionalEnd() bool { return s.intentionalEnd.Load() }
+
+// InterruptTransport is a local diagnostic fault injection: close only WebRTC,
+// leaving the logical activation alive to exercise unexpected-loss handling.
+func (s *Session) InterruptTransport() error {
+	if s.stage.Load() != 7 {
+		return errors.New("talk_not_ready")
+	}
+	link := s.statsLink.Load()
+	if link == nil {
+		return errors.New("talk_not_ready")
+	}
+	return link.Close()
 }

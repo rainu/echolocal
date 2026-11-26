@@ -56,7 +56,7 @@ func (m *Manager) PrepareTransfer(ctx context.Context, target string) (*Transfer
 		return nil, errors.New("talk_transfer_busy")
 	}
 	b := m.lastBackend
-	if !m.active || b == nil || b.Diagnostics().Stage != "ready" {
+	if !m.active || b == nil || b.Diagnostics().Stage != "ready" || (m.recovery != nil && m.recovery.Status().State != "connected") {
 		m.mu.Unlock()
 		return nil, errors.New("talk_not_ready")
 	}
@@ -269,6 +269,7 @@ func (m *Manager) openTransferred(r *transferRequest, v Slot) error {
 	m.cancel = cancel
 	m.captions.Begin(gen)
 	m.lastBackend, m.lastAudio, m.avatarRenderer = nil, nil, nil
+	m.recovery = nil
 	m.error, m.forcedMuted = false, false
 	m.mu.Unlock()
 	stop := context.AfterFunc(r.ctx, cancel)

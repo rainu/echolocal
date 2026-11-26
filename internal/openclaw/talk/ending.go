@@ -145,6 +145,7 @@ func (s *Session) userTranscript(role, text, id string, snapshot, final bool) bo
 }
 
 func (s *Session) requestEnd() {
+	s.intentionalEnd.Store(true)
 	s.endOnce.Do(func() {
 		if s.End != nil {
 			go s.End()

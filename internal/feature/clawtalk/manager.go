@@ -40,6 +40,7 @@ type Manager struct {
 	error          bool
 	forcedMuted    bool
 	lastBackend    *talk.Session
+	recovery       *talk.Recovery
 	lastAudio      *deviceAudio
 	avatarRenderer *avatar.Controller
 }
@@ -99,6 +100,7 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 	generation := m.generation
 	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio = nil, nil
+	m.recovery = nil
 	m.avatarRenderer = nil
 	m.error = false
 	m.forcedMuted = false
@@ -122,6 +124,7 @@ func (m *Manager) StartOwned(slot int, haBusy bool) (uint64, error) {
 	generation := m.generation
 	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio = nil, nil
+	m.recovery = nil
 	m.avatarRenderer = nil
 	m.error, m.forcedMuted = false, false
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -216,65 +219,111 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		return
 	}
 	sink.readyChoice = v.StartTone
-	a := newAudio(ctx, func(on bool) { m.setMutedOwned(generation, on) })
-	a.startTone, a.endTone = v.StartTone, v.EndTone
-	a.feedback = feedback
 	bound, bindErr := claw.Get().BindTalk()
 	if launch != nil {
 		bound, bindErr = launch.bound, nil
 	}
 	if bindErr != nil {
-		a.Close()
 		if ctx.Err() == nil {
 			m.setError()
 		}
 		return
 	}
-	b := talk.NewSession(bound, v.Context, a)
-	b.Provider, b.Model = v.Provider, v.Model
-	b.Greeting = v.GreetingText(say.Chosen())
-	b.Ending = v.Ending.Defaults(say.Chosen())
-	b.DeviceContext, e = claw.Get().Node.ConversationDeviceContextWithTemplate(v.DeviceContextTemplate)
-	if e != nil {
-		a.Close()
+	deviceContext, err := claw.Get().Node.ConversationDeviceContextWithTemplate(v.DeviceContextTemplate)
+	if err != nil {
 		if ctx.Err() == nil {
 			m.setError()
 		}
 		return
 	}
+	ending := v.Ending.Defaults(say.Chosen())
+	greeting := v.GreetingText(say.Chosen())
+	recovery := &talk.Recovery{}
 	m.mu.Lock()
 	m.currentSlot = v
-	m.lastBackend = b
-	m.lastAudio = a
-	b.SetInputMuted(m.forcedMuted)
+	m.recovery = recovery
 	m.mu.Unlock()
-	b.Activity = func(state talk.State) { m.activityOwned(generation, state) }
-	a.onPlay = b.Playback
-	b.UserSpeech = func() { m.userSpeechOwned(generation) }
-	b.Caption = func(role, text, id string) { m.captionOwned(generation, role, text, id) }
-	b.PartialCaption = func(role, delta string) {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.active && m.generation == generation {
-			m.captions.Delta(generation, role, delta)
-			m.uiDirty = true
+	recovery.Factory = func(attempt context.Context, retry bool, failed, ended func()) (talk.RecoveryBackend, error) {
+		a := newAudio(attempt, nil)
+		a.startTone, a.endTone = v.StartTone, v.EndTone
+		a.recovering = retry
+		if !retry {
+			a.feedback = feedback
 		}
-	}
-	b.ClearPartial = func() {
+		b := talk.NewSession(bound, v.Context, a)
+		b.Provider, b.Model = v.Provider, v.Model
+		if !retry {
+			b.Greeting = greeting
+		}
+		b.Ending = ending
+		b.DeviceContext = deviceContext
+		if retry {
+			m.mu.Lock()
+			previous := m.lastBackend
+			m.mu.Unlock()
+			if previous != nil {
+				b = previous.Replacement(a)
+			}
+		}
+		// Identity and attempt context fence callbacks across replacement transports
+		// inside the same logical generation, not just across separate Talks.
+		owned := func(fn func()) {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			if m.active && m.generation == generation && m.lastBackend == b && attempt.Err() == nil {
+				fn()
+			}
+		}
+		a.onMute = func(on bool) { owned(func() { m.setMutedLocked(on) }) }
+		b.Activity = func(state talk.State) { owned(func() { m.Controller.Activity(state) }) }
+		a.onPlay = b.Playback
+		b.UserSpeech = func() { owned(func() { m.Controller.UserSpeech() }) }
+		b.Caption = func(role, text, id string) {
+			owned(func() {
+				m.captions.Append(generation, role, text, id)
+				m.uiDirty = true
+			})
+		}
+		b.PartialCaption = func(role, delta string) {
+			owned(func() {
+				m.captions.Delta(generation, role, delta)
+				m.uiDirty = true
+			})
+		}
+		b.ClearPartial = func() { owned(func() { m.captions.DropPending(generation); m.uiDirty = true }) }
+		b.End = ended
+		b.Failure = func() {
+			if b.RecoverableFailure() {
+				a.silentClose.Store(true)
+			}
+			failed()
+		}
 		m.mu.Lock()
-		defer m.mu.Unlock()
+		m.lastBackend, m.lastAudio = b, a
+		b.SetInputMuted(m.forcedMuted)
+		a.inputMuted.Store(m.forcedMuted)
 		m.captions.DropPending(generation)
 		m.uiDirty = true
+		m.mu.Unlock()
+		return b, nil
 	}
-	b.End = cancel
-	b.Failure = func() {
+	recovery.State = func(state talk.State) { m.activityOwned(generation, state); sh.Redraw() }
+	recovery.Ended = cancel
+	recovery.Failed = func() {
 		if ctx.Err() == nil {
 			m.markOwned(generation, talk.Failed)
 			cancel()
 		}
 	}
-	if e = m.Controller.Start(ctx, b, time.Duration(v.Timeout)*time.Second); e != nil {
-		reason := b.Diagnostics().Reason
+	recovery.Opened = func() { launch.notify(nil) }
+	if e = m.Controller.Start(ctx, recovery, time.Duration(v.Timeout)*time.Second); e != nil {
+		m.mu.Lock()
+		b := m.lastBackend
+		m.mu.Unlock()
+		reason := ""
+		if b != nil {
+			reason = b.Diagnostics().Reason
+		}
 		if strings.HasPrefix(reason, "rpc_") || reason == "talk_connection_changed" || reason == "talk_control_unavailable" || reason == "control_stream_closed" {
 			startErr = errors.New("talk_connection_unavailable")
 		}
@@ -300,6 +349,9 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 			m.Controller.Stop()
 		case <-ticker.C:
 			state := m.state()
+			m.mu.Lock()
+			a := m.lastAudio
+			m.mu.Unlock()
 			live := microphoneLive(true, a, time.Now().UnixMilli())
 			m.mu.Lock()
 			dirty := m.uiDirty
@@ -368,6 +420,7 @@ type Status struct {
 	MaxReceiveGapMS, MaxPlayoutGapMS                                            int64
 	PeakBufferedFrames                                                          int
 
+	Recovery                                        talk.RecoveryStatus
 	Transfer, TransferReason                        string
 	State                                           talk.State
 	Active                                          bool
@@ -379,8 +432,12 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	active, b, a, renderer := m.active || m.transfer != nil, m.lastBackend, m.lastAudio, m.avatarRenderer
 	transferState, transferReason := m.transferState, m.transferReason
+	recovery := m.recovery
 	m.mu.Unlock()
 	out := Status{State: m.state(), Active: active, Transfer: transferState, TransferReason: transferReason, Recent: m.history.Snapshot()}
+	if recovery != nil {
+		out.Recovery = recovery.Status()
+	}
 	if renderer != nil {
 		s := renderer.Snapshot()
 		out.Avatar = &s
@@ -461,6 +518,7 @@ func (m *Manager) StartSession(key string, haBusy bool) (uint64, error) {
 	generation := m.generation
 	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio = nil, nil
+	m.recovery = nil
 	m.avatarRenderer = nil
 	m.error, m.forcedMuted = false, false
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -468,4 +526,16 @@ func (m *Manager) StartSession(key string, haBusy bool) (uint64, error) {
 	m.mu.Unlock()
 	go m.activate(ctx, cancel, 0, generation, &v, nil)
 	return generation, nil
+}
+
+// InterruptTransport is intentionally local-control-only, not a Node command.
+func (m *Manager) InterruptTransport() error {
+	m.mu.Lock()
+	b := m.lastBackend
+	ready := m.active && b != nil && m.recovery != nil && m.recovery.Status().State == "connected"
+	m.mu.Unlock()
+	if !ready {
+		return errors.New("talk_not_ready")
+	}
+	return b.InterruptTransport()
 }

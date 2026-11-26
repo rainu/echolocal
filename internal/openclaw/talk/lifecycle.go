@@ -117,11 +117,11 @@ func (c *Controller) Activity(s State) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	a := c.current
-	if a == nil || a.ending || (c.state != Listening && c.state != Thinking && c.state != Speaking) {
+	if a == nil || a.ending || (c.state != Listening && c.state != Thinking && c.state != Speaking && c.state != Connecting) {
 		return
 	}
 	switch s {
-	case Thinking, Speaking:
+	case Thinking, Speaking, Connecting:
 		if a.timer != nil {
 			a.timer.Stop()
 			a.timer = nil
