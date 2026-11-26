@@ -137,7 +137,7 @@ func TestManyEntriesPagingAndWrappingPaths(t *testing.T) {
 		if strings.HasPrefix(r.Label, "file-") {
 			count++
 		}
-		if r.Label == "Selection" && r.Hint != filepath.Join(root, "file-064.vrm") {
+		if r.Label == "Selection" || r.Label == "Auswahl" {
 			t.Fatal(r)
 		}
 	}
@@ -233,6 +233,69 @@ func TestPassiveFilterFooterAndAutomaticDirectoryReload(t *testing.T) {
 				if r.Label == "hidden.txt" {
 					t.Fatal("filter changed on navigation")
 				}
+			}
+		})
+	}
+}
+
+func TestStoredAndDraftSelectionUseEntryMarkerOnly(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de"} {
+		t.Run(lang, func(t *testing.T) {
+			say.Use(lang)
+			root := t.TempDir()
+			first := filepath.Join(root, "first.vrm")
+			second := filepath.Join(root, "second.vrm")
+			requireNoError(t, os.WriteFile(first, nil, 0600))
+			requireNoError(t, os.WriteFile(second, nil, 0600))
+			stack := shell.New()
+			defer stack.Close()
+			saved := first
+			makePage := func() *shell.Page {
+				return New(Config{Shell: stack, Browser: browser.Options{
+					Locations: []browser.Location{{Label: "files", Path: root}},
+					Initial:   saved, Extensions: []string{".vrm"},
+				}, Choose: func(v string) error { saved = v; return nil }})
+			}
+			check := func(p *shell.Page, selected string) {
+				t.Helper()
+				rows, _ := p.Build()
+				marked := 0
+				for _, row := range rows {
+					if row.Label == "Selection" || row.Label == "Auswahl" {
+						t.Fatal("redundant selection summary", row)
+					}
+					if row.Chosen {
+						marked++
+						if row.Label != selected {
+							t.Fatal("wrong entry marked", row)
+						}
+					}
+				}
+				if marked != 1 {
+					t.Fatal("expected one selected entry", marked)
+				}
+			}
+			p := makePage()
+			stack.Push(p)
+			check(p, "first.vrm")
+			action(t, p, "second.vrm")
+			check(p, "second.vrm")
+			if saved != first {
+				t.Fatal("draft selection saved early")
+			}
+			p.Actions[1].Do()
+			if saved != first {
+				t.Fatal("cancel changed saved value")
+			}
+			p = makePage()
+			stack.Push(p)
+			check(p, "first.vrm")
+			action(t, p, "second.vrm")
+			p.Actions[0].Do()
+			if saved != second {
+				t.Fatal("confirmation failed")
 			}
 		})
 	}

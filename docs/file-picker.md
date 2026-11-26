@@ -24,8 +24,10 @@ in internal/filepicker; internal/ui/filepicker supplies the shared touch UI.
   navigates into it. Directory mode selects the current folder on Select.
 - Cancel and the screen's back arrow return to the originating screen without
   saving. No selection is applied by tapping a row alone.
-- Current location and selected path wrap instead of using the trailing value
-  column. The selection remains visible when changing entry pages.
+- Current location wraps instead of using the trailing value column. A selected
+  file is marked in its entry; the browser has no separate selected-path summary.
+  The saved value remains visible on the originating settings page. Draft
+  selection survives entry-page navigation and is applied only on Select.
 - Extensions are case-insensitive. Unsupported files, hidden names, symlinks and
   special files are consistently hidden. Directories remain visible.
 - Directories are read only on open/navigation, never on every frame or

@@ -126,10 +126,6 @@ func New(cfg Config) *shell.Page {
 			}
 			return rows, actions
 		}
-		candidate := b.Candidate()
-		if candidate != "" {
-			add(menu.Row{Label: text("Selection", "Auswahl"), Hint: candidate, Dim: true}, nil)
-		}
 		end := min(b.Offset+filepicker.PageSize, len(b.Entries))
 		if len(b.Entries) == 0 {
 			add(
