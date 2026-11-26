@@ -391,7 +391,11 @@ func registerNodeTalk(a *connection.NodeAccess) {
 		if decodeNode(raw, &p) != nil {
 			return nil, errors.New("invalid_params")
 		}
-		return clawtalk.Get().PrepareTransfer(ctx, p.SessionID)
+		receipt, err := clawtalk.Get().PrepareTransfer(ctx, p.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		return receipt, nil
 	})
 	add("talk.stop", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if nodeEmpty(raw) != nil {

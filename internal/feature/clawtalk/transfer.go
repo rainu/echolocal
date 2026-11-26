@@ -37,6 +37,9 @@ type TransferResult struct {
 }
 
 func (r *TransferResult) NodeResultDelivered(ok bool) {
+	if r == nil {
+		return
+	}
 	r.once.Do(func() { r.delivered(ok) })
 }
 

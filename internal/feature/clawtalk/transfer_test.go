@@ -217,3 +217,8 @@ func TestTransferCompletionDetachesCancellationOnlyAtCommit(t *testing.T) {
 		}
 	}
 }
+
+func TestRejectedTransferNilReceiptIsSafe(t *testing.T) {
+	var receipt *TransferResult
+	receipt.NodeResultDelivered(false)
+}
