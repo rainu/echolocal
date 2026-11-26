@@ -370,10 +370,7 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				slog.Info("talk provider event", "type", e.Event.Type)
 				s.providerReady.Do(func() { close(s.ready) })
 			case "session.error", "session.replaced":
-				reason := "provider_session_error"
-				if e.Event.Type == "session.replaced" {
-					reason = "provider_session_replaced"
-				}
+				reason := providerFailureReason(e.Event.Type, e.Event.Payload)
 				slog.Error("talk provider event", "type", e.Event.Type, "reason", reason)
 				s.fail(reason)
 			case "session.closed":
@@ -605,8 +602,28 @@ func (s *Session) clearPartial() {
 	}
 }
 
-// Only transport/setup availability failures are retried. Replaced sessions,
-// authentication, invalid contracts, provider errors and audio failures stop.
+// providerFailureReason deliberately recognizes only the Gateway's known
+// message-only uncertain-delivery contract. That error retires the voice
+// transport, not the underlying text session. A replacement must NOT resubmit
+// the ambiguous input/consult. Unknown provider and authentication failures
+// remain terminal; substring matching would turn unrelated errors into retries.
+// Do not log or retain arbitrary provider payloads (they can contain user data).
+func providerFailureReason(kind string, payload json.RawMessage) string {
+	if kind == "session.replaced" {
+		return "provider_session_replaced"
+	}
+	var p struct{ Message string }
+	if json.Unmarshal(payload, &p) == nil &&
+		p.Message == "OpenClaw could not confirm that input. It was not sent again; check the conversation before retrying." {
+		return "provider_input_unconfirmed"
+	}
+	return "provider_session_error"
+}
+
+// Only transport/setup availability and known uncertain-delivery failures are
+// retried with a fresh voice transport, never with an input replay. Replaced
+// sessions, authentication, invalid contracts, unknown provider errors and audio
+// failures stop.
 func (s *Session) RecoverableFailure() bool {
 	if s.intentionalEnd.Load() {
 		return false
@@ -617,7 +634,8 @@ func (s *Session) RecoverableFailure() bool {
 	}
 	switch reason {
 	case "talk_peer_failed", "talk_control_closed", "control_stream_closed",
-		"talk_transport_closed", "rpc_disconnected", "rpc_timeout", "talk_start_timeout":
+		"talk_transport_closed", "rpc_disconnected", "rpc_timeout", "talk_start_timeout",
+		"provider_input_unconfirmed":
 		return true
 	}
 	return false

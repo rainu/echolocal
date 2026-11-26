@@ -2,6 +2,7 @@ package talk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/libcountertop/pkg/media/rtc"
@@ -211,7 +212,7 @@ func TestRecoveryIntentionalEndWinsBufferedFailureDuringOpen(t *testing.T) {
 	}
 }
 func TestSessionRecoveryClassificationAndEndPhrase(t *testing.T) {
-	for _, reason := range []string{"talk_peer_failed", "talk_control_closed", "talk_transport_closed", "control_stream_closed", "rpc_disconnected"} {
+	for _, reason := range []string{"talk_peer_failed", "talk_control_closed", "talk_transport_closed", "control_stream_closed", "rpc_disconnected", "provider_input_unconfirmed"} {
 		s := NewSession(nil, "agent:synthetic:session", nil)
 		s.reason.Store(reason)
 		if !s.RecoverableFailure() {
@@ -363,4 +364,111 @@ func TestRecoveryNeverReportsConnectedDuringSlowRetirement(t *testing.T) {
 	}
 	close(release)
 	r.Close()
+}
+
+// The Gateway currently reports uncertain input delivery as a message-only
+// session.error. Recover the transport, never replay the ambiguous input.
+const unconfirmedInputMessage = "OpenClaw could not confirm that input. It was not sent again; check the conversation before retrying."
+
+func TestProviderInputUnconfirmedClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, payload, want string
+		retry                     bool
+	}{
+		{"unconfirmed", "session.error", `{"message":"` + unconfirmedInputMessage + `"}`, "provider_input_unconfirmed", true},
+		{"malformed", "session.error", `{`, "provider_session_error", false},
+		{"missing", "session.error", `{}`, "provider_session_error", false},
+		{"unknown", "session.error", `{"message":"Unknown provider failure"}`, "provider_session_error", false},
+		{"auth", "session.error", `{"message":"Unauthorized"}`, "provider_session_error", false},
+		{"similar_not_exact", "session.error", `{"message":"could not confirm input"}`, "provider_session_error", false},
+		{"replaced", "session.replaced", `{"message":"` + unconfirmedInputMessage + `"}`, "provider_session_replaced", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewSession(nil, "agent:synthetic:handoff", nil)
+			failed := make(chan struct{}, 1)
+			s.Failure = func() { failed <- struct{}{} }
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			events := make(chan connection.TalkEvent, 2)
+			var e connection.TalkEvent
+			e.VoiceSessionID, e.Event.Type, e.Event.Payload = s.id, tc.kind, json.RawMessage(tc.payload)
+			events <- e
+			e.Event.Type, e.Event.Payload = "session.closed", nil
+			events <- e
+			// Synchronous processing also proves the subsequent close cannot turn a
+			// permanent error into a retryable transport close.
+			s.control(ctx, events)
+			if s.Diagnostics().Reason != tc.want || s.RecoverableFailure() != tc.retry {
+				t.Fatalf("reason=%s retry=%v; want %s/%v", s.Diagnostics().Reason, s.RecoverableFailure(), tc.want, tc.retry)
+			}
+			select {
+			case <-failed:
+			case <-time.After(time.Second):
+				t.Fatal("failure was ignored")
+			}
+		})
+	}
+}
+
+type recoveryNoReplayControl struct {
+	*fakeControl
+	unexpected atomic.Int32
+}
+
+func (c *recoveryNoReplayControl) CallTalk(ctx context.Context, method string, params, result any) error {
+	switch method {
+	case "talk.catalog", "talk.client.create", "talk.client.close":
+	default:
+		c.unexpected.Add(1)
+	}
+	return c.fakeControl.CallTalk(ctx, method, params, result)
+}
+
+func TestRecoveryRealWebRTCInputUnconfirmedThenClosedNeverReplays(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	const target = "agent:synthetic:transferred"
+	sessions := make(chan *Session, 2)
+	controls := make(chan *recoveryNoReplayControl, 2)
+	peers := make(chan *rtc.Link, 2)
+	r := &Recovery{delays: []time.Duration{time.Millisecond}}
+	r.Factory = func(ctx context.Context, retry bool, fail, end func()) (RecoveryBackend, error) {
+		peer, err := rtc.NewAudioOnly(rtc.Media{Audio: &fakeDevice{frames: make(chan []int16)}}, nil)
+		if err != nil {
+			return nil, err
+		}
+		t.Cleanup(func() { peer.Close() })
+		c := &recoveryNoReplayControl{fakeControl: &fakeControl{event: make(chan connection.TalkEvent, 8), peer: peer, capable: true}}
+		b := NewSession(c, target, &fakeDevice{frames: make(chan []int16)})
+		b.nativeMedia = false
+		b.Failure, b.End = fail, end
+		sessions <- b
+		controls <- c
+		peers <- peer
+		return b, nil
+	}
+	if err := r.Open(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	first, c1 := <-sessions, <-controls
+	var e connection.TalkEvent
+	e.VoiceSessionID, e.Event.Type = first.id, "session.error"
+	e.Event.Payload, _ = json.Marshal(map[string]string{"message": unconfirmedInputMessage})
+	c1.event <- e
+	e.Event.Type, e.Event.Payload = "session.closed", nil
+	c1.event <- e
+	awaitRecovery(t, r, "connected", 1)
+	second, c2 := <-sessions, <-controls
+	if first.id == second.id || first.Target != target || second.Target != target ||
+		c1.createParams["sessionKey"] != target || c2.createParams["sessionKey"] != target {
+		t.Fatal("recovery changed session or reused transport identity")
+	}
+	if c1.unexpected.Load() != 0 || c2.unexpected.Load() != 0 ||
+		second.Greeting != "" || second.pendingTools.Load() != 0 || len(second.native.transcripts) != 0 {
+		t.Fatal("recovery replayed an input, pending consult or greeting")
+	}
+	r.Close()
+	(<-peers).Close()
+	(<-peers).Close()
 }

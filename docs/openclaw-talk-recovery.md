@@ -22,7 +22,15 @@ Recovery never resets/deletes the underlying text session or aborts its tasks.
 Explicit stop, inactivity expiry, speaker preemption and the end phrase remain
 final. Cancellation interrupts backoff and setup. Per-attempt callbacks are
 fenced from replacement transports. Invalid contracts, rejected authorization,
-provider errors and session replacement are terminal. Recovery stays on the
+unknown provider errors and session replacement are terminal. The Gateway's
+specific message-only error "OpenClaw could not confirm that input. It was not
+sent again; check the conversation before retrying." is a narrow exception:
+EchoLocal retires that voice transport and opens a fresh one for the same target.
+It does not resend the uncertain input, repeat the consult/tool call, or invent
+a successful result. The last request may therefore remain unanswered; inspect
+the text conversation before manually repeating it. Only the exact known error
+message is recognized until the Gateway supplies a structured error code; unknown
+or changed wording fails closed rather than being guessed recoverable. Recovery stays on the
 original authenticated operator binding: an edited/replaced control connection
 is not silently adopted. If that binding is lost, recovery terminates safely
 rather than connecting a different endpoint or identity.
