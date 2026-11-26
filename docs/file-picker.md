@@ -43,8 +43,9 @@ in internal/filepicker; internal/ui/filepicker supplies the shared touch UI.
   the picker open and preserve the prior setting. Re-entering a folder reloads
   external edits; there is no separate Refresh row.
 - Active file types and, for large folders, the entry range are passive wrapping
-  footer/status information below the list. They have no tap action and are not a
-  search query. Select/Cancel stay pinned independently of this scrollable status.
+  status in the fixed footer directly above Select/Cancel. They are not directory
+  rows, have no tap action, and remain visible when the file list scrolls.
+  Pagination updates the range in place without moving the footer.
 
 ## Access boundary
 

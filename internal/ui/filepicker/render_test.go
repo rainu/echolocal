@@ -61,8 +61,9 @@ func TestTouchLayoutLongNamesScrollAndPinnedActions(t *testing.T) {
 						Title: "Files",
 						Shell: stack,
 						Browser: browser.Options{
-							Locations: []browser.Location{{Label: "files", Path: root}},
-							Initial:   root,
+							Locations:  []browser.Location{{Label: "files", Path: root}},
+							Initial:    root,
+							Extensions: []string{".vrm"},
 						},
 					},
 				)
@@ -82,8 +83,8 @@ func TestTouchLayoutLongNamesScrollAndPinnedActions(t *testing.T) {
 						widgets.FrameOptions{
 							Title: p.Title,
 							Back:  stack.Pop,
-							Build: func(w *gui.Window) gui.View { return widgets.PageBody(w, p, widgets.PageRenderer{Row: u.Row}) },
-							Foot:  func(w *gui.Window) gui.View { return u.Toolkit.ActionBar(w, p.Actions, u.Palette()) },
+							Build: p.Screen(u).Build,
+							Foot:  p.Screen(u).Foot,
 						},
 					)
 				})
@@ -108,9 +109,18 @@ func TestTouchLayoutLongNamesScrollAndPinnedActions(t *testing.T) {
 					}
 				}
 				footer := get("action-0").Y
+				status := get("picker-filter")
+				statusY := status.Y
+				if status.Height <= 0 || status.Y+status.Height > footer+.5 ||
+					status.X < 0 || status.X+status.Width > float32(size[0])+.5 {
+					t.Fatal("filter clipped or overlaps actions", status)
+				}
+				if p.Status() != text("File types", "Dateitypen")+": .vrm · 1–64 / 90" {
+					t.Fatal("wrong pinned page status", p.Status())
+				}
 				scroller := get("page")
 				if !scroller.Scrollable || scroller.Height < 100 ||
-					scroller.Y+scroller.Height > footer+.5 {
+					scroller.Y+scroller.Height > statusY+.5 {
 					t.Fatal("unusable scroller", scroller)
 				}
 				rows, _ := p.Build()
@@ -138,13 +148,58 @@ func TestTouchLayoutLongNamesScrollAndPinnedActions(t *testing.T) {
 					t.Fatal(err)
 				}
 				tree = w.TestRender(nil)
-				if get("action-0").Y != footer {
-					t.Fatal("confirmation scrolled away")
+				if get("action-0").Y != footer || get("picker-filter").Y != statusY {
+					t.Fatal("confirmation or filter scrolled away")
 				}
 				if w.ScrollVerticalOffset(w.ResolveID("page")[0]) >= 0 {
 					t.Fatal("list did not scroll")
 				}
+				action(t, p, text("Next entries", "Weitere Einträge"))
+				tree = w.TestRender(nil)
+				// Layout uses float32; tolerate subpixel rounding between differently sized pages.
+				if get("picker-filter").Y < statusY-.5 || get("picker-filter").Y > statusY+.5 || !strings.HasSuffix(p.Status(), "65–90 / 90") {
+					t.Fatalf("footer changed position or failed to update on pagination: before=%v after=%v status=%q", statusY, get("picker-filter").Y, p.Status())
+				}
 			})
 		}
+	}
+}
+
+func TestPinnedFooterLongFilterAndLocationChooser(t *testing.T) {
+	old := say.Chosen()
+	defer say.Use(old)
+	for _, lang := range []string{"en", "de"} {
+		t.Run(lang, func(t *testing.T) {
+			say.Use(lang)
+			stack := shell.New()
+			defer stack.Close()
+			p := New(Config{Title: "Files", Shell: stack, Browser: browser.Options{
+				Extensions: []string{".first-long-extension", ".second-long-extension", ".third-long-extension", ".fourth-long-extension", ".fifth-long-extension"},
+			}})
+			stack.Push(p)
+			u := widgets.NewUI(screenSettings{})
+			screen := p.Screen(u)
+			w := gui.NewWindow(gui.WindowCfg{State: new(int), Width: 640, Height: 480})
+			w.SetView(func(w *gui.Window) gui.View {
+				return u.Toolkit.PageFrame(w, widgets.FrameOptions{Title: p.Title, Build: screen.Build, Foot: screen.Foot})
+			})
+			tree := w.TestRender(nil)
+			status := findShape(tree, "picker-filter")
+			selectButton := findShape(tree, "action-0")
+			cancelButton := findShape(tree, "action-1")
+			list := findShape(tree, "page")
+			if status == nil || selectButton == nil || cancelButton == nil || list == nil {
+				t.Fatal("footer missing on location chooser")
+			}
+			if status.Height < 30 || status.Y+status.Height > selectButton.Y+.5 ||
+				list.Height < 100 || list.Y+list.Height > status.Y+.5 {
+				t.Fatal("long filter does not wrap clear of list/buttons", status, list)
+			}
+			for _, b := range []*gui.Shape{selectButton, cancelButton} {
+				if b.X < 0 || b.X+b.Width > 640.5 || b.Y+b.Height > 480.5 || b.Height < 48 {
+					t.Fatal("long filter displaced touch targets", b)
+				}
+			}
+		})
 	}
 }

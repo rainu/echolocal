@@ -17,7 +17,7 @@ import (
 	browser "github.com/ygelfand/echolocal/internal/filepicker"
 )
 
-func action(t *testing.T, p *shell.Page, label string) {
+func action(t *testing.T, p *Page, label string) {
 	t.Helper()
 	rows, acts := p.Build()
 	for i, r := range rows {
@@ -45,7 +45,7 @@ func TestNavigationExplicitConfirmCancelAndFailure(t *testing.T) {
 		stack.Push(origin)
 		value := "previous"
 		fail := false
-		makePage := func() *shell.Page {
+		makePage := func() *Page {
 			return New(
 				Config{
 					Title: "model",
@@ -207,15 +207,13 @@ func TestPassiveFilterFooterAndAutomaticDirectoryReload(t *testing.T) {
 			stack.Push(p)
 			check := func() {
 				t.Helper()
-				rows, acts := p.Build()
-				last := len(rows) - 1
-				if last < 0 || rows[last].Label != text("File types", "Dateitypen") ||
-					rows[last].Hint != ".png / .jpg" || !rows[last].Dim || acts[last] != nil {
-					t.Fatal("missing passive filter footer", rows)
+				rows, _ := p.Build()
+				if p.Status() != text("File types", "Dateitypen")+": .png / .jpg" {
+					t.Fatal("missing passive filter status", p.Status())
 				}
 				for _, r := range rows {
-					if r.Label == "Refresh" || r.Label == "Aktualisieren" {
-						t.Fatal("refresh competes with directory entries")
+					if r.Label == "Refresh" || r.Label == "Aktualisieren" || r.Label == "File types" || r.Label == "Dateitypen" {
+						t.Fatal("status or refresh competes with directory entries")
 					}
 				}
 			}
@@ -252,13 +250,13 @@ func TestStoredAndDraftSelectionUseEntryMarkerOnly(t *testing.T) {
 			stack := shell.New()
 			defer stack.Close()
 			saved := first
-			makePage := func() *shell.Page {
+			makePage := func() *Page {
 				return New(Config{Shell: stack, Browser: browser.Options{
 					Locations: []browser.Location{{Label: "files", Path: root}},
 					Initial:   saved, Extensions: []string{".vrm"},
 				}, Choose: func(v string) error { saved = v; return nil }})
 			}
-			check := func(p *shell.Page, selected string) {
+			check := func(p *Page, selected string) {
 				t.Helper()
 				rows, _ := p.Build()
 				marked := 0
@@ -298,5 +296,24 @@ func TestStoredAndDraftSelectionUseEntryMarkerOnly(t *testing.T) {
 				t.Fatal("confirmation failed")
 			}
 		})
+	}
+}
+
+func TestPickerRetainsSettingsRecognitionAndStatusInAllModes(t *testing.T) {
+	stack := shell.New()
+	defer stack.Close()
+	for _, directory := range []bool{false, true} {
+		p := New(Config{Shell: stack, Browser: browser.Options{Directory: directory}})
+		if shell.SettingsPage(p) != p.Page {
+			t.Fatal("settings recognition lost")
+		}
+		stack.Push(p)
+		if p.Status() == "" {
+			t.Fatal("missing status on location chooser")
+		}
+		if directory && !strings.Contains(p.Status(), text("Folders", "Ordner")) {
+			t.Fatal("directory status", p.Status())
+		}
+		stack.Pop()
 	}
 }

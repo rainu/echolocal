@@ -28,9 +28,18 @@ func text(en, de string) string {
 	}
 	return en
 }
-func New(cfg Config) *shell.Page {
+
+// Page retains normal settings navigation while rendering status outside the list.
+type Page struct {
+	*shell.Page
+	Status func() string
+}
+
+func (p *Page) SettingsPage() *shell.Page { return p.Page }
+
+func New(cfg Config) *Page {
 	b := filepicker.New(cfg.Browser)
-	p := &shell.Page{Title: cfg.Title}
+	p := &Page{Page: &shell.Page{Title: cfg.Title}}
 	loaded := false
 	note := ""
 	refresh := func() { cfg.Shell.Redraw() }
@@ -173,7 +182,9 @@ func New(cfg Config) *shell.Page {
 				},
 			)
 		}
-		// Passive status follows the entries, never masquerading as a file or action.
+		return rows, actions
+	}
+	p.Status = func() string {
 		detail := strings.Join(cfg.Browser.Extensions, " / ")
 		if detail == "" {
 			detail = text("All permitted types", "Alle zulässigen Typen")
@@ -182,10 +193,10 @@ func New(cfg Config) *shell.Page {
 			detail = text("Folders", "Ordner")
 		}
 		if len(b.Entries) > filepicker.PageSize {
+			end := min(b.Offset+filepicker.PageSize, len(b.Entries))
 			detail += fmt.Sprintf(" · %d–%d / %d", b.Offset+1, end, len(b.Entries))
 		}
-		add(menu.Row{Label: text("File types", "Dateitypen"), Hint: detail, Dim: true}, nil)
-		return rows, actions
+		return text("File types", "Dateitypen") + ": " + detail
 	}
 	return p
 }
