@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/libcountertop/pkg/media/rtc"
 	"sync/atomic"
@@ -376,7 +377,7 @@ func TestProviderInputUnconfirmedClassification(t *testing.T) {
 		retry                     bool
 	}{
 		{"unconfirmed", "session.error", `{"message":"` + unconfirmedInputMessage + `"}`, "provider_input_unconfirmed", true},
-		{"malformed", "session.error", `{`, "provider_session_error", false},
+		{"malformed", "session.error", `"invalid"`, "provider_session_error", false},
 		{"missing", "session.error", `{}`, "provider_session_error", false},
 		{"unknown", "session.error", `{"message":"Unknown provider failure"}`, "provider_session_error", false},
 		{"auth", "session.error", `{"message":"Unauthorized"}`, "provider_session_error", false},
@@ -391,7 +392,15 @@ func TestProviderInputUnconfirmedClassification(t *testing.T) {
 			defer cancel()
 			events := make(chan connection.TalkEvent, 2)
 			var e connection.TalkEvent
-			e.VoiceSessionID, e.Event.Type, e.Event.Payload = s.id, tc.kind, json.RawMessage(tc.payload)
+			wire := json.RawMessage(fmt.Sprintf(`{"voiceSessionId":%q,"talkEvent":{"type":%q,"payload":%s}}`, s.id, tc.kind, tc.payload))
+			var ok bool
+			e, ok = connection.DecodeTalkEvent(wire)
+			if !ok {
+				t.Fatal("synthetic wire event was rejected")
+			}
+			if len(e.Event.Payload) != 0 {
+				t.Fatal("provider payload escaped privacy filter")
+			}
 			events <- e
 			e.Event.Type, e.Event.Payload = "session.closed", nil
 			events <- e
@@ -454,7 +463,15 @@ func TestRecoveryRealWebRTCInputUnconfirmedThenClosedNeverReplays(t *testing.T) 
 	first, c1 := <-sessions, <-controls
 	var e connection.TalkEvent
 	e.VoiceSessionID, e.Event.Type = first.id, "session.error"
-	e.Event.Payload, _ = json.Marshal(map[string]string{"message": unconfirmedInputMessage})
+	e.Event.Payload, _ = json.Marshal(map[string]string{"message": unconfirmedInputMessage, "token": "synthetic-private-token"})
+	wire, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := connection.DecodeTalkEvent(wire)
+	if !ok || len(e.Event.Payload) != 0 {
+		t.Fatal("wire error did not cross the production privacy boundary safely")
+	}
 	c1.event <- e
 	e.Event.Type, e.Event.Payload = "session.closed", nil
 	c1.event <- e

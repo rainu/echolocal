@@ -15,6 +15,9 @@ import (
 // TalkEvent is backend-only. Payloads are transient and must never enter logs,
 // presentation models, or persistent diagnostics.
 type TalkEvent struct {
+	// FailureReason is locally derived before payload scrubbing, never accepted
+	// from the wire. Only bounded safe classes cross this privacy boundary.
+	FailureReason  string `json:"-"`
 	VoiceSessionID string `json:"voiceSessionId"`
 	Event          struct {
 		Type    string          `json:"type"`
@@ -60,20 +63,9 @@ func (r *rpcLink) event(f frame) {
 	if f.Event != "talk.event" {
 		return
 	}
-	var e TalkEvent
-	if json.Unmarshal(f.Payload, &e) != nil || e.VoiceSessionID == "" {
+	e, ok := DecodeTalkEvent(f.Payload)
+	if !ok {
 		return
-	}
-	// Retain only transcript payloads; never audio or tool arguments/results.
-	switch e.Event.Type {
-	case "session.ready", "session.closed", "session.error", "session.replaced",
-		"turn.started", "turn.ended", "turn.cancelled", "transcript.done", "transcript.delta", "output.text.delta", "output.text.done",
-		"output.audio.started", "output.audio.done", "tool.call", "tool.result", "tool.error":
-	default:
-		return
-	}
-	if e.Event.Type != "transcript.done" && e.Event.Type != "transcript.delta" && e.Event.Type != "output.text.delta" && e.Event.Type != "output.text.done" {
-		e.Event.Payload = nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -85,6 +77,37 @@ func (r *rpcLink) event(f frame) {
 			close(s.ch)
 		}
 	}
+}
+
+// DecodeTalkEvent is the backend privacy boundary for raw talk.event payloads.
+// Audio/tool/provider bodies are discarded before subscriber delivery.
+func DecodeTalkEvent(payload json.RawMessage) (TalkEvent, bool) {
+	var e TalkEvent
+	if json.Unmarshal(payload, &e) != nil || e.VoiceSessionID == "" {
+		return TalkEvent{}, false
+	}
+	// Classify before scrubbing, exposing only a bounded locally derived signal.
+	// Arbitrary provider messages (and forged wire FailureReason fields) must
+	// never reach subscribers or persistent diagnostics.
+	if e.Event.Type == "session.error" {
+		var p struct{ Message string }
+		if json.Unmarshal(e.Event.Payload, &p) == nil &&
+			p.Message == "OpenClaw could not confirm that input. It was not sent again; check the conversation before retrying." {
+			e.FailureReason = "provider_input_unconfirmed"
+		}
+	}
+	// Retain only transcript payloads; never audio or tool arguments/results.
+	switch e.Event.Type {
+	case "session.ready", "session.closed", "session.error", "session.replaced",
+		"turn.started", "turn.ended", "turn.cancelled", "transcript.done", "transcript.delta", "output.text.delta", "output.text.done",
+		"output.audio.started", "output.audio.done", "tool.call", "tool.result", "tool.error":
+	default:
+		return TalkEvent{}, false
+	}
+	if e.Event.Type != "transcript.done" && e.Event.Type != "transcript.delta" && e.Event.Type != "output.text.delta" && e.Event.Type != "output.text.done" {
+		e.Event.Payload = nil
+	}
+	return e, true
 }
 
 type TalkLaunch struct {

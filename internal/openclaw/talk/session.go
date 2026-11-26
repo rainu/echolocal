@@ -370,7 +370,12 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				slog.Info("talk provider event", "type", e.Event.Type)
 				s.providerReady.Do(func() { close(s.ready) })
 			case "session.error", "session.replaced":
-				reason := providerFailureReason(e.Event.Type, e.Event.Payload)
+				reason := "provider_session_error"
+				if e.Event.Type == "session.replaced" {
+					reason = "provider_session_replaced"
+				} else if e.FailureReason == "provider_input_unconfirmed" {
+					reason = e.FailureReason
+				}
 				slog.Error("talk provider event", "type", e.Event.Type, "reason", reason)
 				s.fail(reason)
 			case "session.closed":
@@ -600,24 +605,6 @@ func (s *Session) clearPartial() {
 	if s.ClearPartial != nil {
 		s.ClearPartial()
 	}
-}
-
-// providerFailureReason deliberately recognizes only the Gateway's known
-// message-only uncertain-delivery contract. That error retires the voice
-// transport, not the underlying text session. A replacement must NOT resubmit
-// the ambiguous input/consult. Unknown provider and authentication failures
-// remain terminal; substring matching would turn unrelated errors into retries.
-// Do not log or retain arbitrary provider payloads (they can contain user data).
-func providerFailureReason(kind string, payload json.RawMessage) string {
-	if kind == "session.replaced" {
-		return "provider_session_replaced"
-	}
-	var p struct{ Message string }
-	if json.Unmarshal(payload, &p) == nil &&
-		p.Message == "OpenClaw could not confirm that input. It was not sent again; check the conversation before retrying." {
-		return "provider_input_unconfirmed"
-	}
-	return "provider_session_error"
 }
 
 // Only transport/setup availability and known uncertain-delivery failures are

@@ -30,7 +30,12 @@ It does not resend the uncertain input, repeat the consult/tool call, or invent
 a successful result. The last request may therefore remain unanswered; inspect
 the text conversation before manually repeating it. Only the exact known error
 message is recognized until the Gateway supplies a structured error code; unknown
-or changed wording fails closed rather than being guessed recoverable. Recovery stays on the
+or changed wording fails closed rather than being guessed recoverable.
+The RPC decoder derives only the bounded error class before discarding the
+provider payload. Raw provider messages, tokens and tool arguments still never
+reach Talk subscribers, UI or persisted diagnostics. A reason claimed by the
+wire itself is ignored. Regression coverage includes the raw-event privacy
+boundary, not just already-decoded synthetic callbacks. Recovery stays on the
 original authenticated operator binding: an edited/replaced control connection
 is not silently adopted. If that binding is lost, recovery terminates safely
 rather than connecting a different endpoint or identity.

@@ -1,6 +1,7 @@
 package openclaw
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -91,5 +92,38 @@ func TestClientMediaContractRequiresExplicitOptInOnExactConnection(t *testing.T)
 	launch.ClientControl.Owner = "gateway"
 	if launch.ClientOwned() {
 		t.Fatal("Gateway ownership silently replaced")
+	}
+}
+
+func TestTalkInputUnconfirmedCrossesRPCPrivacyBoundaryWithoutPayload(t *testing.T) {
+	r := newRPCLink(nil)
+	ch, stop, err := r.subscribe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	const message = "OpenClaw could not confirm that input. It was not sent again; check the conversation before retrying."
+	for _, tc := range []struct{ name, kind, message, claimed, want string }{
+		{"known", "session.error", message, "", "provider_input_unconfirmed"},
+		{"unknown", "session.error", "synthetic-private-error", "", ""},
+		{"forged", "session.error", "Unauthorized", "provider_input_unconfirmed", ""},
+		{"replaced", "session.replaced", message, "", ""},
+		{"tool", "tool.result", message, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]any{"voiceSessionId": "synthetic", "FailureReason": tc.claimed, "failureReason": tc.claimed, "talkEvent": map[string]any{"type": tc.kind, "payload": map[string]any{"message": tc.message, "arguments": "synthetic-private-arguments", "token": "synthetic-private-token"}}})
+			r.event(frame{Event: "talk.event", Payload: body})
+			e := <-ch
+			if e.FailureReason != tc.want {
+				t.Fatalf("safe reason=%q want=%q", e.FailureReason, tc.want)
+			}
+			if len(e.Event.Payload) != 0 {
+				t.Fatal("raw provider/tool payload escaped privacy boundary")
+			}
+			serialized, _ := json.Marshal(e)
+			if bytes.Contains(serialized, []byte("synthetic-private")) {
+				t.Fatal("private error details entered serialized event")
+			}
+		})
 	}
 }
