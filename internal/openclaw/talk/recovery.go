@@ -156,6 +156,9 @@ func (r *Recovery) run(ctx context.Context, ready chan<- error) {
 				return
 			}
 			if recovering && retryable {
+				if r.State != nil {
+					r.State(Connecting)
+				}
 				continue
 			}
 			r.update("failed", attempts, "talk_connection_unavailable")

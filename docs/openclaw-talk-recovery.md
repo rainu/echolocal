@@ -43,8 +43,16 @@ rather than connecting a different endpoint or identity.
 Local status and the existing Node Talk status include a safe recovery object:
 state (connected/reconnecting/stopped/failed), replacement attempts and a bounded
 error reason. The UI uses its existing connecting state while recovering and
-error on exhaustion. No end/start chime or greeting is replayed between attempts.
-Normal final hang-up retains its end cue.
+error on exhaustion. No normal end/start chime or greeting is replayed between attempts.
+Dedicated local recovery signals now distinguish a loss from listening:
+a descending loss cue, a short quieter connecting pulse about every two seconds,
+and an ascending ready cue after provider/audio readiness and before capture is
+released. Progress is joined/cleared and ready playback plus acoustic tail drains
+before the microphone gate opens; provider failure cancels that drain. No ready
+cue is played for an input-muted recovery. Stop cancels progress without a late
+ready/failure cue; exhausted recovery plays a distinct failure cue. These built-in
+signals use existing feedback volume/mute settings and do not rewrite slot tone
+choices. Normal final hang-up retains its existing end cue.
 
 Native GPT-Live errors are classified at the control-channel receive path, not
 all treated as rejected control requests. Known server/internal failures,

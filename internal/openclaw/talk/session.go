@@ -277,7 +277,7 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		return ctx.Err()
 	}
 	s.stage.Store(7)
-	if err = s.Audio.ReadyTone(startup); err != nil {
+	if err = s.playReadyTone(startup); err != nil {
 		if startup.Err() != nil {
 			return errors.New("talk_start_timeout")
 		}
@@ -710,4 +710,36 @@ func (s *Session) InterruptNativeProvider() error {
 	default:
 		return errors.New("talk_control_busy")
 	}
+}
+
+// playReadyTone cancels cue playback/draining when provider readiness is lost.
+// A transport which fails during feedback must never open its capture gate.
+func (s *Session) playReadyTone(ctx context.Context) error {
+	select {
+	case <-s.failed:
+		return errors.New("talk_provider_failed")
+	default:
+	}
+	ready, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		select {
+		case <-s.failed:
+			cancel()
+		case <-ready.Done():
+		}
+	}()
+	err := s.Audio.ReadyTone(ready)
+	cancel()
+	<-done
+	select {
+	case <-s.failed:
+		return errors.New("talk_provider_failed")
+	default:
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }

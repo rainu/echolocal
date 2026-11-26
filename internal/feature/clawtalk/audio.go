@@ -22,6 +22,7 @@ import (
 type deviceAudio struct {
 	startTone, endTone               string
 	feedback                         *setupFeedback
+	recoveryNotice                   *recoveryFeedback
 	ready                            atomic.Bool
 	silentClose                      atomic.Bool
 	recovering                       bool
@@ -208,10 +209,18 @@ func playTalkTone(choice string, end bool) {
 }
 func (a *deviceAudio) ReadyTone(ctx context.Context) error {
 	if a.recovering {
+		muted := func() bool { return a.inputMuted.Load() || a.hardwareMuted.Load() }
+		if a.recoveryNotice == nil || !a.recoveryNotice.Ready(ctx, muted) {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errors.New("talk_feedback_unavailable")
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		a.ready.Store(true)
+		slog.Info("talk recovery capture gate opened", "muted", muted())
 		return nil
 	}
 	if a.feedback != nil {

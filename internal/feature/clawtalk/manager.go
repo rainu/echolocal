@@ -238,6 +238,8 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}
 	ending := v.Ending.Defaults(say.Chosen())
 	greeting := v.GreetingText(say.Chosen())
+	notice := newRecoveryFeedback(ctx, &deviceFeedback{}, 2*time.Second)
+	defer notice.Close()
 	recovery := &talk.Recovery{}
 	m.mu.Lock()
 	m.currentSlot = v
@@ -247,6 +249,9 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		a := newAudio(attempt, nil)
 		a.startTone, a.endTone = v.StartTone, v.EndTone
 		a.recovering = retry
+		if retry {
+			a.recoveryNotice = notice
+		}
 		if !retry {
 			a.feedback = feedback
 		}
@@ -307,11 +312,18 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		m.mu.Unlock()
 		return b, nil
 	}
-	recovery.State = func(state talk.State) { m.activityOwned(generation, state); sh.Redraw() }
+	recovery.State = func(state talk.State) {
+		if state == talk.Connecting {
+			notice.Lost()
+		}
+		m.activityOwned(generation, state)
+		sh.Redraw()
+	}
 	recovery.Ended = cancel
 	recovery.Failed = func() {
 		if ctx.Err() == nil {
 			m.markOwned(generation, talk.Failed)
+			notice.Fail()
 			cancel()
 		}
 	}

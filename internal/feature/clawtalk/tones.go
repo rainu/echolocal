@@ -22,6 +22,14 @@ func ToneNotes(choice string, end bool) []tone.Note {
 // Setup cues are intentionally different in pitch, rhythm, and direction.
 func SetupNotes(cue string) []tone.Note {
 	switch cue {
+	case "recovery-lost":
+		return []tone.Note{{Freq: 880, Ms: 80}, {Freq: 440, Ms: 120}, {Ms: 80}, {Freq: 440, Ms: 100}}
+	case "recovery-progress":
+		return []tone.Note{{Freq: 440, Ms: 50}}
+	case "recovery-ready":
+		return []tone.Note{{Freq: 660, Ms: 60}, {Freq: 990, Ms: 60}, {Freq: 1320, Ms: 80}}
+	case "recovery-failure":
+		return SetupNotes("failure")
 	case "ack":
 		return []tone.Note{{Freq: 1760, Ms: 45}}
 	case "progress":
