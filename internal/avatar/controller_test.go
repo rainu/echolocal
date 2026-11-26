@@ -28,10 +28,17 @@ func TestRendererHelper(t *testing.T) {
 	if mode == "fail" {
 		os.Exit(7)
 	}
-	fmt.Println("AVATAR_READY=4")
+	fmt.Println("AVATAR_READY=5")
 	fmt.Println("AVATAR_STATS 30 10 1 0 5")
 	scan := bufio.NewScanner(os.Stdin)
 	for scan.Scan() {
+		if mode == "motion" {
+			var revision uint64
+			var fd int
+			if _, e := fmt.Sscanf(scan.Text(), "A %d %d", &revision, &fd); e == nil {
+				fmt.Printf("AVATAR_MOTION %d motion_ready 2\n", revision)
+			}
+		}
 		var i, b, a, m int
 		var f, l, yaw, pitch, zoom, panX, panY float64
 		if _, e := fmt.Sscanf(scan.Text(), "S %d %d %d %d %f %f %f %f %f %f %f", &i, &b, &a, &m, &f, &l, &yaw, &pitch, &zoom, &panX, &panY); e == nil {
@@ -76,7 +83,7 @@ func eventually(t *testing.T, condition func() bool) {
 func helper(c *Controller, mode string, starts *atomic.Int32) {
 	c.resolve = fakeAssets
 	c.command = func(ctx context.Context, path string, args ...string) *exec.Cmd {
-		if !strings.HasSuffix(path, "/echolocal-avatar") || (len(args) != 9 && len(args) != 11) || args[4] != "--control" || args[6] != "4" {
+		if !strings.HasSuffix(path, "/echolocal-avatar") || (len(args) != 9 && len(args) != 11) || args[4] != "--control" || args[6] != "5" {
 			panic(fmt.Sprintf("unexpected command %s %v", path, args))
 		}
 		if d, ok := ctx.Deadline(); !ok || time.Until(d) > 301*time.Second {

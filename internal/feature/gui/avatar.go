@@ -123,8 +123,13 @@ func avatarRow(v ...gogui.View) gogui.View {
 	return gogui.Row(gogui.ContainerCfg{Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: v})
 }
 func (v *avatarView) build(w *gogui.Window) gogui.View {
-	if v.load != nil && v.loaded.CompareAndSwap(false, true) {
-		v.load()
+	if v.loaded.CompareAndSwap(false, true) {
+		if v.load != nil {
+			v.load()
+		}
+		if c, ok := v.app.(avatarMotionController); ok {
+			c.RefreshMotions()
+		}
 	}
 	if c, ok := v.app.(interface{ SetLabOccluded(bool) }); ok {
 		c.SetLabOccluded(v.look != nil && v.look.Editor.Typing(w))
@@ -196,6 +201,7 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	}
 	switch v.section {
 	case 0:
+		body = append(body, v.motionControls()...)
 		body = append(body, []gogui.View{
 			avatarRow(avatarButton("avatar-edit-mode", avatarWords("Edit other mode", "Anderen Modus bearbeiten"), false, false, func() { v.selectComposition(!v.fullscreen) })),
 			avatarRow(avatarButton("avatar-talk-default", avatar.Text(say.Chosen(), "talk_mode"), false, false, func() { v.app.Stop(); featureshell.Get().Push(settings.AvatarFullscreenPage()) })),
@@ -338,9 +344,7 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 	}
 	// The preview consumes pointer input, so the normal unclaimed-click blur
 	// cannot dismiss its sibling dropdown. Hand focus back explicitly.
-	if v.posePanel {
-		e.Window.QueueCommand(func(w *gogui.Window) { w.ClearFocus() })
-	}
+	e.Window.QueueCommand(func(w *gogui.Window) { w.ClearFocus() })
 	if c, ok := v.app.(avatarPoseController); ok && c.PoseSnapshot().Enabled && !v.poseCamera {
 		v.beginPoseDrag(e, vp, float64(x), float64(y))
 		return

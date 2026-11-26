@@ -15,7 +15,7 @@ import (
 	"unicode"
 )
 
-const ProtocolVersion = 4
+const ProtocolVersion = 5
 const MaxModelBytes = 64 << 20
 const MaxMotionBytes = 8 << 20
 

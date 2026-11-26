@@ -129,6 +129,14 @@ int main() {
       }
     }
   }
+  c.parse("A 1 123");
+  assert(c.motionRevision==1 && c.motionFD==123);
+  for(const char *bad:{"A -1 9","A 2 -1","A 2 2","A 2 1048577","A 1 22","A 2 22 extra","A 2 /tmp/a"}) c.parse(bad);
+  assert(c.motionRevision==1 && c.motionFD==123);
+  c.parse("A 2 0"); assert(c.motionRevision==2 && c.motionFD==0);
+  c.parse("N 0"); assert(!c.motionPlay);
+  c.parse("N 9"); assert(!c.motionPlay);
+  c.parse("N 1"); assert(c.motionPlay);
   int fds[2];
   assert(pipe(fds) == 0);
   assert(dup2(fds[0], STDIN_FILENO) >= 0);

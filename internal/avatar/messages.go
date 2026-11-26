@@ -9,6 +9,12 @@ func Text(lang, key string) string {
 		"it": {"title": "Laboratorio avatar", "path": "VRM personale — percorso su Echo, non su questo computer (vuoto = predefinito)", "model": "File del modello", "default": "Usa avatar predefinito", "help": "Caricare un file .vrm tramite File o WebDAV e inserirne il percorso completo sul dispositivo. Le modifiche valgono al prossimo avvio. Vuoto ripristina il modello installato.", "invalid_path": "Usare un percorso assoluto sul dispositivo di massimo 255 byte, senza caratteri di controllo o componenti ../.", "custom_unavailable": "VRM personale non leggibile. Controllare percorso e permessi, scegliere un altro file o ripristinare il predefinito. Nessun modello sostitutivo caricato.", "custom_invalid": "Modello rifiutato. Usare un GLB VRM 0.x/1.0 autonomo inferiore a 64 MiB; scegliere un altro file o ripristinare. Nessun modello sostitutivo caricato.", "custom_storage": "Impossibile preparare il modello. Liberare spazio sul dispositivo e riprovare o ripristinare.", "model_invalid": "Il renderer rifiuta il modello o il consumo di risorse. Scegliere un modello compatibile o ripristinare.", "starting": "Caricamento dell’avatar selezionato…", "selection": "Il file selezionato vale al prossimo avvio; il nome sopra identifica il modello caricato."},
 		"vi": {"title": "Phòng thử avatar", "path": "VRM riêng — đường dẫn trên Echo, không phải máy tính này (trống = mặc định)", "model": "Tệp mô hình", "default": "Dùng avatar mặc định", "help": "Tải tệp .vrm lên bằng Tệp hoặc WebDAV, rồi nhập đường dẫn đầy đủ trên thiết bị. Thay đổi áp dụng ở lần Bắt đầu tiếp theo. Để trống để dùng mô hình mặc định đã cài.", "invalid_path": "Dùng đường dẫn tuyệt đối trên thiết bị, tối đa 255 byte, không có ký tự điều khiển hoặc thành phần ../.", "custom_unavailable": "Không đọc được VRM riêng. Kiểm tra đường dẫn và quyền tệp, chọn tệp khác hoặc khôi phục mặc định. Không nạp mô hình thay thế.", "custom_invalid": "Mô hình bị từ chối. Dùng GLB VRM 0.x/1.0 độc lập dưới 64 MiB; chọn tệp khác hoặc khôi phục. Không nạp mô hình thay thế.", "custom_storage": "Không thể chuẩn bị mô hình. Giải phóng bộ nhớ thiết bị và thử lại hoặc khôi phục mặc định.", "model_invalid": "Trình dựng từ chối mô hình hoặc mức dùng tài nguyên. Chọn mô hình tương thích hoặc khôi phục mặc định.", "starting": "Đang nạp avatar đã chọn…", "selection": "Tệp đã chọn áp dụng ở lần Bắt đầu tiếp theo; tên bên trên là mô hình đang nạp."},
 	}
+	if motionWords[lang] == nil {
+		lang = "en"
+	}
+	if v := motionWords[lang][key]; v != "" {
+		return v
+	}
 	if v := fullscreenWords[lang][key]; v != "" {
 		return v
 	}
@@ -124,4 +130,87 @@ var fullscreenWords = map[string]map[string]string{
 	"de": {"fullscreen_position_help": "−500–500 % der kleineren Vollbildseite; Standard 0. Positives X bewegt nach rechts, positives Y nach unten. Gleicher quadratischer Bezugsrahmen wie im Labor.", "fullscreen_mode": "Vollbild", "split_screen": "Geteilter Bildschirm", "talk_mode": "Standard-Talk-Ansicht", "talk_mode_help": "split_screen oder fullscreen; Standard split_screen. Gilt für das nächste Wake-Word-Gespräch.", "fullscreen_background": "Vollbild-Hintergrund", "switch_fullscreen": "Zu Vollbild wechseln", "switch_split": "Zu geteilter Ansicht wechseln", "end_talk": "Gespräch beenden", "editing_mode": "Bearbeiten / Vorschau", "reset_fullscreen": "Vollbild-Darstellung zurücksetzen"},
 	"it": {"fullscreen_position_help": "−500–500% del lato minore a schermo intero; predefinito 0. X positivo sposta a destra, Y positivo in basso. Stesso riferimento quadrato del laboratorio.", "fullscreen_mode": "Schermo intero", "split_screen": "Schermo diviso", "talk_mode": "Vista Talk predefinita", "talk_mode_help": "split_screen o fullscreen; predefinito split_screen. Vale per la prossima conversazione.", "fullscreen_background": "Sfondo a schermo intero", "switch_fullscreen": "Passa a schermo intero", "switch_split": "Passa allo schermo diviso", "end_talk": "Termina conversazione", "editing_mode": "Modifica / anteprima", "reset_fullscreen": "Ripristina presentazione a schermo intero"},
 	"vi": {"fullscreen_position_help": "−500–500% cạnh ngắn hơn của toàn màn hình; mặc định 0. X dương sang phải, Y dương xuống dưới. Cùng khung vuông tham chiếu như phòng thử.", "fullscreen_mode": "Toàn màn hình", "split_screen": "Chia màn hình", "talk_mode": "Giao diện Talk mặc định", "talk_mode_help": "split_screen hoặc fullscreen; mặc định split_screen. Áp dụng cho cuộc trò chuyện tiếp theo.", "fullscreen_background": "Nền toàn màn hình", "switch_fullscreen": "Chuyển sang toàn màn hình", "switch_split": "Chuyển sang chia màn hình", "end_talk": "Kết thúc trò chuyện", "editing_mode": "Chỉnh sửa / xem trước", "reset_fullscreen": "Đặt lại bố cục toàn màn hình"},
+}
+
+var motionWords = map[string]map[string]string{
+	"en": {
+		"motion_label":           "Preview animation (Lab only)",
+		"motion_choose":          "Choose a VRMA animation",
+		"motion_none":            "No Lab animation",
+		"motion_removed":         "removed",
+		"motion_refresh":         "Refresh",
+		"motion_play":            "Play",
+		"motion_pause":           "Pause",
+		"motion_help":            "/data/misc/echolocal/avatar/animations/*.vrma",
+		"motion_empty":           "No animations found. Add a .vrma file to the folder, then Refresh.",
+		"motion_directory_error": "Cannot read the animation folder. Check its permissions; symbolic links are not allowed.",
+		"motion_limit":           "Too many folder entries (maximum 8192). Remove unused entries, then Refresh.",
+		"motion_unavailable":     "Cannot read this animation. Refresh after checking the file and its permissions, or choose another.",
+		"motion_invalid":         "Animation rejected. Use a self-contained VRMA 1.0 with one supported humanoid animation. Choose another file.",
+		"motion_incompatible":    "No supported animated bones match this avatar. Choose another animation or model.",
+		"motion_storage":         "Cannot prepare animation. Free device storage and retry.",
+		"motion_loading":         "Loading animation…",
+		"motion_ready":           "Animation loaded. Play or pause the preview.",
+		"motion_none_status":     "No Lab animation.",
+	},
+	"de": {
+		"motion_label":           "Animationsvorschau (nur Labor)",
+		"motion_choose":          "VRMA-Animation wählen",
+		"motion_none":            "Keine Laboranimation",
+		"motion_removed":         "entfernt",
+		"motion_refresh":         "Aktualisieren",
+		"motion_play":            "Abspielen",
+		"motion_pause":           "Pause",
+		"motion_help":            "/data/misc/echolocal/avatar/animations/*.vrma",
+		"motion_empty":           "Keine Animationen gefunden. Eine .vrma-Datei im Ordner ablegen, dann aktualisieren.",
+		"motion_directory_error": "Animationsordner nicht lesbar. Dateirechte prüfen; symbolische Links sind nicht erlaubt.",
+		"motion_limit":           "Zu viele Ordnereinträge (maximal 8192). Nicht benötigte Einträge entfernen, dann aktualisieren.",
+		"motion_unavailable":     "Animation nicht lesbar. Datei und Rechte prüfen, aktualisieren oder eine andere wählen.",
+		"motion_invalid":         "Animation abgelehnt. Eigenständiges VRMA 1.0 mit einer unterstützten Humanoid-Animation verwenden. Andere Datei wählen.",
+		"motion_incompatible":    "Keine unterstützten animierten Knochen passen zum Avatar. Andere Animation oder anderes Modell wählen.",
+		"motion_storage":         "Animation kann nicht vorbereitet werden. Gerätespeicher freigeben und erneut versuchen.",
+		"motion_loading":         "Animation wird geladen…",
+		"motion_ready":           "Animation geladen. Vorschau abspielen oder pausieren.",
+		"motion_none_status":     "Keine Laboranimation.",
+	},
+	"it": {
+		"motion_label":           "Anteprima animazione (solo laboratorio)",
+		"motion_choose":          "Scegli animazione VRMA",
+		"motion_none":            "Nessuna animazione laboratorio",
+		"motion_removed":         "rimosso",
+		"motion_refresh":         "Aggiorna",
+		"motion_play":            "Riproduci",
+		"motion_pause":           "Pausa",
+		"motion_help":            "/data/misc/echolocal/avatar/animations/*.vrma",
+		"motion_empty":           "Nessuna animazione. Aggiungere un file .vrma nella cartella, poi Aggiorna.",
+		"motion_directory_error": "Cartella animazioni non leggibile. Controllare i permessi; link simbolici non consentiti.",
+		"motion_limit":           "Troppe voci nella cartella (massimo 8192). Rimuovere quelle inutili e aggiornare.",
+		"motion_unavailable":     "Animazione non leggibile. Controllare file e permessi, aggiornare o sceglierne un’altra.",
+		"motion_invalid":         "Animazione rifiutata. Usare VRMA 1.0 autonomo con una sola animazione umanoide supportata. Scegliere un altro file.",
+		"motion_incompatible":    "Nessun osso animato supportato corrisponde all’avatar. Scegliere un’altra animazione o modello.",
+		"motion_storage":         "Impossibile preparare l’animazione. Liberare spazio e riprovare.",
+		"motion_loading":         "Caricamento animazione…",
+		"motion_ready":           "Animazione caricata. Riprodurre o sospendere l’anteprima.",
+		"motion_none_status":     "Nessuna animazione laboratorio.",
+	},
+	"vi": {
+		"motion_label":           "Xem trước hoạt ảnh (chỉ phòng thử)",
+		"motion_choose":          "Chọn hoạt ảnh VRMA",
+		"motion_none":            "Không có hoạt ảnh phòng thử",
+		"motion_removed":         "đã xóa",
+		"motion_refresh":         "Làm mới",
+		"motion_play":            "Phát",
+		"motion_pause":           "Tạm dừng",
+		"motion_help":            "/data/misc/echolocal/avatar/animations/*.vrma",
+		"motion_empty":           "Không tìm thấy hoạt ảnh. Thêm tệp .vrma vào thư mục rồi Làm mới.",
+		"motion_directory_error": "Không đọc được thư mục hoạt ảnh. Kiểm tra quyền; không cho phép liên kết tượng trưng.",
+		"motion_limit":           "Quá nhiều mục trong thư mục (tối đa 8192). Xóa mục không dùng rồi làm mới.",
+		"motion_unavailable":     "Không đọc được hoạt ảnh. Kiểm tra tệp và quyền, làm mới hoặc chọn tệp khác.",
+		"motion_invalid":         "Hoạt ảnh bị từ chối. Dùng VRMA 1.0 độc lập với một hoạt ảnh hình người được hỗ trợ. Chọn tệp khác.",
+		"motion_incompatible":    "Không có xương hoạt ảnh được hỗ trợ khớp với avatar. Chọn hoạt ảnh hoặc mô hình khác.",
+		"motion_storage":         "Không chuẩn bị được hoạt ảnh. Giải phóng bộ nhớ và thử lại.",
+		"motion_loading":         "Đang nạp hoạt ảnh…",
+		"motion_ready":           "Đã nạp hoạt ảnh. Phát hoặc tạm dừng xem trước.",
+		"motion_none_status":     "Không có hoạt ảnh phòng thử.",
+	},
 }

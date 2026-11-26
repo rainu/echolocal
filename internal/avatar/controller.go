@@ -57,6 +57,9 @@ type State struct {
 	ModelName, Credit                string
 }
 type Controller struct {
+	motions              MotionState
+	motionFile           *os.File
+	motionRevision       uint64
 	pose                 PoseState
 	labOccluded          bool
 	mu                   sync.Mutex
@@ -183,6 +186,7 @@ func (c *Controller) Start() {
 			c.state.Ready = false
 			c.state.Notice = err.Error()
 		}
+		c.motions.Pending = false
 		c.mu.Unlock()
 		c.redraw()
 		return
@@ -213,6 +217,7 @@ func (c *Controller) Start() {
 	if err != nil {
 		cancel()
 		c.state.Notice = "start_failed"
+		c.motions.Pending = false
 		c.mu.Unlock()
 		c.redraw()
 		return
@@ -222,6 +227,7 @@ func (c *Controller) Start() {
 		stdin.Close()
 		cancel()
 		c.state.Notice = "start_failed"
+		c.motions.Pending = false
 		c.mu.Unlock()
 		c.redraw()
 		return
@@ -232,6 +238,7 @@ func (c *Controller) Start() {
 		stdout.Close()
 		cancel()
 		c.state.Notice = "missing_renderer"
+		c.motions.Pending = false
 		c.mu.Unlock()
 		c.redraw()
 		return
@@ -280,6 +287,7 @@ func (c *Controller) Start() {
 		if c.generation == gen {
 			stopping := c.state.Notice == "stopping"
 			c.state.Running = false
+			c.motions.Pending = false
 			c.state.Mouth, c.state.RMS = 0, 0
 			previous := c.state.Notice
 			c.state.Notice = "finished"
@@ -324,6 +332,7 @@ func target(rms, floor float64) float64 {
 func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser, cancel context.CancelFunc) {
 	previewStart := time.Time{}
 	var poseRevision uint64
+	var motionRevision uint64
 	tick := time.NewTicker(time.Second / 30)
 	defer tick.Stop()
 	var audio <-chan []int16
@@ -441,6 +450,10 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 					return
 				}
 			}
+			if err := c.motionLine(gen, &motionRevision, stdin); err != nil {
+				cancel()
+				return
+			}
 			revision, lines := c.poseLines()
 			if revision != poseRevision {
 				if _, err := io.WriteString(stdin, lines); err != nil {
@@ -475,10 +488,13 @@ func bit(v bool) int {
 	return 0
 }
 func (c *Controller) stats(gen uint64, line string) {
+	if c.motionStats(gen, line) {
+		return
+	}
 	if c.poseStats(gen, line) {
 		return
 	}
-	if strings.HasPrefix(line, "AVATAR_READY=") && line != "AVATAR_READY=4" {
+	if strings.HasPrefix(line, "AVATAR_READY=") && line != "AVATAR_READY="+strconv.Itoa(ProtocolVersion) {
 		c.mu.Lock()
 		var cancel context.CancelFunc
 		if gen == c.generation {
@@ -491,7 +507,7 @@ func (c *Controller) stats(gen uint64, line string) {
 		}
 		return
 	}
-	if line == "AVATAR_READY=4" {
+	if line == "AVATAR_READY="+strconv.Itoa(ProtocolVersion) {
 		c.mu.Lock()
 		if gen == c.generation {
 			c.state.Ready = true

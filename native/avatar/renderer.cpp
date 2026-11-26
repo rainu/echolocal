@@ -20,6 +20,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <sys/resource.h>
@@ -672,6 +673,7 @@ struct Motion {
     V targetRest{};
     float scale = 1;
   };
+  std::unique_ptr<cgltf_data, decltype(&cgltf_free)> owned{nullptr, cgltf_free};
   cgltf_data *d = nullptr;
   std::vector<Track> tracks;
   float duration = 0;
@@ -679,11 +681,14 @@ struct Motion {
     if (!path)
       return;
     d = load(path);
+    owned.reset(d);
     J j = loadjson(d);
     need(j.contains("extensions") &&
              j["extensions"].contains("VRMC_vrm_animation"),
          "animation requires VRMC_vrm_animation");
-    need(d->animations_count > 0, "VRMA has no animation");
+    need(d->animations_count == 1, "VRMA requires exactly one animation");
+    need(j["extensions"]["VRMC_vrm_animation"].value("specVersion", "")=="1.0", "unsupported VRMA version");
+    need(d->animations[0].channels_count<=256, "VRMA channel budget");
     auto human =
         j["extensions"]["VRMC_vrm_animation"]["humanoid"]["humanBones"];
     std::map<int, std::string> map;
@@ -694,6 +699,7 @@ struct Motion {
     }
     auto &a = d->animations[0];
     bool sourceSupported=false;
+    size_t floatBudget=0;
     for (size_t i = 0; i < a.channels_count; i++) {
       auto &c = a.channels[i];
       if (!c.target_node)
@@ -730,10 +736,13 @@ struct Motion {
       size_t mult =
           t.interpolation == cgltf_interpolation_type_cubic_spline ? 3 : 1;
       need(s->output->count == t.time.size() * mult, "VRMA key count invalid");
+      floatBudget+=t.time.size()*(1+mult*components);
+      need(floatBudget<=2*1024*1024,"VRMA aggregate budget");
       t.values.resize(t.time.size() * mult * components);
       need(cgltf_accessor_unpack_floats(s->output, t.values.data(),
                                         t.values.size()) == t.values.size(),
            "VRMA values read failed");
+      for(float v:t.values) need(std::isfinite(v), "VRMA nonfinite value");
       Q targetWorld = worldq(&scene.d->nodes[t.target]);
       Q sourceWorld = worldq(c.target_node);
       Q facing = scene.legacy ? Q{0, 1, 0, 0} : Q{0, 0, 0, 1};
@@ -763,10 +772,7 @@ struct Motion {
     need(duration > 0, "no supported humanoid tracks");
     printf("VRMA_TRACKS=%zu\nVRMA_DURATION_S=%.3f\n", tracks.size(), duration);
   }
-  ~Motion() {
-    if (d)
-      cgltf_free(d);
-  }
+  ~Motion() = default;
   void apply(Scene &scene, double seconds) {
     if (!d || tracks.empty())
       return;
@@ -1099,7 +1105,7 @@ int main(int argc, char **argv) {
   const char *stage = "protocol_error";
   try {
     if (argc == 2 && std::string(argv[1]) == "--protocol-version") {
-      puts("4");
+      puts("5");
       return 0;
     }
     if (argc == 2 && std::string(argv[1]) == "--self-test") {
@@ -1178,7 +1184,7 @@ int main(int argc, char **argv) {
     need(seconds > 0 && seconds <= 86400, "duration must be 1..86400 seconds");
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
-    need(!appMode || (protocol == 4 && !wav && !demoMouth && fixedMouth < 0),
+    need(!appMode || (protocol == 5 && !wav && !demoMouth && fixedMouth < 0),
          "app control cannot combine with other mouth sources");
     RendererControl controls(appMode);
     controls.fullscreen=fullscreen;
@@ -1192,7 +1198,9 @@ int main(int argc, char **argv) {
       Scene scene(argv[1]);
       scene.upload();
       stage = "motion_invalid";
-      Motion motion(animation, scene);
+      auto motion = std::make_unique<Motion>(animation, scene);
+      unsigned long long appliedMotion=0;
+      double motionTime=0, motionPrevious=now(); bool motionOverride=false;
       stage = "gpu_failed";
       Background backdrop(background), fullBackdrop(fullBackground);
       ControlCutouts cutouts;
@@ -1278,6 +1286,28 @@ int main(int argc, char **argv) {
         controls.read();
         if (controls.ended)
           break;
+        if(appMode && !talkLayout && controls.motionRevision!=appliedMotion) {
+          appliedMotion=controls.motionRevision;
+          // Failed replacement leaves the model, surface, pose and old motion
+          // alive. Paths are constructed only from our parent's snapshot fd.
+          const char *result="motion_invalid"; int tracks=0;
+          try {
+            std::unique_ptr<Motion> candidate;
+            if(controls.motionFD) {
+              auto path=std::string("/proc/")+std::to_string(getppid())+"/fd/"+std::to_string(controls.motionFD);
+              candidate=std::make_unique<Motion>(path.c_str(),scene);
+              need(!candidate->tracks.empty(),"incompatible motion");
+              tracks=int(candidate->tracks.size()); result="motion_ready";
+            } else result="motion_none";
+            motion=std::move(candidate); motionOverride=true; motionTime=0; motionPrevious=now();
+          } catch(const std::exception &e) {
+            if(std::string(e.what())=="incompatible motion") result="motion_incompatible";
+          }
+          printf("AVATAR_MOTION %llu %s %d\n",appliedMotion,result,tracks); fflush(stdout);
+        }
+        const double motionNow=now();
+        if(controls.motionPlay && !controls.poseActive) motionTime+=motionNow-motionPrevious;
+        motionPrevious=motionNow;
         const bool full = talkLayout && controls.fullscreen;
         const int viewX=talkLayout && !full?w/2:0, viewW=w-viewX;
         glViewport(viewX,0,viewW,h);
@@ -1307,8 +1337,8 @@ int main(int argc, char **argv) {
         float phase = float(fmod(t, 4.2));
         float blink = phase < .16f ? sinf(phase / .16f * 3.14159265f) : 0;
         scene.animate(t, appMode ? (controls.idle && !controls.poseActive) : (idle && !animation));
-        if (!appMode || (controls.animation && !controls.poseActive))
-          motion.apply(scene, t);
+        if (motion && (!appMode || ((motionOverride || controls.animation) && !controls.poseActive)))
+          motion->apply(scene, motionOverride ? motionTime : t);
         if(appMode && controls.poseActive){
           for(int id=0;id<poseCount;id++){
             int index=poseNode(scene,id);if(index<0)continue;
@@ -1436,7 +1466,7 @@ int main(int argc, char **argv) {
         if (frames == 0) {
           printf("FIRST_FRAME_MS=%.3f\n", (now() - begin) * 1000);
           if (appMode) {
-            puts("AVATAR_READY=4");
+            puts("AVATAR_READY=5");
             fflush(stdout);
           }
         }
