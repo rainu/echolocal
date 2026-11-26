@@ -221,6 +221,9 @@ func (a *NodeAccess) Execute(ctx context.Context, name string, params json.RawMe
 	stale := gen != a.generation || !a.granted(op.Group)
 	a.mu.Unlock()
 	if stale || ctx.Err() != nil {
+		if r, ok := result.(NodeDeliveredResult); ok {
+			r.NodeResultDelivered(false)
+		}
 		return nil, errors.New("cancelled")
 	}
 	return result, err

@@ -50,6 +50,7 @@ Synthetic examples (valid shapes, NOT actions performed):
 - echolocal_alarm_create: {"time":"06:30","name":"Example","enabled":true}
 - echolocal_talk_status: {}
 - echolocal_talk_start: {"slot":1}
+- echolocal_talk_transfer: {"sessionId":"agent:example:existing-session"}
 
 Channel volumes use 0..100; media-player entity volume uses 0..1. Speaker mute
 never mutes the microphone. Display power is backlight control, NOT shutdown.
@@ -57,7 +58,13 @@ Brightness selects manual mode. timer.list/cancel cover node-created timers only
 Alarm update preserves omitted fields; registry alarm_set replaces an alarm.
 Talk start uses an existing configured slot (1 or 2), never supplies credentials
 or replaces the user's configured prompts. Talk stop stops only a node-owned
-conversation, not an unrelated local conversation.
+conversation, not an unrelated local conversation. The dedicated Talk transfer
+command instead switches the currently active Talk on this Echo, regardless of
+the invocation origin. Resolve ambiguous names first and use an exact existing
+session key. Its initial response means accepted, not completed: the Echo
+announces and reconnects asynchronously. Finish the originating consultation promptly; do not poll or wait for completion inside it. Later inspect talk.status transfer and
+transferReason for completed/recovered/failed/cancelled; do not claim target
+success when recovery restored the old session. Do not chain stop/start.
 
 Catalog presence is not authorization. Both Gateway command/tool policy and
 local permission groups apply on every invocation. Revocation cancels/fences

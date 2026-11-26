@@ -42,6 +42,8 @@ type Session struct {
 	Client            Control
 	Target            string
 	Provider, Model   string
+	runtimeModel      string
+	audibleFrames     atomic.Uint64
 	Greeting          string
 	DeviceContext     string
 	Audio             Device
@@ -135,6 +137,7 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 	if err != nil {
 		return err
 	}
+	s.runtimeModel = launch.Model
 	slog.Info("talk session created", "provider", launch.Provider, "model", launch.Model, "transport", launch.Transport, "native_media", s.nativeMedia)
 	if launch.VoiceSessionID != s.id || launch.Transport != "webrtc" {
 		return errors.New("talk_contract_invalid")

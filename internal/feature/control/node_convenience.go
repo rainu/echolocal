@@ -346,6 +346,7 @@ func registerNodeTalk(a *connection.NodeAccess) {
 	a.OnCleanup(func() {
 		mu.Lock()
 		defer mu.Unlock()
+		clawtalk.Get().CancelTransfer()
 		if owned != 0 {
 			clawtalk.Get().StopOwned(owned)
 			owned = 0
@@ -359,7 +360,7 @@ func registerNodeTalk(a *connection.NodeAccess) {
 			return nil, errors.New("invalid_params")
 		}
 		s := clawtalk.Get().Status()
-		return map[string]any{"active": s.Active, "state": s.State}, nil
+		return map[string]any{"active": s.Active, "state": s.State, "transfer": s.Transfer, "transferReason": s.TransferReason}, nil
 	})
 	add("talk.start", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p struct {
@@ -382,6 +383,19 @@ func registerNodeTalk(a *connection.NodeAccess) {
 		}
 		owned = gen
 		return map[string]bool{"started": true}, nil
+	})
+	add("talk.transfer", func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var p struct {
+			SessionID string `json:"sessionId"`
+		}
+		if decodeNode(raw, &p) != nil {
+			return nil, errors.New("invalid_params")
+		}
+		receipt, err := clawtalk.Get().PrepareTransfer(ctx, p.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		return receipt, nil
 	})
 	add("talk.stop", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		if nodeEmpty(raw) != nil {

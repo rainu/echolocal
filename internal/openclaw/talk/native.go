@@ -124,6 +124,7 @@ func (s *Session) nativeUserFinal() {
 // Playback observes the first decoded audible PCM after a final user caption.
 // This is not a claim about exact acoustic onset, VAD delay or device latency.
 func (s *Session) Playback() {
+	s.audibleFrames.Add(1)
 	if at := s.native.responseAt.Swap(0); at > 0 {
 		ms := max(int64(0), time.Since(time.Unix(0, at)).Milliseconds())
 		s.native.firstPCMMS.Store(ms)
