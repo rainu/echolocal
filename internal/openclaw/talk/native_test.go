@@ -521,3 +521,22 @@ func TestNativeProviderDiagnosticRequiresReadyNativeSession(t *testing.T) {
 		t.Fatal("diagnostic accepted a failed native session")
 	}
 }
+
+func TestNativeProviderMalformedDetailsStayTerminal(t *testing.T) {
+	for _, raw := range []string{
+		`{"type":"error","error":{"type":[],"code":"server_error"}}`,
+		`{"type":"error","code":"server_error","error":"synthetic-private-body"}`,
+	} {
+		s, _, ctx := nativeHarness(t)
+		s.controlLink(ctx).Received([]byte(raw))
+		select {
+		case <-s.native.done:
+		case <-time.After(time.Second):
+			t.Fatal("malformed error never settled")
+		}
+		if s.RecoverableFailure() || s.Diagnostics().Reason != "talk_control_invalid" ||
+			s.Diagnostics().ProviderErrorCode != "" || s.Diagnostics().ProviderErrorType != "" {
+			t.Fatal("partially decoded malformed error became a transient failure")
+		}
+	}
+}

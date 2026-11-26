@@ -177,7 +177,11 @@ func (s *Session) nativeLoop(ctx context.Context) {
 			switch e.Type {
 			case "error":
 				var detail providerErrorEvent
-				_ = json.Unmarshal(raw, &detail)
+				if json.Unmarshal(raw, &detail) != nil {
+					slog.Error("talk native provider error details malformed")
+					s.nativeFailure("talk_control_invalid")
+					return
+				}
 				reason, code, kind := classifyNativeProviderError(detail)
 				s.native.errorCode.Store(code)
 				s.native.errorType.Store(kind)
