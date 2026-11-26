@@ -46,6 +46,27 @@ error reason. The UI uses its existing connecting state while recovering and
 error on exhaustion. No end/start chime or greeting is replayed between attempts.
 Normal final hang-up retains its end cue.
 
+Native GPT-Live errors are classified at the control-channel receive path, not
+all treated as rejected control requests. Known server/internal failures,
+temporary rate limits and voice-session expiry may replace voice within the
+same lifetime retry budget. Authentication/token failures, quota/policy errors,
+invalid requests, contradictory and unknown classes remain terminal. Recovery
+never refreshes credentials or resends an input/consult.
+
+The Gateway can concurrently publish a redacted generic session.error for the
+same native event. When native media is active, RPC error verdicts wait at
+most one second for the structured native classification, regardless of which
+channel arrives first. A following generic close cannot turn an authentication
+error into a transport retry. Cancellation interrupts the wait immediately; a
+missing native classification keeps the bounded RPC verdict; unknown errors remain terminal.
+
+Recovery status preserves lastFailure and allowlisted providerErrorCode/
+providerErrorType across successful reconnects. Diagnostic tokens not on the
+allowlist become other (or empty when absent); provider messages, arbitrary
+codes, request contents and credentials are never retained. This distinguishes
+the last failure from the replacement transport's fresh counters.
+
+
 For a controlled device test, local diagnostic command
 echod ctl talk test-disconnect closes only the active WebRTC link without
 issuing a logical stop. It is hidden from ordinary help, requires local daemon

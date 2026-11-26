@@ -32,9 +32,12 @@ type Recovery struct {
 	status RecoveryStatus
 }
 type RecoveryStatus struct {
-	State    string `json:"state"`
-	Attempts int    `json:"attempts"`
-	Reason   string `json:"reason,omitempty"`
+	LastFailure       string `json:"lastFailure,omitempty"`
+	ProviderErrorCode string `json:"providerErrorCode,omitempty"`
+	ProviderErrorType string `json:"providerErrorType,omitempty"`
+	State             string `json:"state"`
+	Attempts          int    `json:"attempts"`
+	Reason            string `json:"reason,omitempty"`
 }
 
 func (r *Recovery) Status() RecoveryStatus {
@@ -44,9 +47,20 @@ func (r *Recovery) Status() RecoveryStatus {
 }
 func (r *Recovery) update(state string, attempts int, reason string) {
 	r.mu.Lock()
-	r.status = RecoveryStatus{state, attempts, reason}
+	r.status.State, r.status.Attempts, r.status.Reason = state, attempts, reason
 	r.mu.Unlock()
 }
+func (r *Recovery) recordFailure(b RecoveryBackend) {
+	if d, ok := b.(interface {
+		RecoveryFailure() (string, string, string)
+	}); ok {
+		reason, code, kind := d.RecoveryFailure()
+		r.mu.Lock()
+		r.status.LastFailure, r.status.ProviderErrorCode, r.status.ProviderErrorType = reason, code, kind
+		r.mu.Unlock()
+	}
+}
+
 func (r *Recovery) Open(parent context.Context) error {
 	r.mu.Lock()
 	if r.closed || r.done != nil {
@@ -129,6 +143,9 @@ func (r *Recovery) run(ctx context.Context, ready chan<- error) {
 			err = b.Open(attempt)
 		}
 		if err != nil {
+			if b != nil {
+				r.recordFailure(b)
+			}
 			retryable := b != nil && b.RecoverableFailure()
 			cancel()
 			if b != nil {
@@ -177,6 +194,9 @@ func (r *Recovery) run(ctx context.Context, ready chan<- error) {
 		}
 		if stopping {
 			pending, failure = true, false
+		}
+		if pending && failure && ctx.Err() == nil {
+			r.recordFailure(b)
 		}
 		retryable := pending && failure && b.RecoverableFailure()
 		// Retirement cancels callbacks before closing. The factory must silence

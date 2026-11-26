@@ -16,11 +16,12 @@ import (
 
 type voiceTranscript struct{ role, text, id string }
 type nativeState struct {
-	deviceContext      map[string]any
-	deviceGuardContext map[string]any
-	endPhraseContext   map[string]any
-	sendDeviceContext  func(map[string]any) error
-	deviceContextOnce  sync.Once
+	errorCode, errorType atomic.Value
+	deviceContext        map[string]any
+	deviceGuardContext   map[string]any
+	endPhraseContext     map[string]any
+	sendDeviceContext    func(map[string]any) error
+	deviceContextOnce    sync.Once
 
 	legacy                                                                              atomic.Bool
 	workCtx                                                                             context.Context
@@ -175,24 +176,25 @@ func (s *Session) nativeLoop(ctx context.Context) {
 			}
 			switch e.Type {
 			case "error":
-				var detail struct {
-					Error struct{ Code, Type, Param, Message string }
-				}
+				var detail providerErrorEvent
 				_ = json.Unmarshal(raw, &detail)
-				fields := []any{}
+				reason, code, kind := classifyNativeProviderError(detail)
+				s.native.errorCode.Store(code)
+				s.native.errorType.Store(kind)
+				fields := []any{"reason", reason}
 				for _, term := range []string{"unknown", "unsupported", "invalid", "channel", "content", "session.context.append", "session.thinking.append", "delegation"} {
 					fields = append(fields, "mentions_"+term, strings.Contains(strings.ToLower(detail.Error.Message), term))
 				}
 				for key, value := range map[string]string{"code": detail.Error.Code, "type": detail.Error.Type, "param": detail.Error.Param} {
-					switch value {
-					case "invalid_request_error", "invalid_value", "unknown_parameter", "unknown_event", "unsupported_event", "type", "channel", "content", "delegation_id":
-						fields = append(fields, key, value)
-					default:
+					safe := safeProviderErrorToken(value)
+					if safe != "" && safe != "other" {
+						fields = append(fields, key, safe)
+					} else {
 						fields = append(fields, key+"_present", value != "")
 					}
 				}
-				slog.Error("talk native provider rejected control", fields...)
-				s.nativeFailure("talk_control_rejected")
+				slog.Error("talk native provider error classified", fields...)
+				s.nativeFailure(reason)
 				return
 			case "delegation.created", "session.delegation.created":
 				id, target := e.Item.ID, e.Item.Target

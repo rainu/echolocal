@@ -376,6 +376,21 @@ func (s *Session) control(ctx context.Context, events <-chan connection.TalkEven
 				} else if e.FailureReason == "provider_input_unconfirmed" {
 					reason = e.FailureReason
 				}
+				if e.Event.Type == "session.error" && s.nativeEnabled.Load() {
+					// The parallel native channel owns the structured error.
+					// Block this control loop briefly so a following generic
+					// close cannot win over an auth/permanent verdict either.
+					timer := time.NewTimer(providerErrorDetailWait)
+					select {
+					case <-ctx.Done():
+						timer.Stop()
+						return
+					case <-s.failed:
+						timer.Stop()
+						return
+					case <-timer.C:
+					}
+				}
 				slog.Error("talk provider event", "type", e.Event.Type, "reason", reason)
 				s.fail(reason)
 			case "session.closed":
@@ -523,6 +538,7 @@ func (s *Session) activity(state State) {
 }
 
 type Diagnostics struct {
+	ProviderErrorCode, ProviderErrorType                                                                                string
 	ControlMessages, NativeDelegations, NativeResults, NativeResponses, HistoryFailures, StartupSilence, ResponsesTimed uint64
 	InputDeltas, OutputDeltas                                                                                           uint64
 	OutputQueueClears                                                                                                   uint64
@@ -541,6 +557,12 @@ func (s *Session) Diagnostics() Diagnostics {
 		n = 0
 	}
 	d := Diagnostics{Stage: names[n], SetupMS: s.setupMS.Load(), Tools: s.tools.Load(), Utterances: s.utterances.Load()}
+	if value := s.native.errorCode.Load(); value != nil {
+		d.ProviderErrorCode = value.(string)
+	}
+	if value := s.native.errorType.Load(); value != nil {
+		d.ProviderErrorType = value.(string)
+	}
 	d.ControlMessages = s.native.messages.Load()
 	d.NativeDelegations = s.native.delegations.Load()
 	d.NativeResults = s.native.results.Load()
@@ -622,7 +644,7 @@ func (s *Session) RecoverableFailure() bool {
 	switch reason {
 	case "talk_peer_failed", "talk_control_closed", "control_stream_closed",
 		"talk_transport_closed", "rpc_disconnected", "rpc_timeout", "talk_start_timeout",
-		"provider_input_unconfirmed":
+		"provider_input_unconfirmed", "provider_transient_error", "provider_session_expired", "provider_rate_limited":
 		return true
 	}
 	return false
@@ -657,4 +679,15 @@ func (s *Session) InterruptTransport() error {
 		return errors.New("talk_not_ready")
 	}
 	return link.Close()
+}
+
+// RecoveryFailure returns only locally bounded error classes, never a provider
+// message, identifier, request body or authentication material.
+func (s *Session) RecoveryFailure() (reason, code, kind string) {
+	d := s.Diagnostics()
+	reason, code, kind = d.Reason, d.ProviderErrorCode, d.ProviderErrorType
+	if first := s.failureReason.Load(); first != nil {
+		reason = first.(string)
+	}
+	return
 }

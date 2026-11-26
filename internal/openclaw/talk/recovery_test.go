@@ -7,6 +7,7 @@ import (
 	"fmt"
 	connection "github.com/ygelfand/echolocal/internal/openclaw"
 	"github.com/ygelfand/libcountertop/pkg/media/rtc"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -488,4 +489,86 @@ func TestRecoveryRealWebRTCInputUnconfirmedThenClosedNeverReplays(t *testing.T) 
 	r.Close()
 	(<-peers).Close()
 	(<-peers).Close()
+}
+
+type nativeRecoveryBackend struct {
+	*Session
+	cancel      context.CancelFunc
+	loopCtx     context.Context
+	events      chan connection.TalkEvent
+	controlDone chan struct{}
+	closed      atomic.Int32
+}
+
+func (b *nativeRecoveryBackend) Open(ctx context.Context) error {
+	b.loopCtx, b.cancel = context.WithCancel(ctx)
+	b.nativeEnabled.Store(true)
+	b.events = make(chan connection.TalkEvent, 2)
+	b.controlDone = make(chan struct{})
+	go b.nativeLoop(b.loopCtx)
+	go func() { defer close(b.controlDone); b.control(b.loopCtx, b.events) }()
+	return nil
+}
+func (b *nativeRecoveryBackend) Close() error {
+	if b.closed.Add(1) == 1 {
+		b.cancel()
+		<-b.native.done
+		<-b.controlDone
+	}
+	return nil
+}
+func TestRecoveryNativeFailureRetainsSafeClassAndExactTarget(t *testing.T) {
+	const target = "agent:synthetic:transferred"
+	made := make(chan *nativeRecoveryBackend, 3)
+	var previous *nativeRecoveryBackend
+	var count atomic.Int32
+	r := &Recovery{delays: []time.Duration{time.Millisecond, time.Millisecond}}
+	r.Factory = func(ctx context.Context, retry bool, fail, end func()) (RecoveryBackend, error) {
+		if previous != nil && previous.closed.Load() != 1 {
+			t.Error("overlapping native transports")
+		}
+		s := NewSession(nil, target, &fakeDevice{frames: make(chan []int16)})
+		s.Failure, s.End = fail, end
+		b := &nativeRecoveryBackend{Session: s}
+		previous = b
+		count.Add(1)
+		made <- b
+		return b, nil
+	}
+	if err := r.Open(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	inject := func(b *nativeRecoveryBackend, code, kind string) {
+		wire, _ := json.Marshal(map[string]any{"voiceSessionId": b.id, "talkEvent": map[string]any{"type": "session.error", "payload": map[string]any{"message": "OpenAI GPT-Live provider error"}}})
+		event, ok := connection.DecodeTalkEvent(wire)
+		if !ok {
+			t.Fatal("RPC wire frame rejected")
+		}
+		b.events <- event
+		event.Event.Type = "session.closed"
+		b.events <- event
+		eventually(t, func() bool { return len(b.events) < 2 })
+		native, _ := json.Marshal(map[string]any{"type": "error", "error": map[string]any{"code": code, "type": kind, "message": "synthetic-private-message"}})
+		b.controlLink(b.loopCtx).Received(native)
+	}
+	first := <-made
+	inject(first, "server_error", "server_error")
+	awaitRecovery(t, r, "connected", 1)
+	second := <-made
+	state := r.Status()
+	if first.Target != target || second.Target != target || first.id == second.id ||
+		state.LastFailure != "provider_transient_error" || state.ProviderErrorCode != "server_error" || state.ProviderErrorType != "server_error" {
+		t.Fatalf("lost target or bounded error class: %+v", state)
+	}
+	inject(second, "invalid_api_key", "authentication_error")
+	awaitRecovery(t, r, "failed", 1)
+	if count.Load() != 2 || r.Status().ProviderErrorCode != "invalid_api_key" ||
+		r.Status().LastFailure != "talk_control_rejected" {
+		t.Fatal("authentication rejection retried or reason lost")
+	}
+	serialized, _ := json.Marshal(r.Status())
+	if strings.Contains(string(serialized), "synthetic-private") {
+		t.Fatal("raw provider message persisted")
+	}
 }
