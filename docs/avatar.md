@@ -104,7 +104,7 @@ Arrow buttons remain; **Front** resets yaw, pitch, zoom and position together.
 Pinch uses a view-gated raw-contact observer chained on the UI window, preserving
 other handlers. One-finger input retains widget-local press/absolute capture
 conversion, slop, final release coordinates and cancellation. No global hardware
-listener is added. Daemon and bundled helper use scalar protocol 4 and must be
+listener is added. Daemon and bundled helper use scalar protocol 5 and must be
 updated together. Pitch rotates the whole fitted model around its center;
 orthographic zoom scales screen-plane coordinates without modifying depth.
 
@@ -425,3 +425,41 @@ native avatar as a transparent aperture; the renderer and conversation continue.
 Both edges, channel selection, expansion, slider interaction and the existing
 auto-dismiss timer remain owned by the normal volume widget. No saved avatar
 framing, output routing or volume-button targeting is changed.
+
+
+## Discover and preview VRMA files in Avatar Lab
+
+On supported Echo displays, open **Avatar Lab → Assets → Preview animation
+(Lab only)**. Use the existing owner **Files** browser or WebDAV to create
+/data/misc/echolocal/avatar/animations and upload .vrma files there.
+The directory is fixed: no path setting, recursive scan, uploader or additional
+file server is introduced. A missing/empty directory is a normal empty state.
+
+The list refreshes on opening the Lab and with **Refresh**, without restarting
+the device. Names are exact filenames (so similarly named clips stay distinct),
+sorted case-insensitively with a filename tie-break. Only direct regular files
+with a case-insensitive .vrma extension are listed. Symlinks (including the
+directory and its ancestors), directories and special files are rejected.
+Scanning is bounded to 8192 directory entries; larger folders show an explicit
+limit instead of a nondeterministic partial catalog.
+
+Selecting a clip snapshots up to 8 MiB and loads it into the currently displayed
+avatar, starting the Lab renderer if needed. **Play**/**Pause** controls this
+Lab-only motion independently of the saved animation switch. Pause freezes the
+clip; choose **No Lab animation** to remove it. Selection does not reload the
+model, reframe the camera, change backgrounds, discard joint edits, or write
+settings. It exits pose editing; entering pose editing again suspends motion.
+A removed file disappears after refresh, but an already loaded snapshot keeps
+working and is labeled removed. Select another entry to release the snapshot.
+
+Supported clips are self-contained GLB VRMA 1.0 with exactly one animation and
+humanoid rotation/hips-translation tracks (LINEAR, STEP or CUBICSPLINE).
+Expression/look-at-only clips are not supported. A clip with no mapped target
+bones reports incompatibility. Invalid buffers, resource references, excessive
+budgets, unreadable files and parser failures report localized recoverable
+errors; the model and controls remain usable. A rejected replacement does not
+replace the prior native clip; Play is disabled until a valid selection.
+
+The new selection is transient and confined to the ordinary Lab workspace.
+The conversation-layout **Preview** continues to show the saved Talk animation,
+not the Lab clip. Live Talk and saved motion switches are unchanged.

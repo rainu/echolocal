@@ -8,6 +8,8 @@
 #include <string>
 #include <unistd.h>
 struct RendererControl {
+  unsigned long long motionRevision=0;
+  int motionFD=0; bool motionPlay=true;
   bool enabled = false, idle = true, blink = true, animation = true,
        ended = false;
   int mode = 0;
@@ -21,6 +23,9 @@ struct RendererControl {
   explicit RendererControl(bool on) : enabled(on) {}
   void parse(const std::string &s) {
     int i, b, a, m;
+    unsigned long long revision; int fd; char motionTail;
+    if(sscanf(s.c_str(),"A %llu %d %c",&revision,&fd,&motionTail)==2 && revision>motionRevision && revision<=2147483647 && (fd==0 || (fd>=3 && fd<=1048576))) { motionRevision=revision; motionFD=fd; return; }
+    if(sscanf(s.c_str(),"N %d %c",&i,&motionTail)==1 && (i==0 || i==1)) { motionPlay=i; return; }
     char overlayTail;
     if (sscanf(s.c_str(), "V %5d %5d %5d %5d %c", &i, &b, &a, &m, &overlayTail)==4 && i>=0 && b>=0 && a>=0 && m>=0 && a<=4096 && m<=4096 && i<=4096-a && b<=4096-m) { overlayX=i; overlayY=b; overlayW=a; overlayH=m; return; }
     float rx,ry,rz; char trailing;

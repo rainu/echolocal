@@ -14,8 +14,8 @@ may select a compatible host Clang when using a community ARM64-host NDK.
 
 ## Contract (version 4)
 
-`echolocal-avatar --protocol-version` prints `4`. The controller starts the
-helper with a self-contained local VRM, `--control --protocol 4`, a bounded
+`echolocal-avatar --protocol-version` prints `5`. The controller starts the
+helper with a self-contained local VRM, `--control --protocol 5`, a bounded
 `--seconds` and `--viewport X,Y,SIZE`. An optional `--animation` supplies VRMA.
 No microphone device, socket or network is opened by this helper.
 
@@ -32,7 +32,7 @@ width/height clears the aperture. The GUI reports the actual arranged volume
 card bounds, so collapsed/expanded cards on either edge share the normal
 widget and its expiry. The native helper never handles slider input or volume.
 
-stdout emits `AVATAR_READY=4` after the first rendered frame, periodic
+stdout emits `AVATAR_READY=5` after the first rendered frame, periodic
 `AVATAR_STATS FPS FRAMES SECONDS MOUTH WORK_MS`, and bounded structured
 `AVATAR_ERROR=model_invalid|motion_invalid|gpu_failed|protocol_error` on failure.
 Existing performance diagnostics are informational and ignored by the controller.
@@ -55,3 +55,11 @@ rejection remain enforced. Other board/Android surface ABIs are not enabled.
 creation. Samples remain outside Git; their author terms and credit are in
 `THIRD_PARTY.md`. Seed's `robo_arm` is an **authored accessory**, not duplicate
 geometry: its embedded author thumbnail shows it behind the shoulder.
+
+Protocol 5 adds Lab-only motion snapshots: A REV FD selects an immutable
+descriptor in the parent process (0 removes the Lab clip); N 0|1 pauses/plays.
+No caller pathname crosses stdin. The controller keeps the descriptor alive
+until the matching AVATAR_MOTION REV STATUS TRACKS acknowledgment. Rejected
+motions leave the surface/model alive; success resets only the animation clock.
+Talk-layout renderers ignore motion selection. Both daemon and helper must be
+installed together; older scalar protocols are rejected.
