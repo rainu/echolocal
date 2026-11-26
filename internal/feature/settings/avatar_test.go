@@ -160,7 +160,10 @@ func TestAllAvatarAssetRowsUsePickerAndKeepValidation(t *testing.T) {
 				t.Fatal("not a picker", row)
 			}
 			before := value
-			p := row.Open().(*sharedshell.Page)
+			p := sharedshell.SettingsPage(row.Open())
+			if p == nil {
+				t.Fatal("picker lost settings-page recognition")
+			}
 			if contents, _ := p.Build(); len(contents) != 0 {
 				t.Fatal("constructing picker browsed disk")
 			}
