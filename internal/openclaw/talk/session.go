@@ -691,3 +691,23 @@ func (s *Session) RecoveryFailure() (reason, code, kind string) {
 	}
 	return
 }
+
+// InterruptNativeProvider is a fixed local diagnostic fault, never a user turn
+// or arbitrary control payload. It exercises the active native error receive
+// queue and the logical Talk's real provider replacement path.
+func (s *Session) InterruptNativeProvider() error {
+	if s.stage.Load() != 7 || !s.nativeEnabled.Load() {
+		return errors.New("talk_not_ready")
+	}
+	select {
+	case <-s.failed:
+		return errors.New("talk_not_ready")
+	default:
+	}
+	select {
+	case s.native.inbox <- []byte(`{"type":"error","error":{"type":"server_error","code":"server_error"}}`):
+		return nil
+	default:
+		return errors.New("talk_control_busy")
+	}
+}

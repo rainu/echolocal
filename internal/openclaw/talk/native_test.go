@@ -495,3 +495,29 @@ func TestKnownGatewayFailureWithoutNativeDetailsStillRecovers(t *testing.T) {
 		t.Fatal("known gateway failure lost recovery classification")
 	}
 }
+
+func TestNativeProviderDiagnosticRequiresReadyNativeSession(t *testing.T) {
+	s, _, _ := nativeHarness(t)
+	if err := s.InterruptNativeProvider(); err == nil {
+		t.Fatal("diagnostic accepted idle non-native session")
+	}
+	s.stage.Store(7)
+	if err := s.InterruptNativeProvider(); err == nil {
+		t.Fatal("diagnostic accepted non-native session")
+	}
+	s.nativeEnabled.Store(true)
+	if err := s.InterruptNativeProvider(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-s.native.done:
+	case <-time.After(time.Second):
+		t.Fatal("native fault not consumed")
+	}
+	if !s.RecoverableFailure() || s.Diagnostics().ProviderErrorCode != "server_error" {
+		t.Fatal("diagnostic did not follow native classification")
+	}
+	if err := s.InterruptNativeProvider(); err == nil {
+		t.Fatal("diagnostic accepted a failed native session")
+	}
+}

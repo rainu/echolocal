@@ -76,3 +76,10 @@ Tests cover real local WebRTC closure, exact-target retention, finite repeated
 failure, cancellation in backoff/setup, permanent failures, end phrase and stale
 callbacks. These are not proof of physical room speech reaching the original
 session after recovery: verify that on the Echo, including after handoff.
+
+The hidden local diagnostic echod ctl talk test-provider-error enqueues one
+fixed synthetic native server_error into the active Talk, without a user input,
+target override or arbitrary payload. It is not a Node operation. Use it to
+verify native-error -> manager -> actual provider reconnection on the running
+device, including after handoff. It is fault injection, not evidence that a
+remote provider naturally emitted that specific error.

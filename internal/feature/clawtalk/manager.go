@@ -539,3 +539,16 @@ func (m *Manager) InterruptTransport() error {
 	}
 	return b.InterruptTransport()
 }
+
+// InterruptNativeProvider is local-control-only with one fixed diagnostic
+// error; it accepts no target or payload and is never advertised as a Node RPC.
+func (m *Manager) InterruptNativeProvider() error {
+	m.mu.Lock()
+	b := m.lastBackend
+	ready := m.active && b != nil && m.recovery != nil && m.recovery.Status().State == "connected"
+	m.mu.Unlock()
+	if !ready {
+		return errors.New("talk_not_ready")
+	}
+	return b.InterruptNativeProvider()
+}
