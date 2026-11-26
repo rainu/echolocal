@@ -3,25 +3,36 @@
 package settings
 
 import (
+	"testing"
+
+	"github.com/ygelfand/libcountertop/pkg/display/menu"
+	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
+	"github.com/ygelfand/libcountertop/pkg/say"
+	setting "github.com/ygelfand/libcountertop/pkg/settings"
+
+	"github.com/ygelfand/echolocal/internal/avatar"
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/avatarlab"
-	"github.com/ygelfand/libcountertop/pkg/display/menu"
-	setting "github.com/ygelfand/libcountertop/pkg/settings"
-	"testing"
 )
 
 func TestAvatarNativeEditorReadsSameSettingAndResets(t *testing.T) {
 	value := config.Avatar{}
-	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	c := &setting.Controls[config.Avatar]{
+		Table: avatarlab.NewTable(),
+		Read:  func() config.Avatar { return value },
+		Save:  func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) },
+	}
 	page := avatarModelPageFor(c)
 	rows, _ := page.Build()
 	rows[0].Save("/data/local/tmp/avatar.vrm")
 	if value.Path != "/data/local/tmp/avatar.vrm" {
 		t.Fatal(value)
 	}
-	c.ChangeRaw("path", "/data/local/tmp/other.vrm")
+	if err := c.ChangeRaw("path", "/data/local/tmp/other.vrm"); err != nil {
+		t.Fatal(err)
+	}
 	rows, _ = page.Build()
-	if rows[0].Value != value.Path {
+	if rows[0].Hint != value.Path {
 		t.Fatal("external update missing")
 	}
 	rows[0].Save("../bad.vrm")
@@ -32,14 +43,18 @@ func TestAvatarNativeEditorReadsSameSettingAndResets(t *testing.T) {
 	_, acts := page.Build()
 	acts[1](0)
 	rows, _ = page.Build()
-	if value.Path != "" || rows[0].Value != "" {
+	if value.Path != "" || rows[0].Hint != "" {
 		t.Fatal("reset failed")
 	}
 }
 
 func TestAvatarNativeMotionTogglesAndReset(t *testing.T) {
 	value := config.Avatar{Path: "/model.vrm", Zoom: 150}
-	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	c := &setting.Controls[config.Avatar]{
+		Table: avatarlab.NewTable(),
+		Read:  func() config.Avatar { return value },
+		Save:  func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) },
+	}
 	page := avatarPresentationPageFor(c)
 	rows, acts := page.Build()
 	if len(rows) != 10 {
@@ -72,7 +87,11 @@ func TestAvatarNativeMotionTogglesAndReset(t *testing.T) {
 
 func TestNativeCloseUpZoomSaveAndValidation(t *testing.T) {
 	value := config.Avatar{Path: "/model.vrm", Yaw: 20, Y: 75}
-	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	c := &setting.Controls[config.Avatar]{
+		Table: avatarlab.NewTable(),
+		Read:  func() config.Avatar { return value },
+		Save:  func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) },
+	}
 	page := avatarPresentationPageFor(c)
 	for _, zoom := range []string{"300", "500", "999"} {
 		rows, _ := page.Build()
@@ -95,7 +114,11 @@ func TestNativeCloseUpZoomSaveAndValidation(t *testing.T) {
 
 func TestNativeMouthIntensityEditAndReset(t *testing.T) {
 	value := config.Avatar{}
-	c := &setting.Controls[config.Avatar]{Table: avatarlab.NewTable(), Read: func() config.Avatar { return value }, Save: func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) }}
+	c := &setting.Controls[config.Avatar]{
+		Table: avatarlab.NewTable(),
+		Read:  func() config.Avatar { return value },
+		Save:  func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) },
+	}
 	page := avatarPresentationPageFor(c)
 	for _, v := range []string{"0", "15", "100"} {
 		rows, _ := page.Build()
@@ -115,5 +138,78 @@ func TestNativeMouthIntensityEditAndReset(t *testing.T) {
 	acts[9](0)
 	if value.MouthPercent() != 50 {
 		t.Fatal("reset", value)
+	}
+}
+
+func TestAllAvatarAssetRowsUsePickerAndKeepValidation(t *testing.T) {
+	value := config.Avatar{Path: "/model.vrm", Zoom: 150}
+	c := &setting.Controls[config.Avatar]{
+		Table: avatarlab.NewTable(),
+		Read:  func() config.Avatar { return value },
+		Save:  func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) },
+	}
+	for _, page := range []*sharedshell.Page{avatarModelPageFor(c), avatarBackgroundPageFor(c), avatarFullscreenPageFor(c)} {
+		rows, _ := page.Build()
+		count := 0
+		for _, row := range rows {
+			if row.Open == nil {
+				continue
+			}
+			count++
+			if row.Kind != menu.Chevron || row.Value != "" {
+				t.Fatal("not a picker", row)
+			}
+			before := value
+			p := row.Open().(*sharedshell.Page)
+			if contents, _ := p.Build(); len(contents) != 0 {
+				t.Fatal("constructing picker browsed disk")
+			}
+			if value != before {
+				t.Fatal("opening changed settings")
+			}
+			row.Save("/missing/not-an-asset.txt")
+			if value != before {
+				t.Fatal("bypassed existing validation")
+			}
+		}
+		if count != 1 {
+			t.Fatal("expected one picker per page", count)
+		}
+	}
+}
+
+func TestFullscreenBackgroundClearPreservesComposition(t *testing.T) {
+	value := config.Avatar{
+		Path:                 "/model.vrm",
+		Background:           "/normal.png",
+		FullscreenBackground: "/selected.png",
+		FullscreenZoom:       468,
+		FullscreenYaw:        -10,
+		FullscreenPitch:      1,
+		FullscreenX:          -5,
+		FullscreenY:          168,
+		TalkMode:             "fullscreen",
+	}
+	before := value
+	c := &setting.Controls[config.Avatar]{
+		Table: avatarlab.NewTable(),
+		Read:  func() config.Avatar { return value },
+		Save:  func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) },
+	}
+	p := avatarFullscreenPageFor(c)
+	rows, actions := p.Build()
+	found := false
+	for i, r := range rows {
+		if r.Label == avatar.Text(say.Chosen(), "background_reset") {
+			actions[i](0)
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("missing per-background clear action")
+	}
+	before.FullscreenBackground = ""
+	if value != before {
+		t.Fatal("image clear reset another setting", value, before)
 	}
 }
