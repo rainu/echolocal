@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// NodeDeliveredResult defers disruptive work until the Gateway acknowledges the
+// tool result. Failure/uncertainty must not execute the deferred operation.
+type NodeDeliveredResult interface {
+	NodeResultDelivered(bool)
+}
+
 // AttachNodeAccess is startup-only; grants are edited through SetNodeGrants.
 func (c *Client) AttachNodeAccess(a *NodeAccess) { c.access = a }
 func (c *Client) NodeAccess() *NodeAccess        { return c.access }
@@ -85,6 +91,12 @@ func (c *Client) nodeEvent(parent context.Context, r *rpcLink, f frame) {
 		defer cancel()
 		defer func() { r.mu.Lock(); delete(r.nodeCalls, p.ID); r.mu.Unlock() }()
 		result, err := c.access.Execute(ctx, p.Command, json.RawMessage(p.ParamsJSON))
+		delivered := false
+		defer func() {
+			if r, ok := result.(NodeDeliveredResult); ok {
+				r.NodeResultDelivered(delivered)
+			}
+		}()
 		reply := map[string]any{"id": p.ID, "nodeId": p.NodeID, "ok": err == nil}
 		if err != nil {
 			code := "UNAVAILABLE"
@@ -104,7 +116,9 @@ func (c *Client) nodeEvent(parent context.Context, r *rpcLink, f frame) {
 		}
 		delivery, done := context.WithTimeout(parent, 10*time.Second)
 		defer done()
-		if err := r.nodeResult(delivery, reply); err != nil && err.Error() == "rpc_invalid_params" {
+		deliveryErr := r.nodeResult(delivery, reply)
+		delivered = deliveryErr == nil && reply["ok"] == true && ctx.Err() == nil
+		if deliveryErr != nil && deliveryErr.Error() == "rpc_invalid_params" {
 			// Return a bounded error instead of silently leaving the invoke pending.
 			reply = map[string]any{"id": p.ID, "nodeId": p.NodeID, "ok": false,
 				"error": map[string]string{"code": "UNAVAILABLE", "message": "result_too_large"}}

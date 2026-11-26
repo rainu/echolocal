@@ -132,7 +132,7 @@ func (l *automationLaunch) notify(err error) {
 // audio are ready. Defaults are copied from assistant 1, never persisted.
 func (m *Manager) StartAutomation(ctx context.Context, sessionID, prompt string, haBusy bool) error {
 	m.mu.Lock()
-	if m.active {
+	if m.active || m.transfer != nil {
 		m.mu.Unlock()
 		return errors.New("talk_already_active")
 	}
@@ -221,6 +221,9 @@ func (m *Manager) StartAutomation(ctx context.Context, sessionID, prompt string,
 // No chat.abort, sessions.delete/reset, or text-task cancellation is issued.
 func (m *Manager) StopAutomation(ctx context.Context) error {
 	m.mu.Lock()
+	if m.transfer != nil {
+		m.transfer.cancel()
+	}
 	if !m.active {
 		m.mu.Unlock()
 		return nil

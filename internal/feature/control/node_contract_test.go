@@ -186,3 +186,37 @@ func TestNodeRecordingRejectsBrokenInput(t *testing.T) {
 		t.Fatal("malformed capture accepted")
 	}
 }
+
+func TestNodeTransferContractAndGrant(t *testing.T) {
+	a := connection.NewNodeAccess(filepath.Join(t.TempDir(), "permissions"))
+	calls := 0
+	err := nodeRegister(a, connection.NodeOperation{Command: "talk.transfer", Group: "talk", Run: func(context.Context, json.RawMessage) (any, error) { calls++; return true, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{
+		"{}", "{\"sessionId\":12}", "{\"sessionId\":\"agent:test:next\",\"extra\":true}",
+	} {
+		if _, err := a.Execute(context.Background(), "echolocal.talk.transfer", []byte(raw)); err == nil {
+			t.Fatal("invalid transfer parameters accepted", raw)
+		}
+	}
+	if calls != 0 {
+		t.Fatal("invalid request reached executor")
+	}
+	if _, err := a.Execute(context.Background(), "echolocal.talk.transfer", []byte("{\"sessionId\":\"agent:test:next\"}")); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatal(calls)
+	}
+	if err := a.SetGrants(map[string]bool{"talk": false}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Execute(context.Background(), "echolocal.talk.transfer", []byte("{\"sessionId\":\"agent:test:next\"}")); err == nil {
+		t.Fatal("talk grant bypass")
+	}
+	if calls != 1 {
+		t.Fatal("revoked command reached executor")
+	}
+}

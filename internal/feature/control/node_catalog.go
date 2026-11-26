@@ -102,6 +102,8 @@ func nodeContract(name string) (string, nodeSchema) {
 		return "Read whether Talk is active and its current state; no prompts or credentials.", empty
 	case "talk.start":
 		return "Start Talk using existing configured slot 1 or 2. Preserves user prompts; may fail when busy or unconfigured.", nodeObject(nodeSchema{"slot": nodeNumber("integer", 1, 2)}, "slot")
+	case "talk.transfer":
+		return "Transfer the currently active Talk on this Echo to an existing accessible session. Resolve ambiguous names first. Independent of invocation origin; delayed calls affect the then-current Talk. Returns accepted, NOT completed. Finish the current consultation; do not poll/wait inside it. Use talk.status later for outcome. Echo announces, closes and reopens; stop cancels pending transfer. Does not change defaults or text sessions.", nodeObject(nodeSchema{"sessionId": nodeString(1024, "Exact session key from the existing session catalogue, not a display name.")}, "sessionId")
 	case "talk.stop":
 		return "Stop only the Talk generation started by this node executor; never an unrelated local conversation.", empty
 	case "intercom.state":

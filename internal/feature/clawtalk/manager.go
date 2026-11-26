@@ -23,6 +23,10 @@ import (
 )
 
 type Manager struct {
+	transfer       *transferRequest
+	transferState  string
+	transferReason string
+	currentSlot    Slot
 	generation     uint64
 	history        talk.History
 	captions       talk.ConversationLog
@@ -58,12 +62,15 @@ func (m *Manager) Run(ctx context.Context) error {
 	m.Controller.Stop()
 	return nil
 }
-func (m *Manager) Busy() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.active }
+func (m *Manager) Busy() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.active || m.transfer != nil }
 func (m *Manager) Stop() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.transfer != nil {
+		m.transfer.cancel()
+	}
 	if !m.active {
-		return false
+		return m.transfer != nil
 	}
 	if m.cancel != nil {
 		m.cancel()
@@ -75,7 +82,7 @@ func (m *Manager) Stop() bool {
 // It NEVER invokes Home Assistant for an OpenClaw activation.
 func (m *Manager) Route(slot int, haBusy bool) bool {
 	m.mu.Lock()
-	if m.active {
+	if m.active || m.transfer != nil {
 		m.mu.Unlock()
 		return true
 	}
@@ -106,7 +113,7 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 // It exposes neither target configuration nor operator credentials.
 func (m *Manager) StartOwned(slot int, haBusy bool) (uint64, error) {
 	m.mu.Lock()
-	if slot < 0 || slot > 1 || m.active || haBusy || !m.Store.Get(slot).OpenClaw {
+	if slot < 0 || slot > 1 || m.active || m.transfer != nil || haBusy || !m.Store.Get(slot).OpenClaw {
 		m.mu.Unlock()
 		return 0, errors.New("talk_unavailable")
 	}
@@ -131,6 +138,9 @@ func (m *Manager) StopOwned(generation uint64) bool {
 	if !m.active || m.generation != generation || m.cancel == nil {
 		return false
 	}
+	if m.transfer != nil && m.transfer.generation == generation {
+		m.transfer.cancel()
+	}
 	m.cancel()
 	return true
 }
@@ -142,6 +152,11 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		status := m.Status()
 		m.history.Add(talk.ActivationReport{EndedAtMS: time.Now().UnixMilli(), State: status.State, Transport: status.Transport, Captured: status.Captured, InputDropped: status.InputDropped, Decoded: status.Decoded, PlayoutDropped: status.PlayoutDropped, SpeakerUnderruns: status.SpeakerUnderruns, MaxReceiveGapMS: status.MaxReceiveGapMS, MaxPlayoutGapMS: status.MaxPlayoutGapMS})
 		m.mu.Lock()
+		// Natural end/provider failure while waiting for confirmation cancels
+		// the pending command. Only the deliberate retirement keeps it alive.
+		if m.transfer != nil && m.transfer.generation == generation && m.transferState != "opening" {
+			m.transfer.cancel()
+		}
 		m.active = false
 		m.cancel = nil
 		m.mu.Unlock()
@@ -228,6 +243,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 		return
 	}
 	m.mu.Lock()
+	m.currentSlot = v
 	m.lastBackend = b
 	m.lastAudio = a
 	b.SetInputMuted(m.forcedMuted)
@@ -352,6 +368,7 @@ type Status struct {
 	MaxReceiveGapMS, MaxPlayoutGapMS                                            int64
 	PeakBufferedFrames                                                          int
 
+	Transfer, TransferReason                        string
 	State                                           talk.State
 	Active                                          bool
 	Transport                                       talk.Diagnostics
@@ -360,9 +377,10 @@ type Status struct {
 
 func (m *Manager) Status() Status {
 	m.mu.Lock()
-	active, b, a, renderer := m.active, m.lastBackend, m.lastAudio, m.avatarRenderer
+	active, b, a, renderer := m.active || m.transfer != nil, m.lastBackend, m.lastAudio, m.avatarRenderer
+	transferState, transferReason := m.transferState, m.transferReason
 	m.mu.Unlock()
-	out := Status{State: m.state(), Active: active, Recent: m.history.Snapshot()}
+	out := Status{State: m.state(), Active: active, Transfer: transferState, TransferReason: transferReason, Recent: m.history.Snapshot()}
 	if renderer != nil {
 		s := renderer.Snapshot()
 		out.Avatar = &s
@@ -429,7 +447,7 @@ func (m *Manager) StartSession(key string, haBusy bool) (uint64, error) {
 		return 0, errors.New("talk_target_missing")
 	}
 	m.mu.Lock()
-	if m.active || haBusy {
+	if m.active || m.transfer != nil || haBusy {
 		m.mu.Unlock()
 		return 0, errors.New("talk_unavailable")
 	}
