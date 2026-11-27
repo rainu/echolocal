@@ -3,6 +3,10 @@ package avatar
 // Text covers all UI languages supported by EchoLocal. Error text never includes
 // model contents, arbitrary process output, or a potentially sensitive path.
 func Text(lang, key string) string {
+	if key == "background_unsupported" || key == "foreground_unsupported" ||
+		key == "background_animation_limit" || key == "foreground_animation_limit" {
+		return sceneHelp(lang)
+	}
 	words := map[string]map[string]string{
 		"en": {"title": "Avatar Lab", "path": "Custom VRM — path on Echo, not this computer (empty = default)", "model": "Model file", "default": "Use default avatar", "help": "Upload a .vrm using Files or WebDAV, then enter its full device path. Changes apply on the next Start. Empty restores the installed default.", "invalid_path": "Use an absolute device path, at most 255 bytes, without control characters or ../ components.", "custom_unavailable": "Cannot read custom VRM. Check the device path and file permissions, select another file or reset to default. No fallback was loaded.", "custom_invalid": "Custom model rejected. Use a self-contained VRM 0.x/1.0 GLB below 64 MiB; select another file or reset. No fallback was loaded.", "custom_storage": "Cannot stage the model. Free device storage and retry, or reset to default.", "model_invalid": "Renderer rejected the model or its resource budget. Select a compatible model or reset to default.", "starting": "Loading selected avatar…", "selection": "Selected file applies on next Start; the name above identifies the loaded model."},
 		"de": {"title": "Avatar-Labor", "path": "Eigenes VRM — Pfad auf dem Echo, nicht auf diesem Computer (leer = Standard)", "model": "Modelldatei", "default": "Standardavatar verwenden", "help": "Eine .vrm-Datei über Dateien oder WebDAV hochladen, dann ihren vollständigen Gerätepfad eingeben. Änderungen gelten beim nächsten Start. Leer stellt den installierten Standard wieder her.", "invalid_path": "Absoluten Gerätepfad mit maximal 255 Bytes eingeben, ohne Steuerzeichen oder ../-Bestandteile.", "custom_unavailable": "Eigenes VRM nicht lesbar. Gerätepfad und Dateirechte prüfen, andere Datei wählen oder Standard wiederherstellen. Kein Ersatzmodell geladen.", "custom_invalid": "Eigenes Modell abgelehnt. Eigenständiges VRM-0.x/1.0-GLB unter 64 MiB verwenden; andere Datei wählen oder Standard wiederherstellen. Kein Ersatzmodell geladen.", "custom_storage": "Modell kann nicht vorbereitet werden. Gerätespeicher freigeben und erneut versuchen oder Standard wählen.", "model_invalid": "Renderer lehnt Modell oder Ressourcenbedarf ab. Kompatibles Modell wählen oder Standard wiederherstellen.", "starting": "Ausgewählter Avatar wird geladen…", "selection": "Dateiauswahl gilt beim nächsten Start; der Name oben bezeichnet das geladene Modell."},
@@ -25,9 +29,15 @@ func Text(lang, key string) string {
 		return v
 	}
 	if v := foregroundWords[lang][key]; v != "" {
+		if key == "foreground_help" || key == "foreground_invalid" {
+			return v + " " + sceneHelp(lang)
+		}
 		return v
 	}
 	if v := backgroundWords[lang][key]; v != "" {
+		if key == "background_help" || key == "background_invalid" {
+			return v + " " + sceneHelp(lang)
+		}
 		return v
 	}
 	if v := presentationWords[lang][key]; v != "" {
@@ -223,4 +233,18 @@ var foregroundWords = map[string]map[string]string{
 	"de": {"foreground": "Vordergrundbild", "fullscreen_foreground": "Vollbild-Vordergrund", "foreground_reset": "Vordergrund entfernen", "foreground_help": "PNG/JPEG, bis 8 MiB, 4096 Pixel je Seite und 4 Megapixel. Transparenz bleibt erhalten. Auf die Hintergrundfläche normiert, zentriert füllend im gewählten Bereich; für passende Ausschnitte gleiche Bildproportionen verwenden. Gilt beim nächsten Start.", "foreground_unavailable": "Vordergrund nicht lesbar. Andere Datei wählen oder entfernen. Die übrige Szene bleibt unverändert.", "foreground_invalid": "Vordergrund abgelehnt. Vollständiges PNG/JPEG innerhalb der Bildgrenzen verwenden. Die übrige Szene bleibt unverändert.", "foreground_storage": "Vordergrund nicht vorbereitet. Gerätespeicher freigeben und erneut versuchen.", "foreground_example": "/data/local/tmp/foreground.png"},
 	"it": {"foreground": "Immagine in primo piano", "fullscreen_foreground": "Primo piano a schermo intero", "foreground_reset": "Rimuovi primo piano", "foreground_help": "PNG/JPEG, massimo 8 MiB, 4096 pixel per lato e 4 megapixel. Trasparenza preservata. Normalizzato allo sfondo, riempimento centrato; usare proporzioni uguali per ritagli allineati. Vale al prossimo avvio.", "foreground_unavailable": "Primo piano non leggibile. Scegliere un altro file o rimuoverlo. Il resto della scena non cambia.", "foreground_invalid": "Primo piano rifiutato. Usare PNG/JPEG completo entro i limiti. Il resto della scena non cambia.", "foreground_storage": "Impossibile preparare il primo piano. Liberare spazio e riprovare.", "foreground_example": "/data/local/tmp/foreground.png"},
 	"vi": {"foreground": "Ảnh tiền cảnh", "fullscreen_foreground": "Tiền cảnh toàn màn hình", "foreground_reset": "Xóa tiền cảnh", "foreground_help": "PNG/JPEG, tối đa 8 MiB, 4096 pixel mỗi cạnh và 4 megapixel. Giữ độ trong suốt. Chuẩn hóa theo nền và cắt giữa để lấp đầy; dùng cùng tỷ lệ ảnh để căn khớp. Áp dụng ở lần Bắt đầu tiếp theo.", "foreground_unavailable": "Không đọc được tiền cảnh. Chọn tệp khác hoặc xóa. Phần còn lại không đổi.", "foreground_invalid": "Tiền cảnh bị từ chối. Dùng PNG/JPEG hoàn chỉnh trong giới hạn. Phần còn lại không đổi.", "foreground_storage": "Không thể chuẩn bị tiền cảnh. Giải phóng bộ nhớ và thử lại.", "foreground_example": "/data/local/tmp/foreground.png"},
+}
+
+// Kept identical for both layers and all owner-facing settings surfaces.
+func sceneHelp(lang string) string {
+	switch lang {
+	case "de":
+		return "Auch WebP (statisch/animiert): bis 1024 Pixel je Seite, 120 Frames, 32 MiB dekodiert, 30 s pro Schleife; 40–10000 ms je Frame. Alpha und Schleifenzahl bleiben erhalten. APNG, GIF und Video werden nicht unterstützt."
+	case "it":
+		return "Anche WebP (statico/animato): fino a 1024 pixel per lato, 120 fotogrammi, 32 MiB decodificati, 30 s per ciclo; 40–10000 ms per fotogramma. Alpha e numero di cicli preservati. APNG, GIF e video non supportati."
+	case "vi":
+		return "Cũng hỗ trợ WebP (tĩnh/động): tối đa 1024 pixel mỗi cạnh, 120 khung hình, 32 MiB giải mã, 30 giây mỗi vòng; 40–10000 ms mỗi khung hình. Giữ alpha và số vòng lặp. Không hỗ trợ APNG, GIF và video."
+	default:
+		return "Also WebP (static/animated): up to 1024 pixels per side, 120 frames, 32 MiB decoded, 30 s per loop; 40–10000 ms per frame. Alpha and loop count preserved. APNG, GIF and video are unsupported."
+	}
 }

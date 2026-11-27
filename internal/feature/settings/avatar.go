@@ -157,7 +157,7 @@ func avatarForegroundPageFor(c *setting.Controls[config.Avatar], full bool) *sha
 			}
 			return err
 		}
-		rows := []menu.Row{avatarFileRow(text(name), row.Read(&a), []string{".png", ".jpg", ".jpeg"}, save),
+		rows := []menu.Row{avatarFileRow(text(name), row.Read(&a), []string{".png", ".jpg", ".jpeg", ".webp"}, save),
 			{Label: text("foreground_reset"), Kind: menu.Plain},
 			{Label: text("foreground_help"), Kind: menu.Plain}}
 		acts := []func(int){nil, func(int) { _ = save("") }, nil}
@@ -187,7 +187,7 @@ func avatarBackgroundPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 				avatarFileRow(
 					text("background"),
 					c.Read().Background,
-					[]string{".png", ".jpg", ".jpeg"},
+					[]string{".png", ".jpg", ".jpeg", ".webp"},
 					save,
 				),
 				{Label: text("background_reset"), Kind: menu.Plain},
@@ -254,7 +254,7 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 						avatarFileRow(
 							row.Title(),
 							row.Read(&a),
-							[]string{".png", ".jpg", ".jpeg"},
+							[]string{".png", ".jpg", ".jpeg", ".webp"},
 							func(v string) error { return save(row.Name, v) },
 						),
 					)

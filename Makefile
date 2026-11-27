@@ -43,7 +43,7 @@ PACK ?=
 empty :=
 space := $(empty) $(empty)
 comma := ,
-ALL_TAGS := $(strip $(TAGS) board_$(or $(BOARD),biscuit) airplay pryon $(if $(filter $(BOARD),$(SCREEN_BOARDS)),voice payload))
+ALL_TAGS := $(strip nodynamic $(TAGS) board_$(or $(BOARD),biscuit) airplay pryon $(if $(filter $(BOARD),$(SCREEN_BOARDS)),voice payload))
 DEVICE_TAGS := $(if $(ALL_TAGS),-tags $(subst $(space),$(comma),$(ALL_TAGS)),)
 
 DEVICE_LDFLAGS := -s -w $(LDFLAGS) $(if $(BOARD),-X '$(BOARDVARS).pinned=$(BOARD)')
@@ -110,7 +110,7 @@ test-surface: countertop-native-source ## Run the shared native wire tests with 
 .PHONY: build-echolocal
 build-echolocal: ## Build the host CLI into ./bin
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/echolocal ./cmd/echolocal
+	CGO_ENABLED=0 go build -tags nodynamic -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/echolocal ./cmd/echolocal
 
 .PHONY: build-echod
 build-echod: $(if $(filter athena,$(BOARD)),stage-avatar stage-legacy) stage-airplay stage-pryon $(if $(filter $(BOARD),$(PART_BOARDS)),stage-speech stage-parts) ##Cross-compile echod for the Echo Dot (DOT_ARCH=arm64 for a Fire OS 5 kernel; TAGS=noasm for the portable dot; PACK=bin/upx-5.3.0/build/upx to compress it)
@@ -243,7 +243,7 @@ device: ## Say which device the device targets would write to, and refuse an unk
 .PHONY: dist
 dist: ## Every echod, a manifest naming them in bin/, and an echolocal CLI that installs from it
 	@$(MAKE) --no-print-directory manifest FROM=file://$(CURDIR)/$(BUILD_DIR)
-	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/echolocal ./cmd/echolocal
+	CGO_ENABLED=0 go build -tags nodynamic -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/echolocal ./cmd/echolocal
 
 .PHONY: install
 install: dist ## Install onto an attached device from the locally built manifest

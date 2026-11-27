@@ -1,3 +1,4 @@
+#include "layers.hpp"
 // EchoLocal native avatar renderer. See LICENSE and THIRD_PARTY.md.
 #define CGLTF_IMPLEMENTATION
 #include "vendor/cgltf.h"
@@ -871,19 +872,14 @@ void main(){vec4 c=color;if(textured==1)c*=texture(image,texcoord);if(c.a<cutoff
 struct Background {
  GLuint texture=0, prog=0, vao=0;
  int width=0,height=0;
- explicit Background(const char *name, const char *error = "AVATAR_BACKGROUND_ERROR", bool premultiply=false) {
+ LayerFrames frames;
+ bool premultiply=false;
+ const char *error;
+ explicit Background(const char *name, const char *error = "AVATAR_BACKGROUND_ERROR", bool alpha=false):premultiply(alpha),error(error) {
   if (!name) return;
-  FILE *f=fopen(name,"rb");
-  if (!f) {puts(error);return;}
-  unsigned char header[12];
-  bool ok=fread(header,1,12,f)==12 && memcmp(header,"BG01",4)==0;
-  auto u32=[](const unsigned char *b)->uint32_t{return uint32_t(b[0]) | (uint32_t(b[1])<<8) | (uint32_t(b[2])<<16) | (uint32_t(b[3])<<24);};
-  if(ok){width=int(u32(header+4));height=int(u32(header+8));}
-  ok=ok && width>0 && width<=2048 && height>0 && height<=2048;
-  std::vector<unsigned char> pixels;
-  if(ok){pixels.resize(size_t(width)*height*4);ok=fread(pixels.data(),1,pixels.size(),f)==pixels.size() && fgetc(f)==EOF;}
-  fclose(f);
-  if(!ok){puts(error);return;}
+  if(!frames.load(name)){puts(error);return;}
+  width=frames.width;height=frames.height;
+  auto &pixels=frames.pixels;
   if(premultiply)avatarPremultiply(pixels.data(),pixels.size());
   const char *vs=R"(#version 300 es
 precision highp float;
@@ -904,6 +900,18 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
   glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
   glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
   if(glGetError()!=GL_NO_ERROR){glDeleteTextures(1,&texture);texture=0;puts(error);}
+  if(!frames.animated){frames.pixels.clear();frames.pixels.shrink_to_fit();fclose(frames.file);frames.file=nullptr;}
+ }
+ void update(double time,bool visible) {
+  if(!texture)return;
+  const int index=frames.select(time,visible);
+  if(index<0 || index==frames.current)return;
+  if(!frames.read(index)){puts(error);glDeleteTextures(1,&texture);texture=0;return;}
+  if(premultiply)avatarPremultiply(frames.pixels.data(),frames.pixels.size());
+  glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);
+  glTexSubImage2D(GL_TEXTURE_2D,0,0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,frames.pixels.data());
+  frames.uploads++;
+  if(glGetError()!=GL_NO_ERROR){puts(error);glDeleteTextures(1,&texture);texture=0;}
  }
  void draw(int w,int h, const Background *canvas=nullptr) {
   if(!texture)return;
@@ -919,7 +927,7 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
   glDrawArrays(GL_TRIANGLES,0,3);
   glDisable(GL_BLEND);glDepthMask(GL_TRUE);glEnable(GL_DEPTH_TEST);
  }
- ~Background(){if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
+ ~Background(){if(frames.animated)printf("AVATAR_LAYER_STATS %zu %d %d\n",frames.uploads,frames.current,int(frames.visible));if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
 };
 
 // Two round transparent apertures expose the application's accessible controls.
@@ -1140,7 +1148,7 @@ int main(int argc, char **argv) {
          "image.ppm] [--wav pcm16.wav] [--animation clip.vrma] [--static] "
          "[--mouth N]");
     int w = 640, h = 640, px = 640, py = 80, protocol = 0;
-    double seconds = 5;
+    double seconds = 5, captureAt = -1;
     bool show = false, idle = true, demoMouth = false, appMode = false, talkLayout = false, fullscreen = false;
     float fixedMouth = -1;
     const char *out = nullptr, *wav = nullptr, *animation = nullptr, *background = nullptr, *fullBackground = nullptr, *foreground = nullptr, *fullForeground = nullptr;
@@ -1166,6 +1174,8 @@ int main(int argc, char **argv) {
           need(avatarParseViewport(argv[++i],px,py,w,h),"invalid viewport");
         } else if (a == "--seconds")
           seconds = std::stod(argv[++i]);
+        else if (a == "--capture-at")
+          captureAt = std::stod(argv[++i]);
         else if (a == "--out")
           out = argv[++i];
         else if (a == "--wav")
@@ -1189,6 +1199,7 @@ int main(int argc, char **argv) {
     need(std::isfinite(fixedMouth) && fixedMouth >= -1 && fixedMouth <= 1,
          "mouth must be -1..1");
     need(seconds > 0 && seconds <= 86400, "duration must be 1..86400 seconds");
+    need(std::isfinite(captureAt) && captureAt>=-1 && captureAt<=seconds, "invalid capture time");
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
     need(!appMode || (protocol == 5 && !wav && !demoMouth && fixedMouth < 0),
@@ -1317,6 +1328,12 @@ int main(int argc, char **argv) {
         if(controls.motionPlay && !controls.poseActive) motionTime+=motionNow-motionPrevious;
         motionPrevious=motionNow;
         const bool full = talkLayout && controls.fullscreen;
+        const bool layersVisible=!(appMode && !talkLayout && controls.hidden);
+        const double layerTime=now();
+        backdrop.update(layerTime,layersVisible && !full);
+        front.update(layerTime,layersVisible && !full);
+        fullBackdrop.update(layerTime,layersVisible && full);
+        fullFront.update(layerTime,layersVisible && full);
         const int viewX=talkLayout && !full?w/2:0, viewW=w-viewX;
         glViewport(viewX,0,viewW,h);
         const Background &sceneFront=full?fullFront:front, &sceneBack=full?fullBackdrop:backdrop;
@@ -1483,8 +1500,9 @@ int main(int argc, char **argv) {
           }
         }
         frames++;
-        if (out && !captured && t >= std::min(1., seconds * .5)) {
+        if (out && !captured && t >= (captureAt<0?std::min(1., seconds * .5):captureAt)) {
           screenshot(out, w, h);
+          printf("AVATAR_LAYER_CAPTURE %d %d\n",(full?fullBackdrop:backdrop).frames.current,(full?fullFront:front).frames.current);
           captured = true;
         }
         need(eglSwapBuffers(egl.display, egl.surface), "swap failed");

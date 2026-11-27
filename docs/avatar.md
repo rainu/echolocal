@@ -497,5 +497,69 @@ Limits are shared with backgrounds: 8 MiB encoded, 4096 pixels per side,
 4 megapixels decoded, and a maximum 2048-pixel texture dimension. A missing,
 unreadable or invalid foreground is reported without stopping the avatar or
 discarding its background; invalid settings writes keep the previous selection.
-Layer snapshots/textures are created only at Start and released on Stop, not
-decoded or uploaded every frame.
+Static layer snapshots/textures are created only at Start and released on Stop.
+Animated layers use the bounded frame path described below.
+
+## Animated scene layers
+
+Both background and foreground pickers also accept **WebP**, including lossy,
+lossless, full-canvas and subrectangle animations with disposal/blending and
+per-frame alpha. PNG/JPEG and empty selections retain their previous behavior.
+All four existing background/foreground fields (split and fullscreen) keep the
+same settings/API/Node permissions and persistence. No new upload endpoint,
+audio path, network decoder or transcoding service is introduced.
+
+The maintained **gen2brain/webp v0.6.4** package uses libwebp compiled/transpiled
+to Go, including its animation compositor; it works with the existing CGo-free
+32-bit daemon. Device/CLI builds use the nodynamic build tag so no host Linux
+libc interpreter or device-installed libwebp is required. Cross-compiled test
+binaries must also use -tags nodynamic. A RIFF container inspection enforces allocation budgets before
+full decoding; damaged input must still pass libwebp. Assets are decoded only
+during validation/renderer preparation, not during the render loop.
+Descriptors contain complete immutable RGBA frames, not caller-controlled
+paths. The native helper keeps a single frame buffer and texture per animated
+layer, reads/uploads only changed visible frames, and releases everything when
+the renderer stops. Settings changes apply on the next Start, as for static
+layers. Both presentations are frozen for a running conversation.
+
+WebP limits (in addition to the existing 8 MiB encoded limit):
+
+- Maximum 1024 pixels per side; 120 frames.
+- At most 32 MiB total decoded RGBA per asset, computed as width × height × 4 ×
+  frame count before decoder allocation. This is a decoded-pixel budget, not a
+  promise that total decoder process memory equals 32 MiB.
+- 40–10000 ms per frame and at most 30 seconds per cycle. Faster/zero-duration
+  frames are rejected, not silently retimed. The scene renders at up to 30 fps;
+  late frames catch up to the authored clock without accumulating drift.
+- Loop count zero repeats indefinitely; finite counts hold the final frame.
+  Switching presentation or revealing a hidden scene starts its loop at zero.
+  Hidden/inactive-mode layers do no frame reads, conversions or uploads.
+
+Start with a short 320 × 200 decorative loop. Author both layers on matching
+canvas proportions: the same centered-cover crop and foreground registration
+rules apply to every frame in Lab, conversation preview, split and fullscreen.
+Foreground alpha is premultiplied once before GPU filtering; it is never
+flattened. Invalid input is rejected by settings writes, preserving the previous
+selection. A missing/damaged stored asset omits only that layer and reports a
+localized notice; the avatar and remaining layers continue.
+
+### Evaluated alternatives
+
+**APNG is not supported in this implementation.** Go's standard PNG decoder
+does not animate acTL/fcTL/fdAT chunks; accepting those files would misleadingly
+show only the default image. The loader explicitly rejects APNG, including
+animation saved with a .png suffix. A future APNG implementation needs a
+maintained compositor plus the same disposal, timing, alpha and on-device
+budget tests; merely allowing the suffix is insufficient.
+
+Android API 28 has platform animation facilities, but this renderer owns a
+native GLES surface rather than an Android image widget. The selected Go
+decoder fits the existing process and descriptor boundary without adding a
+Java/JNI UI path. No platform APNG capability is assumed.
+
+**Transparent video remains a later path** for longer/high-resolution motion.
+It could reduce decoded-frame storage, but requires measured codec/profile/
+pixel-format support, reliable alpha transport, GPU composition and visibility
+lifecycle on the actual device. No VP9/AV1/HEVC alpha hardware-decoder support,
+transparent-video performance or server-side transcoding is promised or
+claimed tested here.

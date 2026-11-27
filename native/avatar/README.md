@@ -63,3 +63,21 @@ until the matching AVATAR_MOTION REV STATUS TRACKS acknowledgment. Rejected
 motions leave the surface/model alive; success resets only the animation clock.
 Talk-layout renderers ignore motion selection. Both daemon and helper must be
 installed together; older scalar protocols are rejected.
+
+## Animated image snapshots
+
+BG01 remains the unchanged single-frame straight-alpha RGBA contract. BG02 is
+six little-endian words (magic, width, height, frame count, loop count, total
+milliseconds), then per-frame delay + complete straight-alpha RGBA canvas.
+Loop count 0 is infinite; finite counts hold the final frame. The Go decoder
+composites WebP disposal/blend rules before staging; the helper only seeks raw
+frames and updates the active texture. Invalid snapshots disable that layer,
+not the scene. Both ends enforce dimensions, frame count, decoded size and
+timing budgets. Hidden or inactive-mode layers do no reads/uploads; visibility
+starts the loop at frame zero. Helper termination releases all descriptors,
+frame buffers and textures. No animation worker or audio stream exists. Device Go binaries/tests must use
+the nodynamic tag; the Makefile enforces it for production builds.
+
+--capture-at SECONDS selects the diagnostic PPM capture time; omitted keeps
+the existing capture behavior. AVATAR_LAYER_STATS UPLOADS LAST_FRAME VISIBLE
+is informational test output and contains no asset path.

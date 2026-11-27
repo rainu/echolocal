@@ -165,6 +165,7 @@ func (c *Controller) Start() {
 		file, release, e := ResolveBackground("/", c.dir, backgroundPath)
 		if e != nil {
 			backgroundNotice = e.Error()
+			backgroundPath = ""
 		} else {
 			original := cleanup
 			cleanup = func() { release(); original() }
@@ -175,7 +176,9 @@ func (c *Controller) Start() {
 	if c.talkLayout && c.fullscreenBackground != nil {
 		if selected := c.fullscreenBackground(); selected != "" && err == nil {
 			file, release, e := ResolveBackground("/", c.dir, selected)
-			if e == nil {
+			if e != nil {
+				backgroundNotice = e.Error()
+			} else {
 				fullBackground = file
 				original := cleanup
 				cleanup = func() { release(); original() }
