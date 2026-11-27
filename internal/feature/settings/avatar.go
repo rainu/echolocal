@@ -187,7 +187,7 @@ func avatarBackgroundPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 				avatarFileRow(
 					text("background"),
 					c.Read().Background,
-					[]string{".png", ".jpg", ".jpeg", ".webp"},
+					[]string{".png", ".jpg", ".jpeg", ".webp", ".mp4"},
 					save,
 				),
 				{Label: text("background_reset"), Kind: menu.Plain},
@@ -249,12 +249,16 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 					continue
 				}
 				if row.Name == "fullscreen_background" || row.Name == "fullscreen_foreground" {
+					extensions := []string{".png", ".jpg", ".jpeg", ".webp"}
+					if row.Name == "fullscreen_background" {
+						extensions = append(extensions, ".mp4")
+					}
 					rows = append(
 						rows,
 						avatarFileRow(
 							row.Title(),
 							row.Read(&a),
-							[]string{".png", ".jpg", ".jpeg", ".webp"},
+							extensions,
 							func(v string) error { return save(row.Name, v) },
 						),
 					)

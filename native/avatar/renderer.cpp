@@ -1,4 +1,5 @@
 #include "layers.hpp"
+#include "video.hpp"
 // EchoLocal native avatar renderer. See LICENSE and THIRD_PARTY.md.
 #define CGLTF_IMPLEMENTATION
 #include "vendor/cgltf.h"
@@ -873,12 +874,22 @@ struct Background {
  GLuint texture=0, prog=0, vao=0;
  int width=0,height=0;
  LayerFrames frames;
+ std::unique_ptr<BackgroundVideo> video;
  bool premultiply=false;
  const char *error;
  explicit Background(const char *name, const char *error = "AVATAR_BACKGROUND_ERROR", bool alpha=false):premultiply(alpha),error(error) {
   if (!name) return;
-  if(!frames.load(name)){puts(error);return;}
-  width=frames.width;height=frames.height;
+  FILE *check=fopen(name,"rb");unsigned char signature[12]{};
+  const bool mp4=check && fread(signature,1,12,check)==12 && !memcmp(signature+4,"ftyp",4);if(check)fclose(check);
+  if(mp4){
+   if(alpha){puts(error);return;}
+   video=std::make_unique<BackgroundVideo>();
+   if(!video->load(name)){video.reset();puts(error);return;}
+   width=video->width;height=video->height;frames.pixels=video->latest;
+  }else{
+   if(!frames.load(name)){puts(error);return;}
+   width=frames.width;height=frames.height;
+  }
   auto &pixels=frames.pixels;
   if(premultiply)avatarPremultiply(pixels.data(),pixels.size());
   const char *vs=R"(#version 300 es
@@ -900,13 +911,19 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
   glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
   glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
   if(glGetError()!=GL_NO_ERROR){glDeleteTextures(1,&texture);texture=0;puts(error);}
-  if(!frames.animated){frames.pixels.clear();frames.pixels.shrink_to_fit();fclose(frames.file);frames.file=nullptr;}
+  if(!frames.animated){frames.pixels.clear();frames.pixels.shrink_to_fit();if(frames.file)fclose(frames.file);frames.file=nullptr;}
  }
  void update(double time,bool visible) {
   if(!texture)return;
-  const int index=frames.select(time,visible);
-  if(index<0 || index==frames.current)return;
-  if(!frames.read(index)){puts(error);glDeleteTextures(1,&texture);texture=0;return;}
+  if(video){
+   const int status=video->update(visible,frames.pixels);
+   if(status==0)return;
+   if(status<0){puts(error);video->hide();glDeleteTextures(1,&texture);texture=0;return;}
+  }else{
+   const int index=frames.select(time,visible);
+   if(index<0 || index==frames.current)return;
+   if(!frames.read(index)){puts(error);glDeleteTextures(1,&texture);texture=0;return;}
+  }
   if(premultiply)avatarPremultiply(frames.pixels.data(),frames.pixels.size());
   glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);
   glTexSubImage2D(GL_TEXTURE_2D,0,0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,frames.pixels.data());
@@ -927,7 +944,7 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
   glDrawArrays(GL_TRIANGLES,0,3);
   glDisable(GL_BLEND);glDepthMask(GL_TRUE);glEnable(GL_DEPTH_TEST);
  }
- ~Background(){if(frames.animated)printf("AVATAR_LAYER_STATS %zu %d %d\n",frames.uploads,frames.current,int(frames.visible));if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
+ ~Background(){if(video){video->hide();printf("AVATAR_VIDEO_STATS %zu %zu %d\n",frames.uploads,video->revision,int(video->active));}if(frames.animated)printf("AVATAR_LAYER_STATS %zu %d %d\n",frames.uploads,frames.current,int(frames.visible));if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
 };
 
 // Two round transparent apertures expose the application's accessible controls.
@@ -1115,6 +1132,12 @@ int main(int argc, char **argv) {
   int result = 1;
   const char *stage = "protocol_error";
   try {
+    if(argc==3 && std::string(argv[1])=="--probe-background"){
+     rlimit cpu{4,4}, memory{256u<<20,256u<<20};setrlimit(RLIMIT_CPU,&cpu);setrlimit(RLIMIT_AS,&memory);
+     try{VideoDecoder d;d.open(argv[2]);std::vector<unsigned char> pixels;double pts=0;
+      VideoDecoder::check(d.next(pixels,pts));printf("AVATAR_VIDEO_OK %d %d\n",d.width,d.height);return 0;
+     }catch(...){puts("AVATAR_VIDEO_UNSUPPORTED");return 1;}
+    }
     if (argc == 2 && std::string(argv[1]) == "--protocol-version") {
       puts("5");
       return 0;
@@ -1503,6 +1526,8 @@ int main(int argc, char **argv) {
         if (out && !captured && t >= (captureAt<0?std::min(1., seconds * .5):captureAt)) {
           screenshot(out, w, h);
           printf("AVATAR_LAYER_CAPTURE %d %d\n",(full?fullBackdrop:backdrop).frames.current,(full?fullFront:front).frames.current);
+          const auto &capturedVideo=(full?fullBackdrop:backdrop).video;
+          if(capturedVideo)printf("AVATAR_VIDEO_CAPTURE %.6f\n",capturedVideo->consumedPts);
           captured = true;
         }
         need(eglSwapBuffers(egl.display, egl.surface), "swap failed");

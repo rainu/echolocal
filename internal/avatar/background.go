@@ -23,7 +23,7 @@ func ValidateBackgroundPath(v string) error {
 		return nil
 	}
 	ext := strings.ToLower(path.Ext(v))
-	if len(v) > 255 || !utf8.ValidString(v) || !strings.HasPrefix(v, "/") || strings.ContainsAny(v, "\x00\\") || (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".apng") {
+	if len(v) > 255 || !utf8.ValidString(v) || !strings.HasPrefix(v, "/") || strings.ContainsAny(v, "\x00\\") || (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".apng" && ext != ".mp4") {
 		return errors.New("background_invalid")
 	}
 	for _, part := range strings.Split(v, "/") {
@@ -51,12 +51,21 @@ func ValidateBackground(v string) error {
 	if v == "" {
 		return nil
 	}
+	if isBackgroundVideo(v) {
+		p, release, e := resolveBackgroundVideo("/", os.TempDir(), v)
+		_ = p
+		defer release()
+		return e
+	}
 	_, e := readScene("/", v)
 	return e
 }
 
 // One immediately unlinked bounded RGBA snapshot per renderer lifetime.
 func ResolveBackground(root, dir, name string) (string, func(), error) {
+	if isBackgroundVideo(name) {
+		return resolveBackgroundVideo(root, dir, name)
+	}
 	scene, e := readScene(root, name)
 	if e != nil {
 		return "", func() {}, e

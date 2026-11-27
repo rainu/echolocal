@@ -563,3 +563,29 @@ pixel-format support, reliable alpha transport, GPU composition and visibility
 lifecycle on the actual device. No VP9/AV1/HEVC alpha hardware-decoder support,
 transparent-video performance or server-side transcoding is promised or
 claimed tested here.
+
+
+### Silent background video (MP4)
+
+The existing `background` and `fullscreen_background` selections also accept local
+`.mp4` files. Both Avatar Lab and Talk use the same background renderer, centered
+cover/crop and independent split/fullscreen selections. PNG/JPEG/WebP and all
+foreground image behavior remain unchanged. **Foreground video is rejected.**
+
+Supported video: MP4 containing one H.264 video track, 8-bit YUV420, square pixels,
+no rotation, at most 1280×720, 30 fps, 120 seconds and 64 MiB encoded. Audio tracks
+are discarded without opening an audio decoder or connecting to any audio output.
+The clip loops indefinitely; a scene becoming visible restarts its video. Hidden
+or inactive-mode video workers stop and release their decoding contexts. Playback
+uses bounded streaming software decoding via the existing FFmpeg 9.1 dependency,
+not a hardware-decoder promise or an all-frames-in-memory animation conversion.
+Only the current/pending RGBA pictures and bounded codec buffers are retained.
+
+A private unlinked encoded snapshot pins each selection at Start. Validation
+probes metadata and decodes the first picture through the same native decoder
+without opening graphics/audio. Bad selections preserve the previous setting.
+Damage discovered later disables only the background, leaving the avatar/Talk
+path alive with its default background. File paths and decoder output are not
+included in errors. No remote URLs, external data references or new network
+protocols are accepted. Upload with Files/WebDAV, select **Background image /
+video**, then Start again. Fullscreen has its own background selection.

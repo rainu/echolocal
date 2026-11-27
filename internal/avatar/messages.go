@@ -3,6 +3,10 @@ package avatar
 // Text covers all UI languages supported by EchoLocal. Error text never includes
 // model contents, arbitrary process output, or a potentially sensitive path.
 func Text(lang, key string) string {
+	if key == "background_video_unsupported" || key == "foreground_video_unsupported" {
+		return videoHelp(lang)
+	}
+
 	if key == "background_unsupported" || key == "foreground_unsupported" ||
 		key == "background_animation_limit" || key == "foreground_animation_limit" {
 		return sceneHelp(lang)
@@ -36,7 +40,7 @@ func Text(lang, key string) string {
 	}
 	if v := backgroundWords[lang][key]; v != "" {
 		if key == "background_help" || key == "background_invalid" {
-			return v + " " + sceneHelp(lang)
+			return v + " " + sceneHelp(lang) + " " + videoHelp(lang)
 		}
 		return v
 	}
@@ -82,7 +86,7 @@ var presentationWords = map[string]map[string]string{
 
 var backgroundWords = map[string]map[string]string{
 	"en": {
-		"background":             "Background image",
+		"background":             "Background image / video",
 		"background_help":        "Upload a PNG or JPEG using Files or WebDAV and enter its full path on the Echo, not this computer. Maximum 8 MiB, 4096 pixels per side and 4 megapixels decoded. Centered cover: preserve aspect ratio, crop edges to fill the avatar panel. Transparent pixels show the default. Applied on next Start; framing is unchanged.",
 		"background_reset":       "Restore default background",
 		"background_example":     "/data/local/tmp/background.png",
@@ -94,7 +98,7 @@ var backgroundWords = map[string]map[string]string{
 		"background_storage":     "Cannot prepare background. Free device storage and retry. The default background is used.",
 	},
 	"de": {
-		"background":             "Hintergrundbild",
+		"background":             "Hintergrundbild / Video",
 		"background_help":        "PNG oder JPEG über Dateien oder WebDAV hochladen und den vollständigen Pfad auf dem Echo eingeben, nicht auf diesem Computer. Maximal 8 MiB, 4096 Pixel je Seite und 4 Megapixel dekodiert. Zentriert füllend: Seitenverhältnis bleibt erhalten, Ränder werden zugeschnitten. Transparente Pixel zeigen den Standard. Gilt beim nächsten Start; die Platzierung bleibt unverändert.",
 		"background_reset":       "Standardhintergrund wiederherstellen",
 		"background_example":     "/data/local/tmp/hintergrund.png",
@@ -246,5 +250,19 @@ func sceneHelp(lang string) string {
 		return "Cũng hỗ trợ WebP (tĩnh/động): tối đa 1024 pixel mỗi cạnh, 120 khung hình, 32 MiB giải mã, 30 giây mỗi vòng; 40–10000 ms mỗi khung hình. Giữ alpha và số vòng lặp. Không hỗ trợ APNG, GIF và video."
 	default:
 		return "Also WebP (static/animated): up to 1024 pixels per side, 120 frames, 32 MiB decoded, 30 s per loop; 40–10000 ms per frame. Alpha and loop count preserved. APNG, GIF and video are unsupported."
+	}
+}
+
+// Video is intentionally background-only; alpha video is not advertised.
+func videoHelp(lang string) string {
+	switch lang {
+	case "de":
+		return "Nur Hintergrund: lokales MP4/H.264, 8-Bit-YUV420, quadratische Pixel, keine Rotation; bis 64 MiB, 1280×720, 30 fps und 120 s. Endlosschleife ohne Ton. Softwaredecoder; kein Vordergrundvideo."
+	case "it":
+		return "Solo sfondo: MP4/H.264 locale, YUV420 a 8 bit, pixel quadrati, senza rotazione; massimo 64 MiB, 1280×720, 30 fps e 120 s. Ciclo continuo senza audio. Decoder software; video in primo piano non supportato."
+	case "vi":
+		return "Chỉ nền: MP4/H.264 cục bộ, YUV420 8 bit, pixel vuông, không xoay; tối đa 64 MiB, 1280×720, 30 fps và 120 giây. Lặp vô hạn, không âm thanh. Giải mã phần mềm; không hỗ trợ video tiền cảnh."
+	default:
+		return "Background only: local MP4/H.264, 8-bit YUV420, square pixels, no rotation; up to 64 MiB, 1280×720, 30 fps and 120 s. Silent infinite loop. Software decoding; foreground video is not supported."
 	}
 }

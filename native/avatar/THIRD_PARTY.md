@@ -124,3 +124,15 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+## FFmpeg 9.1 — background video
+
+The helper links the same LGPL-2.1-or-later FFmpeg build already used by the
+isolated media decoder. Source URL, checksum, complete configure flags and build
+recipe: `../legacy/build.sh`; license/notice: `../legacy/NOTICE` and the staged
+FFmpeg license. GPL, nonfree, version3 and network support remain disabled.
+EchoLocal's combined executable is distributed under AGPL-3.0. The
+background path uses only the MP4 demuxer, H.264 decoder and swscale, never an
+audio decoder/output. Corresponding source includes `video.hpp` and the linked
+FFmpeg source/build recipe; do not distribute the helper without those notices.

@@ -407,7 +407,7 @@ help: ## Display this help
 
 ##@ Avatar
 .PHONY: build-avatar stage-avatar test-avatar
-build-avatar: ## Build the Athena/API-28 native avatar helper
+build-avatar: stage-legacy ## Build the Athena/API-28 native avatar helper
 	$(MAKE) -C native/avatar NDK="$(NDK)" NDK_HOST="$(NDK_HOST)" OUT="$(abspath $(BUILD_DIR))/avatar"
 stage-avatar: build-avatar ## Include helper and licenses in the Athena daemon payload
 	@mkdir -p $(PARTS_DIR)
