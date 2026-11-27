@@ -379,3 +379,80 @@ func TestSessionMuteKeepsBidirectionalTransportAndSameSession(t *testing.T) {
 		t.Fatal("hangup did not close once")
 	}
 }
+
+type readinessDrainDevice struct {
+	fakeDevice
+	entered, release chan struct{}
+}
+
+func (d *readinessDrainDevice) ReadyTone(ctx context.Context) error {
+	close(d.entered)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-d.release:
+		d.readyTones.Add(1)
+		return nil
+	}
+}
+func TestReadinessCueDoesNotRunForAlreadyFailedProvider(t *testing.T) {
+	d := &fakeDevice{}
+	s := NewSession(nil, "agent:synthetic:target", d)
+	s.fail("talk_peer_failed")
+	if s.playReadyTone(context.Background()) == nil || d.readyTones.Load() != 0 {
+		t.Fatal("failed transport announced ready")
+	}
+}
+func TestReadinessDrainIsCancelledWhenProviderFails(t *testing.T) {
+	d := &readinessDrainDevice{entered: make(chan struct{}), release: make(chan struct{})}
+	s := NewSession(nil, "agent:synthetic:target", d)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- s.playReadyTone(ctx) }()
+	<-d.entered
+	s.fail("talk_peer_failed")
+	select {
+	case err := <-done:
+		if err == nil || d.readyTones.Load() != 0 {
+			t.Fatal("failed provider completed readiness")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("failed provider did not cancel cue")
+	}
+}
+
+func TestSessionRealWebRTCFailureDuringReadinessNeverOpensGate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	d := &readinessDrainDevice{fakeDevice: fakeDevice{frames: make(chan []int16)}, entered: make(chan struct{}), release: make(chan struct{})}
+	peer, err := rtc.NewAudioOnly(rtc.Media{Audio: &fakeDevice{frames: make(chan []int16)}}, nil)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	control := &fakeControl{event: make(chan connection.TalkEvent, 8), peer: peer, capable: true}
+	s := NewSession(control, "agent:synthetic:target", d)
+	s.nativeMedia = false
+	defer func() { cancel(); s.Close(); peer.Close() }()
+	done := make(chan error, 1)
+	go func() { done <- s.Open(ctx) }()
+	select {
+	case <-d.entered:
+	case <-ctx.Done():
+		t.Fatal("session never reached readiness")
+	}
+	wire, _ := json.Marshal(map[string]any{"voiceSessionId": s.id, "talkEvent": map[string]any{"type": "session.closed"}})
+	event, ok := connection.DecodeTalkEvent(wire)
+	if !ok {
+		t.Fatal("wire event rejected")
+	}
+	control.event <- event
+	select {
+	case err := <-done:
+		if err == nil || d.readyTones.Load() != 0 {
+			t.Fatal("failed provider announced/opened readiness")
+		}
+	case <-ctx.Done():
+		t.Fatal("provider close did not cancel readiness")
+	}
+}

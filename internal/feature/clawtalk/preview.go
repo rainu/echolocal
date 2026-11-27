@@ -24,7 +24,11 @@ func tonePCM(choice, cue string) []int16 {
 	if cue == "end" {
 		notes = DefaultNotes(true)
 	}
-	return mix.Chime(speaker.Rate, speaker.Channels, tone.Level, notes...)
+	pcm := mix.Chime(speaker.Rate, speaker.Channels, tone.Level, notes...)
+	if cue == "recovery-progress" {
+		return mix.Scale(pcm, 0.45)
+	}
+	return pcm
 }
 
 // PreviewAudio provides owner-authenticated browser audition, without device playback,

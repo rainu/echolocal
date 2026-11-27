@@ -15,6 +15,13 @@ import (
 
 func talkCommands(t *harness.Tree) {
 	root := &cobra.Command{Use: "talk", Short: "Bounded Talk lifecycle diagnostics"}
+	root.AddCommand(&cobra.Command{Use: "test-provider-error", Hidden: true, Args: cobra.NoArgs,
+		Short: "Diagnostic: simulate a fixed native provider server error",
+		RunE:  func(cmd *cobra.Command, _ []string) error { return clawtalk.Get().InterruptNativeProvider() }})
+
+	root.AddCommand(&cobra.Command{Use: "test-disconnect", Hidden: true, Args: cobra.NoArgs,
+		Short: "Diagnostic: interrupt only the current Talk voice transport",
+		RunE:  func(cmd *cobra.Command, _ []string) error { return clawtalk.Get().InterruptTransport() }})
 	root.AddCommand(&cobra.Command{Use: "show", Args: cobra.NoArgs, Short: "Show current or last Talk without starting capture", Run: func(cmd *cobra.Command, _ []string) {
 		clawtalk.Get().Show()
 		fmt.Fprintln(cmd.OutOrStdout(), "shown without starting capture")

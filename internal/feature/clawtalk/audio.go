@@ -22,7 +22,10 @@ import (
 type deviceAudio struct {
 	startTone, endTone               string
 	feedback                         *setupFeedback
+	recoveryNotice                   *recoveryFeedback
 	ready                            atomic.Bool
+	silentClose                      atomic.Bool
+	recovering                       bool
 	lastCaptureMS                    atomic.Int64
 	playMu                           sync.Mutex
 	playout                          talk.PlayoutBuffer
@@ -44,6 +47,7 @@ type deviceAudio struct {
 	onPlay                             func()
 	onMute                             func(bool)
 	inputMuted                         atomic.Bool
+	hardwareMuted                      atomic.Bool
 }
 
 func newAudio(parent context.Context, onMute func(bool)) *deviceAudio {
@@ -60,6 +64,10 @@ func (a *deviceAudio) Start(ctx context.Context) error {
 	muted, e := mute.Get().Muted()
 	if e != nil {
 		return errors.New("talk_muted")
+	}
+	a.hardwareMuted.Store(muted)
+	if a.recovering {
+		muted = muted || a.inputMuted.Load()
 	}
 	a.inputMuted.Store(muted)
 	if a.onMute != nil {
@@ -93,10 +101,10 @@ func (a *deviceAudio) pump() {
 		muted: func() bool {
 			muted, err := mute.Get().Muted()
 			on := err != nil || muted // Unknown hardware state is fail-closed.
-			if a.inputMuted.Swap(on) != on && a.onMute != nil {
+			if a.hardwareMuted.Swap(on) != on && a.onMute != nil {
 				a.onMute(on)
 			}
-			return on
+			return on || a.inputMuted.Load()
 		},
 		ready: func() bool {
 			return a.ready.Load() && !speaker.Get().Heard(config.StreamFeedback, 250*time.Millisecond)
@@ -200,6 +208,21 @@ func playTalkTone(choice string, end bool) {
 	speaker.Sound().Sound(config.StreamFeedback, tone.Level, tones.Get().Sound(schema.Chime(choice), schema.ChimeChirp))
 }
 func (a *deviceAudio) ReadyTone(ctx context.Context) error {
+	if a.recovering {
+		muted := func() bool { return a.inputMuted.Load() || a.hardwareMuted.Load() }
+		if a.recoveryNotice == nil || !a.recoveryNotice.Ready(ctx, muted) {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errors.New("talk_feedback_unavailable")
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		a.ready.Store(true)
+		slog.Info("talk recovery capture gate opened", "muted", muted())
+		return nil
+	}
 	if a.feedback != nil {
 		if a.feedback.Ready(ctx) {
 			a.ready.Store(true)
@@ -230,7 +253,7 @@ func (a *deviceAudio) Close() error {
 		case <-time.After(time.Second):
 		}
 		a.StopOutput()
-		if a.ready.Load() {
+		if a.ready.Load() && !a.silentClose.Load() {
 			playTalkTone(a.endTone, true)
 		}
 	})

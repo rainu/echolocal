@@ -25,10 +25,13 @@ type setupFeedback struct {
 }
 
 func beginFeedback(ctx context.Context, sink feedbackSink, interval time.Duration) *setupFeedback {
+	return beginFeedbackCue(ctx, sink, interval, "ack")
+}
+func beginFeedbackCue(ctx context.Context, sink feedbackSink, interval time.Duration, first string) *setupFeedback {
 	loop, cancel := context.WithCancel(ctx)
 	f := &setupFeedback{sink: sink, cancel: cancel, done: make(chan struct{})}
-	// Acknowledgment precedes any network work.
-	sink.Cue("ack")
+	// The first cue precedes the associated connection work.
+	sink.Cue(first)
 	go func() {
 		defer close(f.done)
 		progress := false
@@ -65,12 +68,21 @@ func (f *setupFeedback) Stop() {
 	f.stop.Do(func() { f.cancel(); <-f.done })
 }
 func (f *setupFeedback) Ready(ctx context.Context) bool {
+	return f.ReadyWhen(ctx, nil)
+}
+func (f *setupFeedback) ReadyWhen(ctx context.Context, audible func() bool) bool {
 	f.Stop()
 	if ctx.Err() != nil || !f.sink.Wait(ctx) || ctx.Err() != nil {
 		return false
 	}
-	f.sink.Cue("ready")
-	if !f.sink.Wait(ctx) {
+	if audible == nil || audible() {
+		f.sink.Cue("ready")
+		if !f.sink.Wait(ctx) || ctx.Err() != nil {
+			f.sink.Clear()
+			return false
+		}
+	}
+	if ctx.Err() != nil {
 		f.sink.Clear()
 		return false
 	}

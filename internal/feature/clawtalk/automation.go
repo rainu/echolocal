@@ -197,6 +197,7 @@ func (m *Manager) StartAutomation(ctx context.Context, sessionID, prompt string,
 	m.mu.Lock()
 	m.captions.Begin(generation)
 	m.lastBackend, m.lastAudio, m.avatarRenderer = nil, nil, nil
+	m.recovery = nil
 	m.error, m.forcedMuted = false, false
 	m.mu.Unlock()
 	launch := &automationLaunch{bound: bound, result: make(chan error, 1)}
