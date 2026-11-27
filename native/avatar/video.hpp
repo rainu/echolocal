@@ -26,7 +26,7 @@ extern "C" {
 struct VideoDecoder {
  FILE *file=nullptr; AVFormatContext *format=nullptr; AVIOContext *io=nullptr;
  AVCodecContext *codec=nullptr; AVPacket *packet=nullptr; AVFrame *frame=nullptr;
- SwsContext *scale=nullptr; int stream=-1,width=0,height=0; int64_t size=0;
+ SwsContext *scale=nullptr; int stream=-1,width=0,height=0,sourceWidth=0,sourceHeight=0; int64_t size=0;
  double duration=0, first=-1, previous=-1; bool draining=false;
  std::atomic<bool> *cancel=nullptr;
  std::chrono::steady_clock::time_point deadline;
@@ -53,8 +53,9 @@ struct VideoDecoder {
   }
   check(stream>=0);AVStream *s=format->streams[stream];auto *p=s->codecpar;
   check(p->codec_id==AV_CODEC_ID_H264 && p->width>0 && p->height>0 && p->width<=1280 && p->height<=800);
-  check(s->sample_aspect_ratio.num==0 || s->sample_aspect_ratio.num==s->sample_aspect_ratio.den);
-  check(p->sample_aspect_ratio.num==0 || p->sample_aspect_ratio.num==p->sample_aspect_ratio.den);
+  AVRational sar=av_guess_sample_aspect_ratio(format,s,nullptr);
+  const double pixelAspect=sar.num>0 && sar.den>0?av_q2d(sar):1.;
+  check(std::isfinite(pixelAspect) && pixelAspect>=.125 && pixelAspect<=8.);
   for(int i=0;i<p->nb_coded_side_data;i++)if(p->coded_side_data[i].type==AV_PKT_DATA_DISPLAYMATRIX){
    check(p->coded_side_data[i].size>=9*sizeof(int32_t));
    check(std::abs(av_display_rotation_get(reinterpret_cast<int32_t*>(p->coded_side_data[i].data)))<.01);
@@ -65,7 +66,13 @@ struct VideoDecoder {
   codec=avcodec_alloc_context3(avcodec_find_decoder(AV_CODEC_ID_H264));check(codec);
   check(avcodec_parameters_to_context(codec,p)>=0);codec->thread_count=2;codec->max_pixels=1280*800;
   codec->err_recognition=AV_EF_EXPLODE;check(avcodec_open2(codec,avcodec_find_decoder(AV_CODEC_ID_H264),nullptr)>=0);
-  width=p->width;height=p->height;s->discard=AVDISCARD_DEFAULT;
+  sourceWidth=p->width;sourceHeight=p->height;
+  // Normalize non-square pixels into a bounded square-pixel texture, without
+  // upscaling beyond the encoded dimensions or changing the display aspect.
+  width=sourceWidth;height=sourceHeight;
+  if(pixelAspect>=1.)height=std::max(1,int(std::lround(height/pixelAspect)));
+  else width=std::max(1,int(std::lround(width*pixelAspect)));
+  s->discard=AVDISCARD_DEFAULT;
   packet=av_packet_alloc();frame=av_frame_alloc();check(packet && frame);
  }
  // Decode only one bounded picture ahead. Audio packets are discarded unopened.
@@ -74,17 +81,17 @@ struct VideoDecoder {
   for(int count=0;count<512;count++){
    check(!interrupt(this));int result=avcodec_receive_frame(codec,frame);
    if(result>=0){
-    check(frame->width==width && frame->height==height && frame->format==AV_PIX_FMT_YUV420P && !(frame->flags&AV_FRAME_FLAG_CORRUPT));
+    check(frame->width==sourceWidth && frame->height==sourceHeight && frame->format==AV_PIX_FMT_YUV420P && !(frame->flags&AV_FRAME_FLAG_CORRUPT));
     check(frame->best_effort_timestamp!=AV_NOPTS_VALUE);
     double raw=frame->best_effort_timestamp*av_q2d(format->streams[stream]->time_base);
     if(first<0)first=raw;pts=raw-first;
     check(pts>=0 && pts<=duration+.05 && (previous<0 || pts>previous));previous=pts;
-    scale=sws_getCachedContext(scale,width,height,static_cast<AVPixelFormat>(frame->format),width,height,AV_PIX_FMT_RGBA,SWS_BILINEAR,nullptr,nullptr,nullptr);check(scale);
+    scale=sws_getCachedContext(scale,sourceWidth,sourceHeight,static_cast<AVPixelFormat>(frame->format),width,height,AV_PIX_FMT_RGBA,SWS_BILINEAR,nullptr,nullptr,nullptr);check(scale);
     // Respect H.264 limited/full range and the stream's color matrix.
     int colors=frame->colorspace==AVCOL_SPC_BT709?SWS_CS_ITU709:SWS_CS_ITU601;
     const int *coeff=sws_getCoefficients(colors);sws_setColorspaceDetails(scale,coeff,frame->color_range==AVCOL_RANGE_JPEG,coeff,1,0,1<<16,1<<16);
     pixels.resize(size_t(width)*height*4);uint8_t *out[4]={pixels.data()};int lines[4]={width*4};
-    check(sws_scale(scale,frame->data,frame->linesize,0,height,out,lines)==height);av_frame_unref(frame);return true;
+    check(sws_scale(scale,frame->data,frame->linesize,0,sourceHeight,out,lines)==height);av_frame_unref(frame);return true;
    }
    if(result==AVERROR_EOF)return false;
    check(result==AVERROR(EAGAIN) && !draining);

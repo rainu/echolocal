@@ -572,7 +572,7 @@ The existing `background` and `fullscreen_background` selections also accept loc
 cover/crop and independent split/fullscreen selections. PNG/JPEG/WebP and all
 foreground image behavior remain unchanged. **Foreground video is rejected.**
 
-Supported video: MP4 containing one H.264 video track, 8-bit YUV420, square pixels,
+Supported video: MP4 containing one H.264 video track, 8-bit YUV420,
 no rotation, at most 1280×800, 30 fps, 120 seconds and 64 MiB encoded. Audio tracks
 are discarded without opening an audio decoder or connecting to any audio output.
 The clip loops indefinitely; a scene becoming visible restarts its video. Hidden
@@ -589,3 +589,9 @@ path alive with its default background. File paths and decoder output are not
 included in errors. No remote URLs, external data references or new network
 protocols are accepted. Upload with Files/WebDAV, select **Background image /
 video**, then Start again. Fullscreen has its own background selection.
+
+Non-square pixels are normalized to a bounded square-pixel RGBA texture before
+applying the usual centered-cover rules. For example, 1280×800 encoded at pixel
+aspect 10:9 becomes a 1280×720 texture (16:9 display aspect), not a vertically
+stretched 16:10 picture. The source-resolution limits still apply before decode;
+this normalization does not upscale or allocate an unbounded display canvas.
