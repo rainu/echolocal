@@ -871,7 +871,7 @@ void main(){vec4 c=color;if(textured==1)c*=texture(image,texcoord);if(c.a<cutoff
 struct Background {
  GLuint texture=0, prog=0, vao=0;
  int width=0,height=0;
- explicit Background(const char *name, const char *error = "AVATAR_BACKGROUND_ERROR") {
+ explicit Background(const char *name, const char *error = "AVATAR_BACKGROUND_ERROR", bool premultiply=false) {
   if (!name) return;
   FILE *f=fopen(name,"rb");
   if (!f) {puts(error);return;}
@@ -884,6 +884,7 @@ struct Background {
   if(ok){pixels.resize(size_t(width)*height*4);ok=fread(pixels.data(),1,pixels.size(),f)==pixels.size() && fgetc(f)==EOF;}
   fclose(f);
   if(!ok){puts(error);return;}
+  if(premultiply)avatarPremultiply(pixels.data(),pixels.size());
   const char *vs=R"(#version 300 es
 precision highp float;
 out vec2 uv;
@@ -912,7 +913,7 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
   glUniform2f(glGetUniformLocation(prog,"crop"),cx,cy);
   glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glDisable(GL_CULL_FACE);
   glEnable(GL_BLEND);
-  if(canvas)glBlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
+  if(canvas)glBlendFuncSeparate(GL_ONE,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
   else glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
   glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);glBindVertexArray(vao);
   glDrawArrays(GL_TRIANGLES,0,3);
@@ -1209,7 +1210,7 @@ int main(int argc, char **argv) {
       double motionTime=0, motionPrevious=now(); bool motionOverride=false;
       stage = "gpu_failed";
       Background backdrop(background), fullBackdrop(fullBackground);
-      Background front(foreground,"AVATAR_FOREGROUND_ERROR"), fullFront(fullForeground,"AVATAR_FOREGROUND_ERROR");
+      Background front(foreground,"AVATAR_FOREGROUND_ERROR",true), fullFront(fullForeground,"AVATAR_FOREGROUND_ERROR",true);
       ControlCutouts cutouts;
  PoseOverlay poseOverlay;
       GLuint prog = program();

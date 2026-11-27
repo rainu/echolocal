@@ -478,7 +478,7 @@ Start; a conversation freezes both compositions until its renderer restarts.
 Rendering order is background → avatar → foreground → editing/accessible
 controls. The existing bounded image decoder, descriptor-backed RGBA snapshots,
 texture upload and centered-cover shader are shared by both image layers.
-Foreground alpha uses straight RGB with source-over blending; transparent pixels
+Foreground snapshots carry straight RGB, premultiplied once before GPU filtering\nto avoid dark cutout fringes, then composited with source-over blending; transparent pixels
 reveal the scene, and partial alpha blends without making the native surface
 itself translucent over the application.
 

@@ -169,5 +169,9 @@ int main() {
       assert(std::abs(crop[0]/crop[1]-float(panel[0])*canvas[1]/(panel[1]*canvas[0]))<.00001);
     }
   }
+  unsigned char alphaPixels[]={240,24,48,128,96,48,24,255,255,255,255,0};
+  avatarPremultiply(alphaPixels,sizeof(alphaPixels));
+  const unsigned char expected[]={120,12,24,128,96,48,24,255,0,0,0,0};
+  assert(memcmp(alphaPixels,expected,sizeof(expected))==0);
   puts("CONTROL_TEST=PASS");
 }

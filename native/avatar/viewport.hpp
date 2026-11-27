@@ -57,3 +57,11 @@ static float avatarSceneScale(int iw,int ih,int w,int h,bool full) {
  const float cover=std::max(float(w)/iw,float(h)/ih);
  return cover*std::min(iw,ih)/(full?std::min(w,h):w);
 }
+
+
+// Premultiply once before GPU filtering, not after interpolating straight RGB.
+// This prevents dark fringes where a cutout meets fully transparent texels.
+static void avatarPremultiply(unsigned char *pixels, size_t count) {
+ for(size_t i=0;i+3<count;i+=4)
+  for(int c=0;c<3;c++)pixels[i+c]=(unsigned(pixels[i+c])*pixels[i+3]+127)/255;
+}
