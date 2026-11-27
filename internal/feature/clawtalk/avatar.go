@@ -95,9 +95,10 @@ func (m *Manager) standalonePage() sharedshell.View {
 	}
 	c := avatar.New(layout.AvatarDir, nil, func() bool { return false }, shellfeature.Get().Redraw)
 	c.SetSource(func() string { return config.AvatarSection.Read().Path })
-	c.SetBackground(func() string { return config.AvatarSection.Read().Background })
 	saved := config.AvatarSection.Read()
+	c.SetBackground(func() string { return saved.Background })
 	c.EnableTalkLayout(func() string { return saved.FullscreenBackground })
+	c.SetForeground(func() string { return saved.Foreground }, func() string { return saved.FullscreenForeground })
 	full := saved.Mode() == "fullscreen"
 	c.SetTalkMode(full)
 	c.Configure(avatarlab.Options(saved.Composition(full)))

@@ -13,6 +13,8 @@ import (
 
 var coverage = settingtest.Shared.With(settingtest.Coverage{
 	Rows: map[string]string{
+		"Avatar.Foreground":           "avatar.foreground",
+		"Avatar.FullscreenForeground": "avatar.fullscreen_foreground",
 		"Avatar.TalkMode":             "avatar.talk_mode",
 		"Avatar.FullscreenBackground": "avatar.fullscreen_background",
 		"Avatar.FullscreenZoom":       "avatar.fullscreen_zoom",

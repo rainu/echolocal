@@ -871,10 +871,10 @@ void main(){vec4 c=color;if(textured==1)c*=texture(image,texcoord);if(c.a<cutoff
 struct Background {
  GLuint texture=0, prog=0, vao=0;
  int width=0,height=0;
- explicit Background(const char *name) {
+ explicit Background(const char *name, const char *error = "AVATAR_BACKGROUND_ERROR", bool premultiply=false) {
   if (!name) return;
   FILE *f=fopen(name,"rb");
-  if (!f) {puts("AVATAR_BACKGROUND_ERROR");return;}
+  if (!f) {puts(error);return;}
   unsigned char header[12];
   bool ok=fread(header,1,12,f)==12 && memcmp(header,"BG01",4)==0;
   auto u32=[](const unsigned char *b)->uint32_t{return uint32_t(b[0]) | (uint32_t(b[1])<<8) | (uint32_t(b[2])<<16) | (uint32_t(b[3])<<24);};
@@ -883,7 +883,8 @@ struct Background {
   std::vector<unsigned char> pixels;
   if(ok){pixels.resize(size_t(width)*height*4);ok=fread(pixels.data(),1,pixels.size(),f)==pixels.size() && fgetc(f)==EOF;}
   fclose(f);
-  if(!ok){puts("AVATAR_BACKGROUND_ERROR");return;}
+  if(!ok){puts(error);return;}
+  if(premultiply)avatarPremultiply(pixels.data(),pixels.size());
   const char *vs=R"(#version 300 es
 precision highp float;
 out vec2 uv;
@@ -902,16 +903,18 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
   glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
   glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,width,height,0,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
-  if(glGetError()!=GL_NO_ERROR){glDeleteTextures(1,&texture);texture=0;puts("AVATAR_BACKGROUND_ERROR");}
+  if(glGetError()!=GL_NO_ERROR){glDeleteTextures(1,&texture);texture=0;puts(error);}
  }
- void draw(int w,int h) {
+ void draw(int w,int h, const Background *canvas=nullptr) {
   if(!texture)return;
-  float imageAspect=float(width)/height,viewAspect=float(w)/h;
-  float cx=1,cy=1;if(imageAspect>viewAspect)cx=viewAspect/imageAspect;else cy=imageAspect/viewAspect;
+  auto crop=avatarImageCrop(canvas && canvas->texture?canvas->width:width,canvas && canvas->texture?canvas->height:height,w,h);
+  float cx=crop[0],cy=crop[1];
   glUseProgram(prog);glUniform1i(glGetUniformLocation(prog,"image"),0);
   glUniform2f(glGetUniformLocation(prog,"crop"),cx,cy);
   glDisable(GL_DEPTH_TEST);glDepthMask(GL_FALSE);glDisable(GL_CULL_FACE);
-  glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+  glEnable(GL_BLEND);
+  if(canvas)glBlendFuncSeparate(GL_ONE,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
+  else glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
   glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);glBindVertexArray(vao);
   glDrawArrays(GL_TRIANGLES,0,3);
   glDisable(GL_BLEND);glDepthMask(GL_TRUE);glEnable(GL_DEPTH_TEST);
@@ -1140,7 +1143,7 @@ int main(int argc, char **argv) {
     double seconds = 5;
     bool show = false, idle = true, demoMouth = false, appMode = false, talkLayout = false, fullscreen = false;
     float fixedMouth = -1;
-    const char *out = nullptr, *wav = nullptr, *animation = nullptr, *background = nullptr, *fullBackground = nullptr;
+    const char *out = nullptr, *wav = nullptr, *animation = nullptr, *background = nullptr, *fullBackground = nullptr, *foreground = nullptr, *fullForeground = nullptr;
     for (int i = 2; i < argc; i++) {
       std::string a = argv[i];
       if (a == "--talk-layout")
@@ -1169,6 +1172,10 @@ int main(int argc, char **argv) {
           wav = argv[++i];
         else if (a == "--fullscreen-background")
           fullBackground = argv[++i];
+        else if (a == "--foreground")
+          foreground = argv[++i];
+        else if (a == "--fullscreen-foreground")
+          fullForeground = argv[++i];
         else if (a == "--background")
           background = argv[++i];
         else if (a == "--animation")
@@ -1203,6 +1210,7 @@ int main(int argc, char **argv) {
       double motionTime=0, motionPrevious=now(); bool motionOverride=false;
       stage = "gpu_failed";
       Background backdrop(background), fullBackdrop(fullBackground);
+      Background front(foreground,"AVATAR_FOREGROUND_ERROR",true), fullFront(fullForeground,"AVATAR_FOREGROUND_ERROR",true);
       ControlCutouts cutouts;
  PoseOverlay poseOverlay;
       GLuint prog = program();
@@ -1311,11 +1319,14 @@ int main(int argc, char **argv) {
         const bool full = talkLayout && controls.fullscreen;
         const int viewX=talkLayout && !full?w/2:0, viewW=w-viewX;
         glViewport(viewX,0,viewW,h);
+        const Background &sceneFront=full?fullFront:front, &sceneBack=full?fullBackdrop:backdrop;
+        const Background &canvas=sceneBack.texture?sceneBack:sceneFront;
+        const float sceneScale=sceneFront.texture?avatarSceneScale(canvas.width,canvas.height,viewW,h,full):1;
         M view =
             avatarFraming(mul(vp, avatarOrbit(appMode ? controls.yaw : 0,
                               appMode ? controls.pitch * (scene.legacy ? -1 : 1) : 0,
                               (lo[0] + hi[0]) * .5f, (lo[1] + hi[1]) * .5f,
-                              (lo[2] + hi[2]) * .5f)), appMode ? controls.zoom : 1, appMode ? controls.panX : 0, appMode ? controls.panY : 0,viewW,h,full);
+                              (lo[2] + hi[2]) * .5f)), (appMode ? controls.zoom : 1)*sceneScale, (appMode ? controls.panX : 0)*sceneScale, (appMode ? controls.panY : 0)*sceneScale,viewW,h,full);
         // Overlay drawing binds its own shader; restore the model program before updating its uniforms.
         glUseProgram(prog);
         glUniformMatrix4fv(glGetUniformLocation(prog, "vp"), 1, GL_FALSE,
@@ -1426,6 +1437,7 @@ int main(int argc, char **argv) {
                            nullptr);
           }
         }
+        (full?fullFront:front).draw(viewW,h,&(full?fullBackdrop:backdrop));
         glDepthMask(GL_TRUE);
         glDisable(GL_SCISSOR_TEST);
         if(appMode && controls.poseEdit)poseOverlay.draw(scene,view,controls.selected,w,h);

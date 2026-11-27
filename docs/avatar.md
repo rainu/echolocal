@@ -463,3 +463,39 @@ replace the prior native clip; Play is disabled until a valid selection.
 The new selection is transient and confined to the ordinary Lab workspace.
 The conversation-layout **Preview** continues to show the saved Talk animation,
 not the Lab clip. Live Talk and saved motion switches are unchanged.
+
+
+## Foreground scene layers
+
+Avatar Lab's **Foreground image** picker selects an optional PNG (including
+partial alpha) or JPEG independently of the model and background. Clear removes
+only that layer. Fullscreen has its own foreground selection, alongside its
+existing independent background and framing. The owner settings API and granted
+Node settings expose `avatar.foreground` and `avatar.fullscreen_foreground`.
+All selections survive an application restart and apply at the next renderer
+Start; a conversation freezes both compositions until its renderer restarts.
+
+Rendering order is background → avatar → foreground → editing/accessible
+controls. The existing bounded image decoder, descriptor-backed RGBA snapshots,
+texture upload and centered-cover shader are shared by both image layers.
+Foreground snapshots carry straight RGB, premultiplied once before GPU filtering\nto avoid dark cutout fringes, then composited with source-over blending; transparent pixels
+reveal the scene, and partial alpha blends without making the native surface
+itself translucent over the application.
+
+**Registration:** author a background and cutout on the same canvas proportions
+(and preferably the same pixel dimensions). A different foreground resolution
+is normalized to the background canvas, not independently cropped. Without a
+background, the foreground defines the canvas. With a foreground selected, the
+square Lab composition is centered-covered as one scene: the images, avatar zoom
+and avatar translation scale together when the panel aspect changes. Tall split
+views and wide fullscreen views may crop different edges but image landmarks and
+the avatar remain registered. Stored framing is never rewritten. An opaque
+foreground can intentionally obscure the model; use a PNG cutout for a desk.
+Without a valid foreground, legacy background/framing behavior is unchanged.
+
+Limits are shared with backgrounds: 8 MiB encoded, 4096 pixels per side,
+4 megapixels decoded, and a maximum 2048-pixel texture dimension. A missing,
+unreadable or invalid foreground is reported without stopping the avatar or
+discarding its background; invalid settings writes keep the previous selection.
+Layer snapshots/textures are created only at Start and released on Stop, not
+decoded or uploaded every frame.

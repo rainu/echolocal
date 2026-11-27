@@ -39,3 +39,29 @@ static std::array<float,16> avatarFraming(std::array<float,16> base,
  const float scale=fullscreen?avatarFullscreenZoom(1,w,h):1;
  return avatarViewportAspect(avatarPan(avatarZoom(base,zoom*scale),x*scale,y*scale),w,h);
 }
+
+
+// Both image layers sample the same normalized canvas. Foregrounds may have a
+// different pixel resolution; that never changes their registration/crop.
+static std::array<float,2> avatarImageCrop(int iw,int ih,int w,int h) {
+ const float image=float(iw)/ih,view=float(w)/h;
+ return image>view?std::array<float,2>{view/image,1}:std::array<float,2>{1,image/view};
+}
+
+
+// With a foreground configured, treat all three layers as one square-authored
+// scene, then centered-cover it as a unit. The legacy no-foreground framing is
+// untouched. Applying the factor to translation as well as zoom preserves the
+// model's registration with image landmarks in tall/split and wide/full views.
+static float avatarSceneScale(int iw,int ih,int w,int h,bool full) {
+ const float cover=std::max(float(w)/iw,float(h)/ih);
+ return cover*std::min(iw,ih)/(full?std::min(w,h):w);
+}
+
+
+// Premultiply once before GPU filtering, not after interpolating straight RGB.
+// This prevents dark fringes where a cutout meets fully transparent texels.
+static void avatarPremultiply(unsigned char *pixels, size_t count) {
+ for(size_t i=0;i+3<count;i+=4)
+  for(int c=0;c<3;c++)pixels[i+c]=(unsigned(pixels[i+c])*pixels[i+3]+127)/255;
+}

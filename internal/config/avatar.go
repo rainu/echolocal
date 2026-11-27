@@ -15,6 +15,7 @@ const (
 // Integer units are degrees and percent of the square rendering viewport.
 type Avatar struct {
 	TalkMode             string `json:"talk_mode,omitempty"`
+	FullscreenForeground string `json:"fullscreen_foreground,omitempty"`
 	FullscreenBackground string `json:"fullscreen_background,omitempty"`
 	FullscreenZoom       int    `json:"fullscreen_zoom,omitempty"`
 	FullscreenYaw        int    `json:"fullscreen_yaw,omitempty"`
@@ -27,6 +28,7 @@ type Avatar struct {
 	IdleDisabled      bool   `json:"idle_disabled,omitempty"`
 	BlinkDisabled     bool   `json:"blink_disabled,omitempty"`
 	AnimationDisabled bool   `json:"animation_disabled,omitempty"`
+	Foreground        string `json:"foreground,omitempty"`
 	Background        string `json:"background,omitempty"`
 	Path              string `json:"path"`
 	Zoom              int    `json:"zoom,omitempty"`
@@ -69,6 +71,7 @@ func (a Avatar) Mode() string {
 func (a Avatar) Composition(full bool) Avatar {
 	if full {
 		a.Background = a.FullscreenBackground
+		a.Foreground = a.FullscreenForeground
 		a.Zoom = a.FullscreenZoom
 		a.Yaw = a.FullscreenYaw
 		a.Pitch = a.FullscreenPitch

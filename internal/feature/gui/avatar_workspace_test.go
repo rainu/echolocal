@@ -36,7 +36,7 @@ func TestAvatarWorkspaceSectionsAndPinnedActions(t *testing.T) {
 				initial := avatarCaptionShape(t, root, "avatar-save")
 				saveY := initial.Y
 				expected := [][]string{
-					{"avatar-file", "avatar-background", "avatar-presentation"},
+					{"avatar-file", "avatar-background", "avatar-foreground", "avatar-presentation"},
 					{"avatar-rotate-left", "avatar-rotate-reset", "avatar-rotate-right"},
 					{"avatar-intensity-down", "avatar-intensity-up", "avatar-mouth-reset", "avatar-speech-preview", "vrm-idle", "vrm-blink", "vrm-animation"},
 					{"vrm-mouth-0", "vrm-mouth-1", "vrm-mouth-2", "vrm-mouth-3", "vrm-fixed-down", "vrm-fixed-up"},
