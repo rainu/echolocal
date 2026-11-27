@@ -22,5 +22,10 @@ int main(int argc,char **argv){
   video.update(false,picture);
   assert(video.revision>revision && video.latestPts<.2);
   printf("VIDEO_VISIBILITY_RESTART=PASS\n");
+  // Deliberately late output skips stale conversion, never slows the clock.
+  VideoDecoder late;late.open(argv[1]);
+  const double origin=VideoDecoder::clock()-.4;
+  assert(late.next(picture,pts,origin) && pts>=.32 && late.dropped>0);
+  printf("VIDEO_LATE_FRAME_CATCHUP=PASS\n");
  }catch(const std::exception &e){puts("VIDEO_TEST=FAIL");return 1;}
 }

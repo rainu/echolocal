@@ -93,8 +93,9 @@ audio decoder/output. `--probe-background FD_PATH` checks metadata and the first
 picture without a GPU, with 5-second parent timeout and CPU/address-space limits.
 
 Only a visible layer has a decoding worker. It streams/paces pictures by PTS,
-loops by seeking/flushing at the video track duration and drops stale pending
-pictures instead of queuing the full clip. Hiding joins the worker and releases
+loops by seeking/flushing at the video track duration and skips conversion /
+publication of pictures over 80 ms late instead of playing in slow motion or
+queuing the full clip. H.264 reference decoding stays intact. Hiding joins the worker and releases
 its codec context; showing recreates it from frame zero. All GPU calls stay on
 the render thread. Midstream errors disable only that layer. Foregrounds reject
 MP4 independently in both Go and native paths.

@@ -27,7 +27,7 @@ struct VideoDecoder {
  FILE *file=nullptr; AVFormatContext *format=nullptr; AVIOContext *io=nullptr;
  AVCodecContext *codec=nullptr; AVPacket *packet=nullptr; AVFrame *frame=nullptr;
  SwsContext *scale=nullptr; int stream=-1,width=0,height=0,sourceWidth=0,sourceHeight=0; int64_t size=0;
- double duration=0, first=-1, previous=-1; bool draining=false;
+ double duration=0, first=-1, previous=-1;size_t dropped=0; bool draining=false;
  std::atomic<bool> *cancel=nullptr;
  std::chrono::steady_clock::time_point deadline;
  static double clock(){return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();}
@@ -76,7 +76,7 @@ struct VideoDecoder {
   packet=av_packet_alloc();frame=av_frame_alloc();check(packet && frame);
  }
  // Decode only one bounded picture ahead. Audio packets are discarded unopened.
- bool next(std::vector<unsigned char> &pixels,double &pts){
+ bool next(std::vector<unsigned char> &pixels,double &pts,double realtimeOrigin=-1){
   limit();
   for(int count=0;count<512;count++){
    check(!interrupt(this));int result=avcodec_receive_frame(codec,frame);
@@ -86,6 +86,10 @@ struct VideoDecoder {
     double raw=frame->best_effort_timestamp*av_q2d(format->streams[stream]->time_base);
     if(first<0)first=raw;pts=raw-first;
     check(pts>=0 && pts<=duration+.05 && (previous<0 || pts>previous));previous=pts;
+    // A complex clip must not run in slow motion when decoding briefly falls
+    // behind. Preserve H.264 reference decoding, but skip stale conversion and
+    // publication so the next displayed picture catches up to the scene clock.
+    if(realtimeOrigin>=0 && clock()>realtimeOrigin+pts+.08){dropped++;av_frame_unref(frame);continue;}
     scale=sws_getCachedContext(scale,sourceWidth,sourceHeight,static_cast<AVPixelFormat>(frame->format),width,height,AV_PIX_FMT_RGBA,SWS_BILINEAR,nullptr,nullptr,nullptr);check(scale);
     // Respect H.264 limited/full range and the stream's color matrix.
     int colors=frame->colorspace==AVCOL_SPC_BT709?SWS_CS_ITU709:SWS_CS_ITU601;
@@ -113,7 +117,7 @@ struct VideoDecoder {
 struct BackgroundVideo {
  std::string name;int width=0,height=0;bool active=false;size_t consumed=0;
  std::atomic<bool> stop{false};std::thread worker;std::mutex mutex;std::condition_variable wake;
- std::vector<unsigned char> latest;size_t revision=0;bool failed=false;double latestPts=0,consumedPts=0;
+ std::vector<unsigned char> latest;size_t revision=0,skipped=0;bool failed=false;double latestPts=0,consumedPts=0;
  bool load(const char *path){
   name=path;try{VideoDecoder d;d.open(path);double pts;VideoDecoder::check(d.next(latest,pts));width=d.width;height=d.height;return true;}catch(...){return false;}
  }
@@ -122,13 +126,13 @@ struct BackgroundVideo {
   worker=std::thread([this]{try{
    VideoDecoder d;d.open(name.c_str(),&stop);double origin=VideoDecoder::clock(),pts=0;std::vector<unsigned char> pixels;
    while(!stop){
-    if(!d.next(pixels,pts)){
+    if(!d.next(pixels,pts,origin)){
      {std::unique_lock<std::mutex> lock(mutex);wake.wait_until(lock,std::chrono::steady_clock::time_point(std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(origin+d.duration))),[this]{return stop.load();});}
      if(stop)break;origin+=d.duration;d.restart();continue;
     }
     std::unique_lock<std::mutex> lock(mutex);
     wake.wait_until(lock,std::chrono::steady_clock::time_point(std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(origin+pts))),[this]{return stop.load();});
-    if(stop)break;latest.swap(pixels);latestPts=pts;revision++;
+    if(stop)break;latest.swap(pixels);latestPts=pts;skipped=d.dropped;revision++;
    }
   }catch(...){if(!stop){std::lock_guard<std::mutex> lock(mutex);failed=true;}}});
  }

@@ -944,7 +944,7 @@ void main(){outColor=texture(image,(uv-.5)*crop+.5);})";
   glDrawArrays(GL_TRIANGLES,0,3);
   glDisable(GL_BLEND);glDepthMask(GL_TRUE);glEnable(GL_DEPTH_TEST);
  }
- ~Background(){if(video){video->hide();printf("AVATAR_VIDEO_STATS %zu %zu %d\n",frames.uploads,video->revision,int(video->active));}if(frames.animated)printf("AVATAR_LAYER_STATS %zu %d %d\n",frames.uploads,frames.current,int(frames.visible));if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
+ ~Background(){if(video){video->hide();printf("AVATAR_VIDEO_STATS %zu %zu %d\n",frames.uploads,video->revision,int(video->active));printf("AVATAR_VIDEO_DROPPED %zu\n",video->skipped);}if(frames.animated)printf("AVATAR_LAYER_STATS %zu %d %d\n",frames.uploads,frames.current,int(frames.visible));if(texture)glDeleteTextures(1,&texture);if(vao)glDeleteVertexArrays(1,&vao);if(prog)glDeleteProgram(prog);}
 };
 
 // Two round transparent apertures expose the application's accessible controls.
