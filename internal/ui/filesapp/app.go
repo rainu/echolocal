@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"io"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -19,24 +19,17 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/display/icons"
 	"github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/display/widgets"
-	"github.com/ygelfand/libcountertop/pkg/media/urlplayer"
 	"github.com/ygelfand/libcountertop/pkg/say"
 	"github.com/ygelfand/libcountertop/pkg/settings/storage"
 )
 
-type Player interface {
-	Play() error
-	Pause() error
-	Stop() error
-	Close() error
-	Snapshot() urlplayer.Snapshot
-}
 type Options struct {
 	Shell       *shell.Shell
 	Locations   []browser.Location
 	Preferences storage.Section[config.Files]
 	Helper      string
-	Play        func(*os.File, string) (Player, error)
+	// Open takes ownership of the pinned descriptor, including on error.
+	Open func(context.Context, *os.File, string) (io.Closer, error)
 }
 type App struct {
 	o          Options
@@ -48,9 +41,7 @@ type App struct {
 	generation uint64
 	cache      *filesmedia.Cache
 	offset     int
-	viewer     string
-	picture    *image.NRGBA
-	player     Player
+	session    io.Closer
 	cancel     context.CancelFunc
 	navCancel  context.CancelFunc
 	imageKeys  map[string]bool
@@ -66,7 +57,12 @@ func New(o Options) *App {
 	a := &App{o: o, imageKeys: map[string]bool{}}
 	// Shell.Close also means "covered". Keep a playing viewer while the
 	// existing native video page covers it, but clean up on actual stack removal.
-	o.Shell.Changed.Listen(func(shell.Change) { a.Close() })
+	o.Shell.Changed.Listen(func(c shell.Change) {
+		a.Close()
+		if c.To == a {
+			a.release()
+		}
+	})
 	return a
 }
 func (*App) Covers() bool           { return true }
@@ -100,11 +96,9 @@ func (a *App) Close() {
 	if a.cache != nil {
 		a.cache.Close()
 	}
-	p := a.player
-	a.player = nil
+	p := a.session
+	a.session = nil
 	a.b = nil
-	a.picture = nil
-	a.viewer = ""
 	a.dropImages()
 	a.mu.Unlock()
 	if p != nil {
@@ -129,6 +123,9 @@ func (a *App) Navigate(name string) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.navCancel = cancel
+	if a.cancel != nil {
+		a.cancel()
+	}
 	opt := a.options()
 	opt.Context = ctx
 	a.busy = true
@@ -223,6 +220,7 @@ func (a *App) page(delta int) {
 	a.o.Shell.Redraw()
 }
 func (a *App) open(e browser.Entry) {
+	a.release()
 	if e.Directory {
 		a.Navigate(e.Path)
 		return
@@ -233,79 +231,60 @@ func (a *App) open(e browser.Entry) {
 	b := browser.New(a.options())
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
-	a.viewer = e.Name
 	a.busy = true
 	a.note = ""
 	a.mu.Unlock()
 	a.o.Shell.Redraw()
 	go func() {
-		var img *image.NRGBA
-		var p Player
+		var session io.Closer
 		f, err := b.Open(e.Path)
 		if err == nil {
-			switch filesmedia.Kind(e.Name) {
-			case "image":
-				img, err = filesmedia.ImageContext(ctx, f, 1280, 800)
-				f.Close()
-			case "video", "audio":
-				if a.o.Play != nil {
-					a.mu.Lock()
-					if gen == a.generation && ctx.Err() == nil {
-						p, err = a.o.Play(f, e.Name)
-					} else {
-						err = filesmedia.ErrPreview
-					}
-					a.mu.Unlock()
-				} else {
-					err = filesmedia.ErrPreview
-				}
-				if err != nil {
-					f.Close()
-				}
-			default:
+			if filesmedia.Kind(e.Name) == "" || a.o.Open == nil {
 				f.Close()
 				err = filesmedia.ErrPreview
+			} else {
+				session, err = a.o.Open(ctx, f, e.Name)
 			}
 		}
 		a.mu.Lock()
 		if gen != a.generation || ctx.Err() != nil {
 			a.mu.Unlock()
-			if p != nil {
-				p.Close()
+			if session != nil {
+				session.Close()
 			}
 			return
 		}
-		a.picture = img
-		a.player = p
+		a.session = session
 		a.busy = false
 		if err != nil {
-			a.note = Words("Unsupported, damaged or unavailable media. No external handler is required.", "Nicht unterstützte, beschädigte oder nicht verfügbare Datei. Kein externer Player erforderlich.")
+			a.note = Words("Unsupported, damaged or unavailable media.", "Nicht unterstützte, beschädigte oder nicht verfügbare Datei.")
 		}
 		a.mu.Unlock()
 		a.o.Shell.Redraw()
 	}()
 }
-func (a *App) back() {
+
+// Leaving a media app returns to this exact browser instance and releases its
+// descriptor/player. Covering Files must not destroy its directory or paging.
+func (a *App) release() {
 	a.mu.Lock()
-	a.generation++
-	if a.cancel != nil {
-		a.cancel()
-	}
-	p := a.player
-	a.player = nil
-	a.picture = nil
-	a.viewer = ""
-	a.note = ""
-	a.busy = false
-	a.dropImages()
+	p := a.session
+	a.session = nil
 	a.mu.Unlock()
 	if p != nil {
 		p.Close()
 	}
-	a.o.Shell.Redraw()
 }
+
 func button(id, label string, disabled bool, do func()) gui.View {
 	return gui.Button(gui.ButtonCfg{ID: id, Variant: gui.ButtonGhost, Sizing: gui.FillFit, MinHeight: 56, Height: 56, Padding: gui.PaddingSmall, Disabled: disabled, Content: []gui.View{labelView(label)}, OnClick: func(e gui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+}
+func iconButton(id, glyph, label string, disabled bool, do func()) gui.View {
+	st := widgets.IconStyle(gui.CurrentTheme().Cfg.ColorTextSecondary)
+	st.Family = icons.Family
+	st.Size = 32
+	b := gui.Button(gui.ButtonCfg{ID: id, A11YCfg: gui.A11YCfg{A11YLabel: label}, Variant: gui.ButtonGhost, Sizing: gui.FixedFixed, Width: 56, Height: 56, Disabled: disabled, Content: []gui.View{gui.Label(icons.Glyph(icons.Named(glyph)), st)}, OnClick: func(e gui.EventCtx) { do(); e.Window.InvalidateLayout() }})
+	return b
 }
 func labelView(s string) gui.View {
 	return gui.Text(gui.TextCfg{Text: s, Mode: gui.TextModeWrap, TextStyle: widgets.Secondary()})
@@ -320,9 +299,6 @@ func (a *App) source(key string, img *image.NRGBA) string {
 func (a *App) Build(w *gui.Window) gui.View {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.viewer != "" {
-		return a.buildViewer(w)
-	}
 	b := a.b
 	p := a.prefs
 	if b == nil {
@@ -341,14 +317,17 @@ func (a *App) Build(w *gui.Window) gui.View {
 	if p.Hidden {
 		hidden = Words("Hidden: on", "Versteckt: an")
 	}
-	view := Words("List", "Liste")
+	view := "view-grid"
+	viewLabel := Words("Switch to grid view", "Zur Kachelansicht wechseln")
 	if p.View == "grid" {
-		view = Words("Grid", "Kacheln")
+		view = "view-list"
+		viewLabel = Words("Switch to list view", "Zur Listenansicht wechseln")
 	}
+	size := map[int]string{128: Words("Small", "Klein"), 192: Words("Medium", "Mittel"), 256: Words("Large", "Groß")}[p.Tile]
 	toolbar := row("files-toolbar",
-		button("files-parent", Words("Up", "Hoch"), b.Current == "", a.Parent),
-		button("files-refresh", Words("Refresh", "Aktualisieren"), a.busy, a.Refresh),
-		button("files-view", view, false, func() {
+		iconButton("files-parent", "folder-arrow-up", Words("Parent folder", "Übergeordneter Ordner"), b.Current == "", a.Parent),
+		iconButton("files-refresh", "refresh", Words("Refresh folder", "Ordner aktualisieren"), a.busy, a.Refresh),
+		iconButton("files-view", view, viewLabel, false, func() {
 			a.preference(func(p *config.Files) {
 				if p.View == "list" {
 					p.View = "grid"
@@ -357,7 +336,7 @@ func (a *App) Build(w *gui.Window) gui.View {
 				}
 			})
 		}),
-		button("files-size", strconv.Itoa(p.Tile)+" px", false, func() {
+		button("files-size", Words("Tiles: ", "Kacheln: ")+size, false, func() {
 			a.preference(func(p *config.Files) {
 				switch p.Tile {
 				case 128:
@@ -369,7 +348,8 @@ func (a *App) Build(w *gui.Window) gui.View {
 				}
 			})
 		}),
-		button("files-close", Words("Close", "Schließen"), false, func() { a.o.Shell.Remove(a) }))
+		gui.Column(gui.ContainerCfg{Sizing: gui.FillFit}),
+		iconButton("files-close", "close", Words("Close Files", "Dateien schließen"), false, func() { a.o.Shell.Remove(a) }))
 	sorting := row("files-sorting",
 		button("files-sort", Words("Sort: ", "Sortierung: ")+sortLabels[p.Sort], false, func() {
 			a.preference(func(p *config.Files) {
@@ -404,19 +384,6 @@ func (a *App) Build(w *gui.Window) gui.View {
 				e := b.Entries[i]
 				id := fmt.Sprintf("files-entry-%d", i)
 				i++
-				icon := Words("File", "Datei")
-				if e.Directory {
-					icon = Words("Folder", "Ordner")
-				} else {
-					switch filesmedia.Kind(e.Name) {
-					case "image":
-						icon = Words("Image", "Bild")
-					case "video":
-						icon = "Video"
-					case "audio":
-						icon = "Audio"
-					}
-				}
 				glyph := "file"
 				if e.Directory {
 					glyph = "folder"
@@ -432,7 +399,12 @@ func (a *App) Build(w *gui.Window) gui.View {
 				}
 				st := widgets.IconStyle(gui.CurrentTheme().Cfg.ColorTextSecondary)
 				st.Family = icons.Family
-				var preview gui.View = gui.Column(gui.ContainerCfg{Sizing: gui.FitFit, Content: []gui.View{gui.Label(icons.Glyph(icons.Named(glyph)), st), labelView(icon)}})
+				// The artwork, not just its click target, fills the preview area.
+				st.Size = 64
+				if p.View == "grid" {
+					st.Size = float32(p.Tile - 24)
+				}
+				var preview gui.View = gui.Text(gui.TextCfg{ID: id + "-fallback", Text: icons.Glyph(icons.Named(glyph)), TextStyle: st})
 				if !e.Directory && (filesmedia.Kind(e.Name) == "image" || filesmedia.Kind(e.Name) == "video") && a.cache != nil {
 					key := filesmedia.Key(e.Path, e.Size, e.Modified.UnixNano())
 					// The generation prevents a GUI texture from surviving an explicit refresh.
@@ -478,43 +450,10 @@ func (a *App) Build(w *gui.Window) gui.View {
 	}
 	content := gui.Column(gui.ContainerCfg{ID: fmt.Sprintf("files-list-%d-%d", a.generation, a.offset), Sizing: gui.FillFill, Scrollable: true, DragScroll: true, ScrollMode: gui.ScrollVerticalOnly, Padding: gui.NoPadding, Spacing: gui.SpacingSmall, Content: entries})
 	end := min(a.offset+browser.PageSize, len(b.Entries))
-	footer := row("files-paging", button("files-previous", Words("Previous", "Zurück"), a.offset == 0, func() { a.page(-1) }), labelView(fmt.Sprintf("%d–%d / %d", min(a.offset+1, end), end, len(b.Entries))), button("files-next", Words("Next", "Weiter"), end >= len(b.Entries), func() { a.page(1) }))
+	footer := gui.Row(gui.ContainerCfg{ID: "files-paging", Sizing: gui.FillFit, Content: []gui.View{
+		iconButton("files-previous", "chevron-left", Words("Previous page", "Vorherige Seite"), a.offset == 0, func() { a.page(-1) }),
+		gui.Column(gui.ContainerCfg{ID: "files-page-indicator", Sizing: gui.FillFit, HAlign: gui.HAlignCenter, Content: []gui.View{labelView(fmt.Sprintf("%d–%d / %d %s", min(a.offset+1, end), end, len(b.Entries), Words("entries", "Einträge")))}}),
+		iconButton("files-next", "chevron-right", Words("Next page", "Nächste Seite"), end >= len(b.Entries), func() { a.page(1) }),
+	}})
 	return gui.Column(gui.ContainerCfg{ID: "files-app", Sizing: gui.FillFill, Padding: gui.PadAll(12), Spacing: gui.SpacingSmall, Content: []gui.View{toolbar, sorting, gui.Column(gui.ContainerCfg{ID: "files-location", Sizing: gui.FillFit, Height: 58, Scrollable: true, Content: []gui.View{labelView(path)}}), content, footer}})
-}
-func (a *App) buildViewer(w *gui.Window) gui.View {
-	controls := []gui.View{button("files-back", Words("Back to files", "Zurück zu Dateien"), false, a.back)}
-	body := []gui.View{labelView(a.viewer)}
-	if a.picture != nil {
-		width, height := w.WindowSize()
-		img := a.picture
-		iw, ih := img.Rect.Dx(), img.Rect.Dy()
-		if iw > width-32 {
-			ih = max(1, ih*(width-32)/iw)
-			iw = width - 32
-		}
-		if ih > height-150 {
-			iw = max(1, iw*(height-150)/ih)
-			ih = height - 150
-		}
-		key := fmt.Sprintf("files/viewer/%d", a.generation)
-		body = append(body, gui.Image(gui.ImageCfg{ID: "files-image", Src: a.source(key, img), Width: float32(iw), Height: float32(ih)}))
-	}
-	if a.busy {
-		body = append(body, labelView(Words("Opening…", "Wird geöffnet…")))
-	}
-	if a.note != "" {
-		body = append(body, labelView(a.note))
-	}
-	if a.player != nil {
-		p := a.player
-		s := p.Snapshot()
-		state := s.State
-		if s.State == "error" {
-			state = Words("Playback unavailable: unsupported or damaged media, or decoder missing.", "Wiedergabe nicht verfügbar: Format beschädigt/nicht unterstützt oder Decoder fehlt.")
-		}
-		body = append(body, labelView(fmt.Sprintf("%s · %.0f / %.0f s", state, s.Position, s.Duration)))
-		controls = append(controls, button("files-play", Words("Play", "Abspielen"), false, func() { _ = p.Play(); a.o.Shell.Redraw() }), button("files-pause", Words("Pause", "Pause"), false, func() { _ = p.Pause(); a.o.Shell.Redraw() }), button("files-stop", Words("Stop", "Stopp"), false, func() { _ = p.Stop(); a.o.Shell.Redraw() }))
-		time.AfterFunc(250*time.Millisecond, a.o.Shell.Redraw)
-	}
-	return gui.Column(gui.ContainerCfg{ID: "files-viewer", Sizing: gui.FillFill, Padding: gui.PadAll(12), Content: []gui.View{row("files-viewer-controls", controls...), gui.Column(gui.ContainerCfg{Sizing: gui.FillFill, Scrollable: true, DragScroll: true, Content: body})}})
 }

@@ -20,7 +20,7 @@ No application-state parent, arbitrary path input, new remote API, listener,
 write operation, permission change or external file handler is added.
 
 Every path component is opened without following symlinks. Metadata uses the
-pinned directory descriptor; viewers retain a pinned regular-file descriptor.
+pinned directory descriptor; media handoff retains a pinned regular-file descriptor.
 The local player receives bytes through a single-file, in-process HTTP
 transport with no socket or network fallback. Embedded external references and
 playlists cannot obtain network or arbitrary filesystem access.
@@ -28,9 +28,12 @@ playlists cannot obtain network or arbitrary filesystem access.
 ## Controls and persistence
 
 Files is registered in Apps and directly in the right sidebar. Its fixed
-toolbar offers Up, Refresh, list/grid, tile size, sort key, direction, hidden
-visibility and Close. Tap the view/size/sort controls to cycle their labelled
-states. Tile widths are 128/192/256 UI pixels. Sort by name, modified time, size
+toolbar offers icon controls for parent folder, Refresh, list/grid and Close,
+with accessible names; the Close X stays at the upper-right. The tile-size
+control names its small/medium/large state instead of showing an unexplained
+pixel count. Tap the view/size/sort controls to cycle their states. Previous
+and next page arrows flank a centered range indicator. Tile widths are
+128/192/256 UI pixels. Sort by name, modified time, size
 or extension/type in either direction; folders remain first and names break
 ties deterministically. These five display preferences are stored in the
 `files` configuration section; missing/invalid legacy values have safe defaults.
@@ -56,7 +59,11 @@ Existing reusable capabilities were inventoried before implementation:
   first-frame decoder. A new thumbnail-only invocation returns that first frame
   without creating an avatar surface or decoding/playing audio.
 
-Files reuses these capabilities, not Android intent handlers. Image formats:
+Files hands images to the existing Photos app with a transient single-file source,
+and audio/video to the existing media card/native video page. The browser has no
+embedded viewer or playback controls. Closing the media app returns to the same
+browser instance, folder and page, releasing its media resources. Photo library
+and picker settings are not modified. These are on-device apps, not Android intent handlers. Image formats:
 PNG, JPEG, GIF and WebP (animated images show their first frame). Images are
 read into a bounded immutable encoded buffer (16 MiB), validated before decode
 (maximum 16 megapixels), and fitted without aspect distortion. Viewer output

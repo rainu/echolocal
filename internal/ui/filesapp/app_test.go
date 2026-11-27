@@ -3,12 +3,14 @@
 package filesapp
 
 import (
+	"context"
 	"fmt"
 	gui "github.com/go-gui-org/go-gui/gui"
 	"github.com/ygelfand/echolocal/internal/config"
 	browser "github.com/ygelfand/echolocal/internal/filepicker"
 	"github.com/ygelfand/libcountertop/pkg/display/shell"
 	"github.com/ygelfand/libcountertop/pkg/say"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +90,21 @@ func TestFilesLayoutsControlsPagingAndPersistence(t *testing.T) {
 						if s.X < 0 || s.Y < 0 || s.X+s.Width > float32(size[0])+.5 || s.Y+s.Height > float32(size[1])+.5 || s.Height < 48 {
 							t.Fatal("inaccessible", id, s)
 						}
+					}
+					if close := get("files-close"); close.X+close.Width < float32(size[0]-25) {
+						t.Fatal("close is not at right edge", close)
+					}
+					fallback := get("files-entry-0-fallback")
+					minimum := float32(50)
+					if view == "grid" {
+						minimum = 150
+					}
+					if fallback.Height < minimum {
+						t.Fatal("fallback artwork too small", fallback.Height)
+					}
+					indicator := get("files-page-indicator")
+					if center := indicator.X + indicator.Width/2; center < float32(size[0])/2-10 || center > float32(size[0])/2+10 {
+						t.Fatal("page indicator not centered", center)
 					}
 					a.mu.Lock()
 					gen := a.generation
@@ -171,15 +188,13 @@ func TestUnsupportedOpenAndBackNeverChangesPickerSettings(t *testing.T) {
 	settled(t, a)
 	a.mu.Lock()
 	note := a.note
-	viewer := a.viewer
 	a.mu.Unlock()
-	if note == "" || viewer == "" {
+	if note == "" {
 		t.Fatal("unsupported state")
 	}
-	a.back()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.viewer != "" || a.b.Current != root {
+	if a.b.Current != root {
 		t.Fatal("lost folder")
 	}
 }
@@ -215,7 +230,67 @@ func TestHiddenFolderVisibilityAndCoveredViewerLifecycle(t *testing.T) {
 	stack.Close()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.b != nil || a.player != nil {
+	if a.b != nil || a.session != nil {
 		t.Fatal("covered app leaked after stack close")
 	}
 }
+
+// A file handoff covers Files, never replaces it with a private viewer.
+func TestMediaHandoffReturnsToSameFolderAndPage(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 90; i++ {
+		os.WriteFile(filepath.Join(root, fmt.Sprintf("%03d.mp3", i)), []byte("fixture"), 0600)
+	}
+	stack := shell.New()
+	defer stack.Close()
+	cover := &shell.Page{Title: "existing media app"}
+	closed := make(chan struct{}, 1)
+	a := New(Options{Shell: stack, Locations: []browser.Location{{Label: "files", Path: root}}, Preferences: &preferences{}, Open: func(ctx context.Context, f *os.File, name string) (io.Closer, error) {
+		defer f.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		data, err := io.ReadAll(f)
+		if err != nil || string(data) != "fixture" {
+			return nil, fmt.Errorf("not pinned fixture")
+		}
+		stack.Push(cover)
+		return closeFunc(func() error { closed <- struct{}{}; return nil }), nil
+	}})
+	stack.Push(a)
+	a.Navigate(root)
+	settled(t, a)
+	a.page(1)
+	a.mu.Lock()
+	entry := a.b.Entries[64]
+	a.mu.Unlock()
+	a.open(entry)
+	settled(t, a)
+	if stack.Top() != cover {
+		t.Fatal("did not launch media app")
+	}
+	stack.Pop()
+	if stack.Top() != a {
+		t.Fatal("did not return to Files")
+	}
+	a.mu.Lock()
+	current, offset := a.b.Current, a.offset
+	a.mu.Unlock()
+	if current != root || offset != 64 {
+		t.Fatal("lost browser position", current, offset)
+	}
+	select {
+	case <-closed:
+	default:
+		t.Fatal("media resource not released")
+	}
+	w := gui.NewWindow(gui.WindowCfg{State: new(int), Width: 1280, Height: 800})
+	w.SetView(a.Build)
+	if shape(w.TestRender(nil), "files-viewer") != nil {
+		t.Fatal("embedded viewer survived")
+	}
+}
+
+type closeFunc func() error
+
+func (f closeFunc) Close() error { return f() }
