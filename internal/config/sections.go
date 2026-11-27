@@ -10,6 +10,7 @@ func sharedOf(c *Config) *schema.Shared { return &c.Shared }
 var sections = schema.NewSections(func() *storage.Store[Config] { return store().Store }, sharedOf)
 
 var (
+	FilesSection      = storage.Bind(func() *storage.Store[Config] { return store().Store }, func(c *Config) *Files { return &c.Files })
 	AvatarSection     = storage.Bind(func() *storage.Store[Config] { return store().Store }, func(c *Config) *Avatar { return &c.Avatar })
 	AccessSection     = sections.Access
 	AlertsSection     = sections.Alerts

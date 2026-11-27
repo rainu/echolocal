@@ -53,9 +53,14 @@ var coverage = settingtest.Shared.With(settingtest.Coverage{
 		"Speaker.SpeakerGain":         "speaker.speaker_gain",
 	},
 	ByHand: map[string]string{
-		"Device.Name":  "told to the process at start-up, never written to the file",
-		"Device.Addr":  "the same",
-		"Device.Board": "the same, read from the hardware",
+		"Files.View":       "on-device Files toolbar; not a picker or remote filesystem setting",
+		"Files.Tile":       "on-device Files tile-size control",
+		"Files.Sort":       "on-device Files sort control",
+		"Files.Descending": "on-device Files direction control",
+		"Files.Hidden":     "on-device Files visibility control; immutable private-path policy still enforced",
+		"Device.Name":      "told to the process at start-up, never written to the file",
+		"Device.Addr":      "the same",
+		"Device.Board":     "the same, read from the hardware",
 
 		"Speaker.Volume":   "the volume buttons and Home Assistant's media player",
 		"Volume.Media":     "the volume command, by stream",

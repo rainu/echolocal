@@ -12,6 +12,7 @@ type Config struct {
 	schema.Shared
 
 	Avatar Avatar `json:"avatar"`
+	Files  Files  `json:"files,omitzero"`
 
 	Device     Device     `json:"-"`
 	Speaker    Speaker    `json:"speaker"`

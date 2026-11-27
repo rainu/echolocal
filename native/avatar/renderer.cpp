@@ -1132,10 +1132,10 @@ int main(int argc, char **argv) {
   int result = 1;
   const char *stage = "protocol_error";
   try {
-    if(argc==3 && std::string(argv[1])=="--probe-background"){
+    if(argc==3 && (std::string(argv[1])=="--probe-background" || std::string(argv[1])=="--thumbnail")){
      rlimit cpu{4,4}, memory{256u<<20,256u<<20};setrlimit(RLIMIT_CPU,&cpu);setrlimit(RLIMIT_AS,&memory);
      try{VideoDecoder d;d.open(argv[2]);std::vector<unsigned char> pixels;double pts=0;
-      VideoDecoder::check(d.next(pixels,pts));printf("AVATAR_VIDEO_OK %d %d\n",d.width,d.height);return 0;
+      VideoDecoder::check(d.next(pixels,pts));if(std::string(argv[1])=="--thumbnail"){printf("RGBA %d %d\n",d.width,d.height);fwrite(pixels.data(),1,pixels.size(),stdout);}else{printf("AVATAR_VIDEO_OK %d %d\n",d.width,d.height);}return 0;
      }catch(...){puts("AVATAR_VIDEO_UNSUPPORTED");return 1;}
     }
     if (argc == 2 && std::string(argv[1]) == "--protocol-version") {
