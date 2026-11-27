@@ -4,9 +4,13 @@ package openclaw
 
 import (
 	"context"
-	"github.com/ygelfand/echolocal/internal/feature/shell"
 	"sync"
 	"time"
+
+	"github.com/ygelfand/echolocal/internal/feature/dhcp"
+	"github.com/ygelfand/echolocal/internal/feature/shell"
+	"github.com/ygelfand/echolocal/internal/feature/timesync"
+	"github.com/ygelfand/libcountertop/pkg/runtime/startup"
 
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
@@ -32,6 +36,17 @@ var get = sync.OnceValue(func() *Service {
 	s := &Service{Client: connection.New(layout.StateDir+"/openclaw.json", layout.Version), Node: connection.NewNode(layout.StateDir+"/openclaw-node.json", layout.Version, connection.NodeMetadata{Name: b.DefaultName, Model: b.Model})}
 	s.Connections = connection.NewConnections(layout.StateDir+"/openclaw-connection.json", s.Client, s.Node, b.DefaultName+" · UI", b.DefaultName+" · Node")
 	s.Node.AttachNodeAccess(connection.NewNodeAccess(layout.StateDir + "/openclaw-node-permissions.json"))
+	ready := func() string {
+		if b.Has(board.Wifi) && !dhcp.Get().Startup().Done {
+			return "network"
+		}
+		if !timesync.Get().Valid() {
+			return "clock"
+		}
+		return ""
+	}
+	s.Client.SetReadiness(ready)
+	s.Node.SetReadiness(ready)
 	return s
 })
 
@@ -65,4 +80,25 @@ func (s *Service) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// Both configured roles participate in boot readiness; UI alone is not enough.
+func (s *Service) Startup() startup.Progress {
+	return connectionStartup(s.Client.Startup(), s.Node.Startup(), s.Client.Status().Enabled)
+}
+func connectionStartup(ui, node startup.Progress, uiEnabled bool) startup.Progress {
+	for _, p := range []startup.Progress{ui, node} {
+		if p.Failed {
+			return p
+		}
+	}
+	for _, p := range []startup.Progress{ui, node} {
+		if !p.Done {
+			return p
+		}
+	}
+	if uiEnabled {
+		return ui
+	}
+	return node
 }

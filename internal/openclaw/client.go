@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -68,6 +69,7 @@ type Client struct {
 	events               []Event
 	cancel               context.CancelFunc
 	done                 chan struct{}
+	readiness            func() string
 	dialer               *websocket.Dialer
 }
 
@@ -87,11 +89,22 @@ func New(path, version string) *Client {
 	return c
 }
 
+// SetReadiness installs an application prerequisite check before starting.
+// A nonempty result must be "network" or "clock"; unknown values fail closed.
+// The check must be nonblocking and must not call back into this client.
+func (c *Client) SetReadiness(check func() string) {
+	c.op.Lock()
+	defer c.op.Unlock()
+	c.mu.Lock()
+	c.readiness = check
+	c.mu.Unlock()
+}
+
 // Start resumes only a previously saved user preference. No secret is returned.
 func (c *Client) Start() {
 	c.op.Lock()
 	defer c.op.Unlock()
-	if c.Status().Enabled {
+	if c.Status().Enabled && c.cancel == nil {
 		c.startLocked()
 	}
 }
@@ -378,7 +391,27 @@ func classify(err error) string {
 func (c *Client) run(ctx context.Context) {
 	delay := time.Second
 	for ctx.Err() == nil {
-		retry := c.attempt(ctx)
+		c.mu.Lock()
+		ready := c.readiness
+		c.mu.Unlock()
+		reason := ""
+		if ready != nil {
+			reason = ready()
+		}
+		var retry bool
+		if reason != "" {
+			if reason != "network" && reason != "clock" {
+				reason = "settings"
+			}
+			c.mark("reconnecting", reason, "local", "readiness")
+			if reason == "settings" {
+				c.mark("error", reason, "local", "readiness")
+				return
+			}
+			retry = true
+		} else {
+			retry = c.attempt(ctx)
+		}
 		c.mu.Lock()
 		terminal := c.upgradeTerminal
 		c.mu.Unlock()
@@ -389,7 +422,7 @@ func (c *Client) run(ctx context.Context) {
 		if ctx.Err() != nil || !retry {
 			return
 		}
-		c.mark("reconnecting", "network", "local", "backoff")
+		c.mark("reconnecting", c.Status().Reason, "local", "backoff")
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -405,6 +438,28 @@ func (c *Client) run(ctx context.Context) {
 		}
 	}
 }
+
+// Transport interruption before hello is not a malformed protocol frame.
+func (c *Client) handshakeReadFailure(err error, stage string) bool {
+	var network net.Error
+	var closed *websocket.CloseError
+	retry := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &network)
+	if errors.As(err, &closed) {
+		switch closed.Code {
+		case websocket.CloseNormalClosure, websocket.CloseGoingAway,
+			websocket.CloseAbnormalClosure, websocket.CloseNoStatusReceived,
+			websocket.CloseInternalServerErr, websocket.CloseServiceRestart, websocket.CloseTryAgainLater:
+			retry = true
+		}
+	}
+	reason := "protocol"
+	if retry {
+		reason = classify(err)
+	}
+	c.mark("error", reason, "in", stage)
+	return retry
+}
+
 func (c *Client) attempt(ctx context.Context) bool {
 	c.mu.Lock()
 	c.granted = nil
@@ -438,7 +493,10 @@ func (c *Client) attempt(ctx context.Context) bool {
 			}
 		}
 		c.mark("error", reason, "in", "transport")
-		return reason != "tls"
+		// Date validity can change after cold-boot time synchronization.
+		// Other certificate failures remain terminal; verification is never bypassed.
+		var invalid x509.CertificateInvalidError
+		return reason != "tls" || (errors.As(e, &invalid) && invalid.Reason == x509.Expired)
 	}
 	defer conn.Close()
 	conn.SetReadLimit(256 * 1024)
@@ -453,7 +511,11 @@ func (c *Client) attempt(ctx context.Context) bool {
 	}()
 	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	var ch frame
-	if conn.ReadJSON(&ch) != nil || ch.Type != "event" || ch.Event != "connect.challenge" {
+	_, data, err := conn.ReadMessage()
+	if err != nil {
+		return c.handshakeReadFailure(err, "challenge")
+	}
+	if json.Unmarshal(data, &ch) != nil || ch.Type != "event" || ch.Event != "connect.challenge" {
 		c.mark("error", "protocol", "in", "challenge")
 		return false
 	}
@@ -488,7 +550,11 @@ func (c *Client) attempt(ctx context.Context) bool {
 	// Gateway registration can broadcast events before the correlated hello.
 	// Keep the original handshake deadline and bound pre-hello event traffic.
 	for skipped := 0; ; skipped++ {
-		if conn.ReadJSON(&res) != nil {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			return c.handshakeReadFailure(err, "connect")
+		}
+		if json.Unmarshal(data, &res) != nil {
 			c.mark("error", "protocol", "in", "connect")
 			return false
 		}

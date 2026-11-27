@@ -52,3 +52,17 @@ func (c *Client) Close() error {
 	c.stopLocked()
 	return nil
 }
+
+// ClockWaitText contains no clock value, endpoint or provider error.
+func ClockWaitText() string {
+	texts := map[string]string{
+		"en": "Waiting for a valid device clock",
+		"de": "Warte auf eine gültige Gerätezeit",
+		"it": "In attesa di un orologio dispositivo valido",
+		"vi": "Đang chờ đồng hồ thiết bị hợp lệ",
+	}
+	if text := texts[say.Chosen()]; text != "" {
+		return text
+	}
+	return texts["en"]
+}
