@@ -81,41 +81,25 @@ func microphonePage() *sharedshell.Page {
 	}}
 }
 
-type microphoneTestView struct {
-	*sharedshell.Page
-	owner    string
-	done     chan struct{}
-	once     sync.Once
-	unlisten func()
-}
-
-func (p *microphoneTestView) SettingsPage() *sharedshell.Page { return p.Page }
-func (p *microphoneTestView) Close() {
-	p.once.Do(func() {
-		close(p.done)
-		if p.unlisten != nil {
-			p.unlisten()
-		}
-		_ = test.Get().Command(p.owner, "discard")
-	})
-}
-func microphoneTestPage() *microphoneTestView {
+func microphoneTestPage() *sharedshell.Page {
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
 		panic(err)
 	}
-	p := &microphoneTestView{owner: hex.EncodeToString(id[:]), done: make(chan struct{})}
+	owner := hex.EncodeToString(id[:])
+	var stop func()
+	var p *sharedshell.Page
 	var commandError string
 	command := func(action string) {
-		if err := test.Get().Command(p.owner, action); err != nil {
+		if err := test.Get().Command(owner, action); err != nil {
 			commandError = err.Error()
 		} else {
 			commandError = ""
 		}
 		shell.Get().Redraw()
 	}
-	p.Page = &sharedshell.Page{Title: micText("Microphone test", "Mikrofontest"), Build: func() ([]menu.Row, []func(int)) {
-		s := test.Get().State(p.owner)
+	p = &sharedshell.Page{Title: micText("Microphone test", "Mikrofontest"), Build: func() ([]menu.Row, []func(int)) {
+		s := test.Get().State(owner)
 		phase := map[string]string{"idle": micText("Ready to record", "Bereit zur Aufnahme"), "recording": micText("● RECORDING — speak now (max 8 s)", "● AUFNAHME — jetzt sprechen (max. 8 s)"), "ready": micText("Ready to play", "Bereit zur Wiedergabe"), "playing": micText("Playing on this Echo", "Wiedergabe auf diesem Echo"), "error": micText("Test stopped", "Test gestoppt")}[s.Phase]
 		rows := []menu.Row{{Label: phase, Value: fmt.Sprintf("%.1f s", s.Seconds)}}
 		if s.Error != "" {
@@ -146,17 +130,35 @@ func microphoneTestPage() *microphoneTestView {
 		}
 		return rows, taps
 	}}
-	p.Page.OnOpen = func() {
-		p.unlisten = test.Changed.Listen(func(struct{}) { shell.Get().Redraw() })
+	p.OnOpen = func() {
+		if stop != nil {
+			stop()
+		}
+		done := make(chan struct{})
+		unlisten := test.Changed.Listen(func(struct{}) { shell.Get().Redraw() })
+		var unwatch func()
+		stop = sync.OnceFunc(func() {
+			close(done)
+			unlisten()
+			if unwatch != nil {
+				unwatch()
+			}
+			_ = test.Get().Command(owner, "discard")
+		})
+		unwatch = shell.Get().Changed.Listen(func(c sharedshell.Change) {
+			if c.From == p && c.To != p {
+				stop()
+			}
+		})
 		go func() {
 			tick := time.NewTicker(time.Second)
 			defer tick.Stop()
 			for {
 				select {
-				case <-p.done:
+				case <-done:
 					return
 				case <-tick.C:
-					_ = test.Get().Command(p.owner, "ping")
+					_ = test.Get().Command(owner, "ping")
 					shell.Get().Redraw()
 				}
 			}

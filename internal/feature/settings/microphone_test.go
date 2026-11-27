@@ -8,10 +8,16 @@ import (
 	"testing"
 )
 
-func TestMicrophoneTestViewExposesPageToRenderer(t *testing.T) {
-	p := &microphoneTestView{Page: &sharedshell.Page{Title: "Microphone test"}}
-	if sharedshell.SettingsPage(p) != p.Page {
-		t.Fatal("wrapped test page is invisible to renderer")
+// The native screen router accepts *shell.Page, not just SettingsPage providers.
+func TestMicrophoneTestUsesConcreteNativePage(t *testing.T) {
+	var view sharedshell.View = microphoneTestPage()
+	page, ok := view.(*sharedshell.Page)
+	if !ok || page.Build == nil || page.OnOpen == nil {
+		t.Fatal("test page must use the concrete native page renderer")
+	}
+	rows, taps := page.Build()
+	if len(rows) != len(taps) || len(rows) < 6 {
+		t.Fatal("test controls missing")
 	}
 }
 func TestMicrophonePageKeepsProcessingKnobsNextToTest(t *testing.T) {
