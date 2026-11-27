@@ -257,12 +257,12 @@ func sceneHelp(lang string) string {
 func videoHelp(lang string) string {
 	switch lang {
 	case "de":
-		return "Nur Hintergrund: lokales MP4/H.264, 8-Bit-YUV420, quadratische Pixel, keine Rotation; bis 64 MiB, 1280×720, 30 fps und 120 s. Endlosschleife ohne Ton. Softwaredecoder; kein Vordergrundvideo."
+		return "Nur Hintergrund: lokales MP4/H.264, 8-Bit-YUV420, quadratische Pixel, keine Rotation; bis 64 MiB, 1280×800, 30 fps und 120 s. Endlosschleife ohne Ton. Softwaredecoder; kein Vordergrundvideo."
 	case "it":
-		return "Solo sfondo: MP4/H.264 locale, YUV420 a 8 bit, pixel quadrati, senza rotazione; massimo 64 MiB, 1280×720, 30 fps e 120 s. Ciclo continuo senza audio. Decoder software; video in primo piano non supportato."
+		return "Solo sfondo: MP4/H.264 locale, YUV420 a 8 bit, pixel quadrati, senza rotazione; massimo 64 MiB, 1280×800, 30 fps e 120 s. Ciclo continuo senza audio. Decoder software; video in primo piano non supportato."
 	case "vi":
-		return "Chỉ nền: MP4/H.264 cục bộ, YUV420 8 bit, pixel vuông, không xoay; tối đa 64 MiB, 1280×720, 30 fps và 120 giây. Lặp vô hạn, không âm thanh. Giải mã phần mềm; không hỗ trợ video tiền cảnh."
+		return "Chỉ nền: MP4/H.264 cục bộ, YUV420 8 bit, pixel vuông, không xoay; tối đa 64 MiB, 1280×800, 30 fps và 120 giây. Lặp vô hạn, không âm thanh. Giải mã phần mềm; không hỗ trợ video tiền cảnh."
 	default:
-		return "Background only: local MP4/H.264, 8-bit YUV420, square pixels, no rotation; up to 64 MiB, 1280×720, 30 fps and 120 s. Silent infinite loop. Software decoding; foreground video is not supported."
+		return "Background only: local MP4/H.264, 8-bit YUV420, square pixels, no rotation; up to 64 MiB, 1280×800, 30 fps and 120 s. Silent infinite loop. Software decoding; foreground video is not supported."
 	}
 }

@@ -573,7 +573,7 @@ cover/crop and independent split/fullscreen selections. PNG/JPEG/WebP and all
 foreground image behavior remain unchanged. **Foreground video is rejected.**
 
 Supported video: MP4 containing one H.264 video track, 8-bit YUV420, square pixels,
-no rotation, at most 1280×720, 30 fps, 120 seconds and 64 MiB encoded. Audio tracks
+no rotation, at most 1280×800, 30 fps, 120 seconds and 64 MiB encoded. Audio tracks
 are discarded without opening an audio decoder or connecting to any audio output.
 The clip loops indefinitely; a scene becoming visible restarts its video. Hidden
 or inactive-mode video workers stop and release their decoding contexts. Playback

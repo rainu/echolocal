@@ -8,6 +8,10 @@ extern "C" {
 #include <libavutil/display.h>
 }
 #include <atomic>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <cstdint>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -48,7 +52,7 @@ struct VideoDecoder {
    if(format->streams[i]->codecpar->codec_type==AVMEDIA_TYPE_VIDEO){check(stream<0);stream=int(i);}
   }
   check(stream>=0);AVStream *s=format->streams[stream];auto *p=s->codecpar;
-  check(p->codec_id==AV_CODEC_ID_H264 && p->width>0 && p->height>0 && p->width<=1280 && p->height<=720);
+  check(p->codec_id==AV_CODEC_ID_H264 && p->width>0 && p->height>0 && p->width<=1280 && p->height<=800);
   check(s->sample_aspect_ratio.num==0 || s->sample_aspect_ratio.num==s->sample_aspect_ratio.den);
   check(p->sample_aspect_ratio.num==0 || p->sample_aspect_ratio.num==p->sample_aspect_ratio.den);
   for(int i=0;i<p->nb_coded_side_data;i++)if(p->coded_side_data[i].type==AV_PKT_DATA_DISPLAYMATRIX){
@@ -59,7 +63,7 @@ struct VideoDecoder {
   check(s->duration!=AV_NOPTS_VALUE && s->duration>0);duration=s->duration*av_q2d(s->time_base);
   check(duration>0 && duration<=120.001);
   codec=avcodec_alloc_context3(avcodec_find_decoder(AV_CODEC_ID_H264));check(codec);
-  check(avcodec_parameters_to_context(codec,p)>=0);codec->thread_count=2;codec->max_pixels=1280*720;
+  check(avcodec_parameters_to_context(codec,p)>=0);codec->thread_count=2;codec->max_pixels=1280*800;
   codec->err_recognition=AV_EF_EXPLODE;check(avcodec_open2(codec,avcodec_find_decoder(AV_CODEC_ID_H264),nullptr)>=0);
   width=p->width;height=p->height;s->discard=AVDISCARD_DEFAULT;
   packet=av_packet_alloc();frame=av_frame_alloc();check(packet && frame);

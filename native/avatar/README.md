@@ -88,7 +88,7 @@ is informational test output and contains no asset path.
 A descriptor-backed encoded MP4 may replace BG01/BG02 for backgrounds only.
 `video.hpp` uses the existing FFmpeg 9.1 build (see `../legacy/build.sh`) with
 custom local AVIO, external references disabled, one H.264 stream, square pixels,
-no rotation, 8-bit YUV420, <=1280×720/30 fps/120 s/64 MiB. The helper opens no
+no rotation, 8-bit YUV420, <=1280×800/30 fps/120 s/64 MiB. The helper opens no
 audio decoder/output. `--probe-background FD_PATH` checks metadata and the first
 picture without a GPU, with 5-second parent timeout and CPU/address-space limits.
 
