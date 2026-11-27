@@ -497,5 +497,101 @@ Limits are shared with backgrounds: 8 MiB encoded, 4096 pixels per side,
 4 megapixels decoded, and a maximum 2048-pixel texture dimension. A missing,
 unreadable or invalid foreground is reported without stopping the avatar or
 discarding its background; invalid settings writes keep the previous selection.
-Layer snapshots/textures are created only at Start and released on Stop, not
-decoded or uploaded every frame.
+Static layer snapshots/textures are created only at Start and released on Stop.
+Animated layers use the bounded frame path described below.
+
+## Animated scene layers
+
+Both background and foreground pickers also accept **WebP**, including lossy,
+lossless, full-canvas and subrectangle animations with disposal/blending and
+per-frame alpha. PNG/JPEG and empty selections retain their previous behavior.
+All four existing background/foreground fields (split and fullscreen) keep the
+same settings/API/Node permissions and persistence. No new upload endpoint,
+audio path, network decoder or transcoding service is introduced.
+
+The maintained **gen2brain/webp v0.6.4** package uses libwebp compiled/transpiled
+to Go, including its animation compositor; it works with the existing CGo-free
+32-bit daemon. Device/CLI builds use the nodynamic build tag so no host Linux
+libc interpreter or device-installed libwebp is required. Cross-compiled test
+binaries must also use -tags nodynamic. A RIFF container inspection enforces allocation budgets before
+full decoding; damaged input must still pass libwebp. Assets are decoded only
+during validation/renderer preparation, not during the render loop.
+Descriptors contain complete immutable RGBA frames, not caller-controlled
+paths. The native helper keeps a single frame buffer and texture per animated
+layer, reads/uploads only changed visible frames, and releases everything when
+the renderer stops. Settings changes apply on the next Start, as for static
+layers. Both presentations are frozen for a running conversation.
+
+WebP limits (in addition to the existing 8 MiB encoded limit):
+
+- Maximum 1024 pixels per side; 120 frames.
+- At most 32 MiB total decoded RGBA per asset, computed as width × height × 4 ×
+  frame count before decoder allocation. This is a decoded-pixel budget, not a
+  promise that total decoder process memory equals 32 MiB.
+- 40–10000 ms per frame and at most 30 seconds per cycle. Faster/zero-duration
+  frames are rejected, not silently retimed. The scene renders at up to 30 fps;
+  late frames catch up to the authored clock without accumulating drift.
+- Loop count zero repeats indefinitely; finite counts hold the final frame.
+  Switching presentation or revealing a hidden scene starts its loop at zero.
+  Hidden/inactive-mode layers do no frame reads, conversions or uploads.
+
+Start with a short 320 × 200 decorative loop. Author both layers on matching
+canvas proportions: the same centered-cover crop and foreground registration
+rules apply to every frame in Lab, conversation preview, split and fullscreen.
+Foreground alpha is premultiplied once before GPU filtering; it is never
+flattened. Invalid input is rejected by settings writes, preserving the previous
+selection. A missing/damaged stored asset omits only that layer and reports a
+localized notice; the avatar and remaining layers continue.
+
+### Evaluated alternatives
+
+**APNG is not supported in this implementation.** Go's standard PNG decoder
+does not animate acTL/fcTL/fdAT chunks; accepting those files would misleadingly
+show only the default image. The loader explicitly rejects APNG, including
+animation saved with a .png suffix. A future APNG implementation needs a
+maintained compositor plus the same disposal, timing, alpha and on-device
+budget tests; merely allowing the suffix is insufficient.
+
+Android API 28 has platform animation facilities, but this renderer owns a
+native GLES surface rather than an Android image widget. The selected Go
+decoder fits the existing process and descriptor boundary without adding a
+Java/JNI UI path. No platform APNG capability is assumed.
+
+**Transparent video remains a later path** for longer/high-resolution motion.
+It could reduce decoded-frame storage, but requires measured codec/profile/
+pixel-format support, reliable alpha transport, GPU composition and visibility
+lifecycle on the actual device. No VP9/AV1/HEVC alpha hardware-decoder support,
+transparent-video performance or server-side transcoding is promised or
+claimed tested here.
+
+
+### Silent background video (MP4)
+
+The existing `background` and `fullscreen_background` selections also accept local
+`.mp4` files. Both Avatar Lab and Talk use the same background renderer, centered
+cover/crop and independent split/fullscreen selections. PNG/JPEG/WebP and all
+foreground image behavior remain unchanged. **Foreground video is rejected.**
+
+Supported video: MP4 containing one H.264 video track, 8-bit YUV420,
+no rotation, at most 1280×800, 30 fps, 120 seconds and 64 MiB encoded. Audio tracks
+are discarded without opening an audio decoder or connecting to any audio output.
+The clip loops indefinitely; a scene becoming visible restarts its video. Hidden
+or inactive-mode video workers stop and release their decoding contexts. Playback
+uses bounded streaming software decoding via the existing FFmpeg 9.1 dependency,
+not a hardware-decoder promise or an all-frames-in-memory animation conversion.
+Only the current/pending RGBA pictures and bounded codec buffers are retained.
+
+A private unlinked encoded snapshot pins each selection at Start. Validation
+probes metadata and decodes the first picture through the same native decoder
+without opening graphics/audio. Bad selections preserve the previous setting.
+Damage discovered later disables only the background, leaving the avatar/Talk
+path alive with its default background. File paths and decoder output are not
+included in errors. No remote URLs, external data references or new network
+protocols are accepted. Upload with Files/WebDAV, select **Background image /
+video**, then Start again. Fullscreen has its own background selection.
+
+Non-square pixels are normalized to a bounded square-pixel RGBA texture before
+applying the usual centered-cover rules. For example, 1280×800 encoded at pixel
+aspect 10:9 becomes a 1280×720 texture (16:9 display aspect), not a vertically
+stretched 16:10 picture. The source-resolution limits still apply before decode;
+this normalization does not upscale or allocate an unbounded display canvas.

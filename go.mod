@@ -9,6 +9,7 @@ require (
 	github.com/bluenviron/mediacommon/v2 v2.9.5
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/cloudsoda/go-smb2 v0.0.0-20261105190815-95be04a983b8
+	github.com/gen2brain/webp v0.6.4
 	github.com/go-gui-org/go-gui v0.94.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/pion/webrtc/v4 v4.2.22
@@ -53,6 +54,7 @@ require (
 	github.com/dlclark/regexp2/v2 v2.2.2 // indirect
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gen2brain/jpegn v0.6.2 // indirect

@@ -63,3 +63,48 @@ until the matching AVATAR_MOTION REV STATUS TRACKS acknowledgment. Rejected
 motions leave the surface/model alive; success resets only the animation clock.
 Talk-layout renderers ignore motion selection. Both daemon and helper must be
 installed together; older scalar protocols are rejected.
+
+## Animated image snapshots
+
+BG01 remains the unchanged single-frame straight-alpha RGBA contract. BG02 is
+six little-endian words (magic, width, height, frame count, loop count, total
+milliseconds), then per-frame delay + complete straight-alpha RGBA canvas.
+Loop count 0 is infinite; finite counts hold the final frame. The Go decoder
+composites WebP disposal/blend rules before staging; the helper only seeks raw
+frames and updates the active texture. Invalid snapshots disable that layer,
+not the scene. Both ends enforce dimensions, frame count, decoded size and
+timing budgets. Hidden or inactive-mode layers do no reads/uploads; visibility
+starts the loop at frame zero. Helper termination releases all descriptors,
+frame buffers and textures. The image path has no animation worker or audio stream. Device Go binaries/tests must use
+the nodynamic tag; the Makefile enforces it for production builds.
+
+--capture-at SECONDS selects the diagnostic PPM capture time; omitted keeps
+the existing capture behavior. AVATAR_LAYER_STATS UPLOADS LAST_FRAME VISIBLE
+is informational test output and contains no asset path.
+
+
+## Silent MP4 background
+
+A descriptor-backed encoded MP4 may replace BG01/BG02 for backgrounds only.
+`video.hpp` uses the existing FFmpeg 9.1 build (see `../legacy/build.sh`) with
+custom local AVIO, external references disabled, one H.264 stream, pixel-aspect normalization,
+no rotation, 8-bit YUV420, <=1280×800/30 fps/120 s/64 MiB. The helper opens no
+audio decoder/output. `--probe-background FD_PATH` checks metadata and the first
+picture without a GPU, with 5-second parent timeout and CPU/address-space limits.
+
+Only a visible layer has a decoding worker. It streams/paces pictures by PTS,
+loops by seeking/flushing at the video track duration and skips conversion /
+publication of pictures over 80 ms late instead of playing in slow motion or
+queuing the full clip. H.264 reference decoding stays intact. Hiding joins the worker and releases
+its codec context; showing recreates it from frame zero. All GPU calls stay on
+the render thread. Midstream errors disable only that layer. Foregrounds reject
+MP4 independently in both Go and native paths.
+
+`AVATAR_VIDEO_STATS UPLOADS PUBLISHED ACTIVE` and `AVATAR_VIDEO_CAPTURE PTS` are
+path-free diagnostics. `make -C native/avatar OUT=... .../video-test` builds the
+headless Android decoder/loop/visibility regression executable; pass a short
+valid MP4 fixture as its argument. Fixtures are not bundled user media.
+
+The headless test optionally accepts a BG01 first-picture output path and an
+expected normalized size (`video-test clip.mp4 first.rgba 64x48`). This can verify
+non-square-pixel fixtures without relying on screenshots or a host decoder.

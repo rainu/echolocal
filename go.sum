@@ -96,6 +96,8 @@ github.com/dop251/goja v0.0.0-20260311135729-065cd970411c h1:OcLmPfx1T1RmZVHHFwW
 github.com/dop251/goja v0.0.0-20260311135729-065cd970411c/go.mod h1:MxLav0peU43GgvwVgNbLAj1s/bSGboKkhuULvq/7hx4=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
+github.com/ebitengine/purego v0.11.1 h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6XeQ/0=
+github.com/ebitengine/purego v0.11.1/go.mod h1:DCHPP08djqhNSoTfImcnHYQRZmd0qhakvrozqaEYhGQ=
 github.com/flynn/noise v1.1.0 h1:KjPQoQCEFdZDiP03phOvGi11+SVVhBG2wOWAorLsstg=
 github.com/flynn/noise v1.1.0/go.mod h1:xbMo+0i6+IGbYdJhF31t2eR1BIU0CYc12+BNAKwUTag=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=
@@ -104,6 +106,8 @@ github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S
 github.com/fsnotify/fsnotify v1.9.0/go.mod h1:8jBTzvmWwFyi3Pb8djgCCO5IBqzKJ/Jwo8TRcHyHii0=
 github.com/gen2brain/jpegn v0.6.2 h1:U69MV6ZkRg6yWn5xTehCgUxQRq+eJNkdvuNuCOgGMik=
 github.com/gen2brain/jpegn v0.6.2/go.mod h1:43hks+w5VNTUDU34uk0tsXYJ97nbYL2idAlZF0D66+A=
+github.com/gen2brain/webp v0.6.4 h1:SUDdmxADOAiPQ+5ylNmuHhuYf2dOi0KgKZHL5vpVCNU=
+github.com/gen2brain/webp v0.6.4/go.mod h1:iGWMaCSw7t3I/Cv9llzEKmpnR36S8lS8VL/ZVjxU0JE=
 github.com/geoffgarside/ber v1.1.0 h1:qTmFG4jJbwiSzSXoNJeHcOprVzZ8Ulde2Rrrifu5U9w=
 github.com/geoffgarside/ber v1.1.0/go.mod h1:jVPKeCbj6MvQZhwLYsGwaGI52oUorHoHKNecGT85ZCc=
 github.com/go-chi/chi/v5 v5.5.0 h1:xdKQ1dJmVJsmgahrXSKhUx8NyVPzpwdlyrrQFpMPJgg=
@@ -277,18 +281,6 @@ github.com/pion/turn/v5 v5.1.2/go.mod h1:57Oadc8fHnac15VFyCd6nEaBTVZBxQe2POUMD4l
 github.com/pion/webrtc/v4 v4.2.22 h1:eoRTHzLKW5tI9o5iahw3s4KL4IHPESsfIF06zWi3JAo=
 github.com/pion/webrtc/v4 v4.2.22/go.mod h1:JBu1ba8lUEX4jbYFKofglMQJG7f0rJk7UepKjI3GaLE=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/rainu/libcountertop v0.0.0-20261125181900-7659f7e8e6ae h1:Sg13KzM5z5A8ssClngU9jCev/jB0aTOOrp3n4OWaJi0=
-github.com/rainu/libcountertop v0.0.0-20261125181900-7659f7e8e6ae/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
-github.com/rainu/libcountertop v0.0.0-20261125193800-4c80c0ae7a15 h1:reynGFD6w1s1BgZZr5fIw4xjLNb8Z44R2knrFGCwcp0=
-github.com/rainu/libcountertop v0.0.0-20261125193800-4c80c0ae7a15/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
-github.com/rainu/libcountertop v0.0.0-20261125194118-9a6b051de760 h1:ITOxcAWTFdnjya8YdHPoJcB0lclXzusZnFDki9sL7qA=
-github.com/rainu/libcountertop v0.0.0-20261125194118-9a6b051de760/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
-github.com/rainu/libcountertop v0.0.0-20261125204717-76d06f044690 h1:7JJ5G/bZQdgBn1G6FFG5E+wvUk6UnQjUP6Klbofss0Q=
-github.com/rainu/libcountertop v0.0.0-20261125204717-76d06f044690/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
-github.com/rainu/libcountertop v0.0.0-20261125211858-fd886f534db9 h1:M4Br4sN4hXVt932OEQvvBlsbPvuVskvXenQKejBrrHw=
-github.com/rainu/libcountertop v0.0.0-20261125211858-fd886f534db9/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
-github.com/rainu/libcountertop v0.0.0-20261127111351-615591dc7ffa h1:h96YHzuq7Ih7aWRDEMW5ecCbSByY/lo+7AN1/w0wHOc=
-github.com/rainu/libcountertop v0.0.0-20261127111351-615591dc7ffa/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
 github.com/rainu/libcountertop v0.0.0-20261127113009-8bd76c4fc644 h1:M19BejM5GRh5bI15mSa4Qvr4svrzw+rxYqrR/9xX8fQ=
 github.com/rainu/libcountertop v0.0.0-20261127113009-8bd76c4fc644/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
