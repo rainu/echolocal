@@ -24,6 +24,9 @@ func Text(lang, key string) string {
 	if v := mouthWords[lang][key]; v != "" {
 		return v
 	}
+	if v := foregroundWords[lang][key]; v != "" {
+		return v
+	}
 	if v := backgroundWords[lang][key]; v != "" {
 		return v
 	}
@@ -213,4 +216,11 @@ var motionWords = map[string]map[string]string{
 		"motion_ready":           "Đã nạp hoạt ảnh. Phát hoặc tạm dừng xem trước.",
 		"motion_none_status":     "Không có hoạt ảnh phòng thử.",
 	},
+}
+
+var foregroundWords = map[string]map[string]string{
+	"en": {"foreground": "Foreground image", "fullscreen_foreground": "Fullscreen foreground", "foreground_reset": "Clear foreground", "foreground_help": "PNG/JPEG, up to 8 MiB, 4096 pixels per side and 4 megapixels. Alpha is preserved. Normalized to the background canvas, centered cover in the selected panel; use matching canvas proportions for registered cutouts. Applies on next Start.", "foreground_unavailable": "Cannot read foreground. Select another file or clear it. The rest of the scene is unchanged.", "foreground_invalid": "Foreground rejected. Use a complete PNG/JPEG within the image limits. The rest of the scene is unchanged.", "foreground_storage": "Cannot prepare foreground. Free device storage and retry.", "foreground_example": "/data/local/tmp/foreground.png"},
+	"de": {"foreground": "Vordergrundbild", "fullscreen_foreground": "Vollbild-Vordergrund", "foreground_reset": "Vordergrund entfernen", "foreground_help": "PNG/JPEG, bis 8 MiB, 4096 Pixel je Seite und 4 Megapixel. Transparenz bleibt erhalten. Auf die Hintergrundfläche normiert, zentriert füllend im gewählten Bereich; für passende Ausschnitte gleiche Bildproportionen verwenden. Gilt beim nächsten Start.", "foreground_unavailable": "Vordergrund nicht lesbar. Andere Datei wählen oder entfernen. Die übrige Szene bleibt unverändert.", "foreground_invalid": "Vordergrund abgelehnt. Vollständiges PNG/JPEG innerhalb der Bildgrenzen verwenden. Die übrige Szene bleibt unverändert.", "foreground_storage": "Vordergrund nicht vorbereitet. Gerätespeicher freigeben und erneut versuchen.", "foreground_example": "/data/local/tmp/foreground.png"},
+	"it": {"foreground": "Immagine in primo piano", "fullscreen_foreground": "Primo piano a schermo intero", "foreground_reset": "Rimuovi primo piano", "foreground_help": "PNG/JPEG, massimo 8 MiB, 4096 pixel per lato e 4 megapixel. Trasparenza preservata. Normalizzato allo sfondo, riempimento centrato; usare proporzioni uguali per ritagli allineati. Vale al prossimo avvio.", "foreground_unavailable": "Primo piano non leggibile. Scegliere un altro file o rimuoverlo. Il resto della scena non cambia.", "foreground_invalid": "Primo piano rifiutato. Usare PNG/JPEG completo entro i limiti. Il resto della scena non cambia.", "foreground_storage": "Impossibile preparare il primo piano. Liberare spazio e riprovare.", "foreground_example": "/data/local/tmp/foreground.png"},
+	"vi": {"foreground": "Ảnh tiền cảnh", "fullscreen_foreground": "Tiền cảnh toàn màn hình", "foreground_reset": "Xóa tiền cảnh", "foreground_help": "PNG/JPEG, tối đa 8 MiB, 4096 pixel mỗi cạnh và 4 megapixel. Giữ độ trong suốt. Chuẩn hóa theo nền và cắt giữa để lấp đầy; dùng cùng tỷ lệ ảnh để căn khớp. Áp dụng ở lần Bắt đầu tiếp theo.", "foreground_unavailable": "Không đọc được tiền cảnh. Chọn tệp khác hoặc xóa. Phần còn lại không đổi.", "foreground_invalid": "Tiền cảnh bị từ chối. Dùng PNG/JPEG hoàn chỉnh trong giới hạn. Phần còn lại không đổi.", "foreground_storage": "Không thể chuẩn bị tiền cảnh. Giải phóng bộ nhớ và thử lại.", "foreground_example": "/data/local/tmp/foreground.png"},
 }

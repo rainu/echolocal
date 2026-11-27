@@ -72,6 +72,9 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 	}
 	header = append(header, talkAvatarHint(note))
 	captions := []gogui.View{}
+	if s.ForegroundNotice != "" {
+		captions = append(captions, talkAvatarHint(text(s.ForegroundNotice)))
+	}
 	if s.BackgroundNotice != "" {
 		captions = append(captions, talkAvatarHint(text(s.BackgroundNotice)))
 	}

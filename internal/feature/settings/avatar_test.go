@@ -148,7 +148,7 @@ func TestAllAvatarAssetRowsUsePickerAndKeepValidation(t *testing.T) {
 		Read:  func() config.Avatar { return value },
 		Save:  func(s setting.Setting[config.Avatar], v string) error { return s.Write(&value, v) },
 	}
-	for _, page := range []*sharedshell.Page{avatarModelPageFor(c), avatarBackgroundPageFor(c), avatarFullscreenPageFor(c)} {
+	for _, page := range []*sharedshell.Page{avatarModelPageFor(c), avatarBackgroundPageFor(c), avatarForegroundPageFor(c, false), avatarForegroundPageFor(c, true), avatarFullscreenPageFor(c)} {
 		rows, _ := page.Build()
 		count := 0
 		for _, row := range rows {
@@ -175,7 +175,11 @@ func TestAllAvatarAssetRowsUsePickerAndKeepValidation(t *testing.T) {
 				t.Fatal("bypassed existing validation")
 			}
 		}
-		if count != 1 {
+		expected := 1
+		if page.Title == avatar.Text(say.Chosen(), "fullscreen_mode") {
+			expected = 2
+		}
+		if count != expected {
 			t.Fatal("expected one picker per page", count)
 		}
 	}

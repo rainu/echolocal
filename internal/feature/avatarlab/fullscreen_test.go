@@ -22,7 +22,7 @@ func TestFullscreenIndependentPersistedComposition(t *testing.T) {
 			}
 			continue
 		}
-		if row.Name == "fullscreen_background" {
+		if row.Name == "fullscreen_background" || row.Name == "fullscreen_foreground" {
 			continue
 		}
 		before := a

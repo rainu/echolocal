@@ -148,5 +148,26 @@ int main() {
   close(fds[1]);
   c.read();
   assert(c.ended);
+  for(auto panel: {std::array<int,2>{640,640},{640,800},{1280,800},{800,480},{400,1280}}) {
+    for(auto canvas: {std::array<int,2>{1280,800},{640,640},{800,1280}}) {
+      auto crop=avatarImageCrop(canvas[0],canvas[1],panel[0],panel[1]);
+      // Screen-space model centers mapped back through the image crop must
+      // match the square Lab composition in every presentation and aspect.
+      auto refCrop=avatarImageCrop(canvas[0],canvas[1],640,640);
+      for(bool full:{false,true}) {
+        auto base=avatarOrbit(20,-10,2,5,3);
+        auto ref=avatarFraming(base,2.3f,.2f,-.4f,640,640,full);
+        float scale=avatarSceneScale(canvas[0],canvas[1],panel[0],panel[1],full);
+        auto mapped=avatarFraming(base,2.3f*scale,.2f*scale,-.4f*scale,panel[0],panel[1],full);
+        for(int col=0;col<4;col++) {
+          assert(std::abs(mapped[col*4]*crop[0]-ref[col*4]*refCrop[0])<.0001f);
+          assert(std::abs(mapped[col*4+1]*crop[1]-ref[col*4+1]*refCrop[1])<.0001f);
+        }
+      }
+      assert(crop[0]>0 && crop[0]<=1 && crop[1]>0 && crop[1]<=1);
+      assert(crop==avatarImageCrop(canvas[0]*2,canvas[1]*2,panel[0],panel[1]));
+      assert(std::abs(crop[0]/crop[1]-float(panel[0])*canvas[1]/(panel[1]*canvas[0]))<.00001);
+    }
+  }
   puts("CONTROL_TEST=PASS");
 }

@@ -32,6 +32,16 @@ func NewTable() *setting.Table[config.Avatar] {
 			return nil
 		}})
 
+	rows = append(rows, setting.Setting[config.Avatar]{Name: "foreground", Kind: setting.Text, Group: "background", Icon: "mdi:image",
+		Read: func(a *config.Avatar) string { return a.Foreground },
+		Write: func(a *config.Avatar, v string) error {
+			if e := avatar.ValidateForeground(v); e != nil {
+				return errors.New(avatar.Text(say.Chosen(), e.Error()))
+			}
+			a.Foreground = v
+			return nil
+		}})
+
 	for _, f := range []struct {
 		name     string
 		min, max int
@@ -136,6 +146,20 @@ func init() {
 }
 
 func presentationMessage(k string) (string, bool) {
+	for _, prefix := range []string{"avatar.setting.", "avatar.entity.", "avatar.reset.", "avatar.help.", "avatar.example."} {
+		if k == prefix+"foreground" {
+			switch prefix {
+			case "avatar.reset.":
+				return "foreground_reset", true
+			case "avatar.help.":
+				return "foreground_help", true
+			case "avatar.example.":
+				return "foreground_example", true
+			default:
+				return "foreground", true
+			}
+		}
+	}
 	if key, ok := fullscreenMessage(k); ok {
 		return key, true
 	}

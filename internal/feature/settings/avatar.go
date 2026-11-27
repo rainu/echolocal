@@ -136,6 +136,38 @@ func avatarPresentationPageFor(c *setting.Controls[config.Avatar]) *sharedshell.
 	}
 }
 
+func AvatarForegroundPage(full bool) *sharedshell.Page {
+	return avatarForegroundPageFor(avatarlab.Controls(), full)
+}
+func avatarForegroundPageFor(c *setting.Controls[config.Avatar], full bool) *sharedshell.Page {
+	name := "foreground"
+	if full {
+		name = "fullscreen_foreground"
+	}
+	note := ""
+	return &sharedshell.Page{Title: avatar.Text(say.Chosen(), name), Build: func() ([]menu.Row, []func(int)) {
+		text := func(k string) string { return avatar.Text(say.Chosen(), k) }
+		row := c.Table.MustRow(name)
+		a := c.Read()
+		save := func(v string) error {
+			note = ""
+			err := c.ChangeRaw(name, v)
+			if err != nil {
+				note = err.Error()
+			}
+			return err
+		}
+		rows := []menu.Row{avatarFileRow(text(name), row.Read(&a), []string{".png", ".jpg", ".jpeg"}, save),
+			{Label: text("foreground_reset"), Kind: menu.Plain},
+			{Label: text("foreground_help"), Kind: menu.Plain}}
+		acts := []func(int){nil, func(int) { _ = save("") }, nil}
+		if note != "" {
+			rows = append(rows, menu.Row{Label: note, Kind: menu.Plain})
+			acts = append(acts, nil)
+		}
+		return rows, acts
+	}}
+}
 func AvatarBackgroundPage() *sharedshell.Page { return avatarBackgroundPageFor(avatarlab.Controls()) }
 func avatarBackgroundPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Page {
 	note := ""
@@ -216,7 +248,7 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 					}
 					continue
 				}
-				if row.Name == "fullscreen_background" {
+				if row.Name == "fullscreen_background" || row.Name == "fullscreen_foreground" {
 					rows = append(
 						rows,
 						avatarFileRow(
@@ -230,8 +262,13 @@ func avatarFullscreenPageFor(c *setting.Controls[config.Avatar]) *sharedshell.Pa
 					rows = append(
 						rows,
 						menu.Row{
-							Label: avatar.Text(say.Chosen(), "background_reset"),
-							Kind:  menu.Plain,
+							Label: func() string {
+								if row.Name == "fullscreen_foreground" {
+									return avatar.Text(say.Chosen(), "foreground_reset")
+								}
+								return avatar.Text(say.Chosen(), "background_reset")
+							}(),
+							Kind: menu.Plain,
 						},
 					)
 					acts = append(acts, func(int) { _ = save(row.Name, "") })

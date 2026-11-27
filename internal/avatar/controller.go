@@ -52,6 +52,7 @@ type State struct {
 	FPS, Mouth, RMS, Seconds, WorkMS float64
 	Frames, Blocks, Gaps             uint64
 	Muted                            bool
+	ForegroundNotice                 string
 	BackgroundNotice                 string
 	Ready                            bool
 	ModelName, Credit                string
@@ -67,6 +68,8 @@ type Controller struct {
 	dir                  string
 	renderer             string
 	background           func() string
+	foreground           func() string
+	fullscreenForeground func() string
 	source               func() string
 	resolve              func(string) (AssetSet, string, string, error)
 	overlay              func() image.Rectangle
@@ -100,6 +103,13 @@ func (c *Controller) SetBackground(source func() string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.background = source
+}
+
+// SetForeground selects independent split/Lab and fullscreen image layers.
+func (c *Controller) SetForeground(source, fullscreen func() string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.foreground, c.fullscreenForeground = source, fullscreen
 }
 func (c *Controller) Snapshot() State { c.mu.Lock(); defer c.mu.Unlock(); return c.state }
 func (c *Controller) Configure(o Options) {
@@ -172,6 +182,30 @@ func (c *Controller) Start() {
 			}
 		}
 	}
+	foregroundNotice := ""
+	resolveForeground := func(source func() string) string {
+		if source == nil || err != nil {
+			return ""
+		}
+		selected := source()
+		if selected == "" {
+			return ""
+		}
+		file, release, e := ResolveForeground("/", c.dir, selected)
+		if e != nil {
+			foregroundNotice = e.Error()
+			return ""
+		}
+		original := cleanup
+		cleanup = func() { release(); original() }
+		return file
+	}
+	foregroundPath := resolveForeground(c.foreground)
+	fullForeground := ""
+	if c.talkLayout {
+		fullForeground = resolveForeground(c.fullscreenForeground)
+	}
+
 	started := false
 	defer func() {
 		if !started {
@@ -209,6 +243,13 @@ func (c *Controller) Start() {
 	if backgroundPath != "" && backgroundNotice == "" {
 		args = append(args, "--background", backgroundPath)
 	}
+	if foregroundPath != "" {
+		args = append(args, "--foreground", foregroundPath)
+	}
+	if fullForeground != "" {
+		args = append(args, "--fullscreen-foreground", fullForeground)
+	}
+
 	cmd := c.command(ctx, c.renderer, args...)
 	cmd.WaitDelay = 2 * time.Second
 	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
@@ -248,7 +289,7 @@ func (c *Controller) Start() {
 	c.generation++
 	gen := c.generation
 	opts := c.state.Options
-	c.state = State{Options: opts, Running: true, Notice: "starting", BackgroundNotice: backgroundNotice, ModelName: assets.Name, Credit: assets.Credit}
+	c.state = State{Options: opts, Running: true, Notice: "starting", BackgroundNotice: backgroundNotice, ForegroundNotice: foregroundNotice, ModelName: assets.Name, Credit: assets.Credit}
 	c.cancel = cancel
 	c.input = stdin
 	c.mu.Unlock()
@@ -512,6 +553,15 @@ func (c *Controller) stats(gen uint64, line string) {
 		if gen == c.generation {
 			c.state.Ready = true
 			c.state.Notice = "running"
+		}
+		c.mu.Unlock()
+		c.redraw()
+		return
+	}
+	if line == "AVATAR_FOREGROUND_ERROR" {
+		c.mu.Lock()
+		if gen == c.generation {
+			c.state.ForegroundNotice = "foreground_invalid"
 		}
 		c.mu.Unlock()
 		c.redraw()

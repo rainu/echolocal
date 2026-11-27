@@ -34,6 +34,7 @@ func (v *avatarView) openPreview() {
 	saved := config.AvatarSection.Read()
 	c.SetBackground(func() string { return saved.Background })
 	c.EnableTalkLayout(func() string { return saved.FullscreenBackground })
+	c.SetForeground(func() string { return saved.Foreground }, func() string { return saved.FullscreenForeground })
 	c.SetTalkMode(v.fullscreen)
 	c.SetOverlay(talkVolumeBounds)
 	o := s.Options
@@ -74,6 +75,9 @@ func (p *avatarPreview) build(w *gogui.Window) gogui.View {
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
 	s := p.renderer.Snapshot()
 	note := text("preview_only")
+	if s.ForegroundNotice != "" {
+		note += " " + avatar.Text(say.Chosen(), s.ForegroundNotice)
+	}
 	if s.BackgroundNotice != "" {
 		note += " " + text(s.BackgroundNotice)
 	}

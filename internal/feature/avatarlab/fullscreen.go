@@ -27,6 +27,16 @@ func fullscreenSettings() []setting.Setting[config.Avatar] {
 			return nil
 		}},
 	}
+	rows = append(rows, setting.Setting[config.Avatar]{Name: "fullscreen_foreground", Kind: setting.Text, Group: "fullscreen",
+		Read: func(a *config.Avatar) string { return a.FullscreenForeground },
+		Write: func(a *config.Avatar, v string) error {
+			if e := avatar.ValidateForeground(v); e != nil {
+				return errors.New(avatar.Text(say.Chosen(), e.Error()))
+			}
+			a.FullscreenForeground = v
+			return nil
+		}})
+
 	for _, f := range []struct {
 		name     string
 		min, max int
@@ -92,6 +102,9 @@ func fullscreenMessage(k string) (string, bool) {
 						return "fullscreen_position_help", true
 					}
 					return name + "_help", true
+				}
+				if name == "foreground" {
+					return "fullscreen_foreground", true
 				}
 				if name == "background" {
 					return "fullscreen_background", true

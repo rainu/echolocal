@@ -77,6 +77,7 @@ func extendAvatar(look *widgets.UI, o *screens.Options, _ func() *screens.App) {
 	avatarlab.Controls()
 	v := &avatarView{app: c, look: look}
 	c.SetBackground(func() string { return config.AvatarSection.Read().Composition(v.fullscreen).Background })
+	c.SetForeground(func() string { return config.AvatarSection.Read().Composition(v.fullscreen).Foreground }, nil)
 	v.load = func() { c.Configure(avatarlab.Options(config.AvatarSection.Read().Composition(v.fullscreen))) }
 	open := func() {
 		o := avatarlab.Options(config.AvatarSection.Read().Composition(v.fullscreen))
@@ -174,6 +175,9 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 	if s.Notice == "running" {
 		note = ""
 	}
+	if s.ForegroundNotice != "" {
+		note += " " + avatar.Text(say.Chosen(), s.ForegroundNotice)
+	}
 	if s.BackgroundNotice != "" {
 		note += " " + avatar.Text(say.Chosen(), s.BackgroundNotice)
 	}
@@ -219,6 +223,10 @@ func (v *avatarView) build(w *gogui.Window) gogui.View {
 						return settings.AvatarBackgroundPage()
 					}())
 				})
+			})),
+			avatarRow(avatarButton("avatar-foreground", avatar.Text(say.Chosen(), "foreground"), false, false, func() {
+				v.app.Stop()
+				lock.Get().Gate().Open(func() { featureshell.Get().Push(settings.AvatarForegroundPage(v.fullscreen)) })
 			})),
 			avatarRow(avatarButton("avatar-presentation", avatar.Text(say.Chosen(), "presentation"), false, false, func() {
 				v.app.Stop()
