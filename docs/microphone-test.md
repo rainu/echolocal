@@ -1,6 +1,6 @@
 # Processed microphone test
 
-Open **Settings → Microphone / test → Record and listen (processed)** on the
+Open **Settings → Microphone** on the
 device, or use **Microphone test** next to microphone processing settings in the
 authenticated web UI.
 
@@ -8,8 +8,8 @@ authenticated web UI.
 2. Record for up to eight seconds, or press Stop earlier.
 3. Play the take on the Echo. Playback is never concurrent with test capture.
 4. Change gain, mixing, leveling or echo-cancellation settings between takes and
-   record again. Processing edits are rejected while a test is active.
-5. Delete the take, or leave the test page/section.
+   record again using the bottom **Start recording**, **Play**, and **Stop** buttons. Processing edits are rejected while a test is active.
+5. A new recording automatically replaces the old take; leaving the page/section clears it. No separate Delete control is needed.
 
 The signal is the same 16 kHz mono processed mic.Source.Listen stream consumed
 by recognition, including the selected microphone mixing, hardware gain,
@@ -34,8 +34,8 @@ discarding a take clears the retained sample buffer; service shutdown clears it.
 Wake-word detection and new assistant starts are gated during capture/playback.
 A test refuses busy voice/output operation and stops if another voice operation
 takes priority, capture stalls, or mute becomes active during capture. A recording
-is never automatically played. Stop cancels only test capture/playback; Delete
-also erases the take. Playback keeps the gate closed through output drainage and
+is never automatically played. Stop cancels only test capture/playback; starting again replaces the take, and leaving
+the page erases it. Playback keeps the gate closed through output drainage and
 the hardware tail. Errors remain visible and a new take can be attempted.
 
 Live monitoring was not selected: sequential capture/playback avoids an
