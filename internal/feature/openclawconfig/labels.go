@@ -2,7 +2,10 @@
 
 package openclawconfig
 
-import "github.com/ygelfand/libcountertop/pkg/say"
+import (
+	connection "github.com/ygelfand/echolocal/internal/openclaw"
+	"github.com/ygelfand/libcountertop/pkg/say"
+)
 
 // Labels follow the device language; never translate canonical stored values.
 func Labels() map[string]string {
@@ -82,6 +85,7 @@ func Labels() map[string]string {
 	for _, code := range []string{"invalid_endpoint", "credentials_missing", "approval_required", "authentication", "tls", "dns", "timeout", "network", "unavailable", "protocol", "identity", "storage", "settings"} {
 		out["error."+code] = say.T("openclaw.error." + code)
 	}
+	out["error.clock"] = connection.ClockWaitText()
 	out["error.invalid_name"] = out["error"] + " (80)"
 	out["error.talk_timeout_invalid"] = out["timeout"] + ": 15–900 " + out["seconds"]
 	out["error.selection_unavailable"] = say.T("clawtalk.unavailable") + " · " + out["connect"]

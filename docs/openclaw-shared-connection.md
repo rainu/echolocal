@@ -61,3 +61,34 @@ both roles remained paired and connected with the shorter hardware-based names.
 Legacy-default migration preserves custom names and role identities.
 The documented streaming, recording/privacy and adapter limitations remain
 explicitly outside the implemented command surface.
+
+## Startup and retry lifecycle
+
+Enabled is a per-role persisted user choice, not a cached connection state.
+Startup resumes only enabled roles; lifecycle Close never disables them, whereas
+Disconnect does. Start is idempotent: repeated lifecycle starts do not replace
+a live connection or repeat registration.
+
+Both role clients wait for Wi-Fi/address readiness and a valid device clock
+before attempting a signed TLS handshake. Node setup is installed before its
+client starts. A network or clock wait is cancellable, uses the existing bounded
+1/2/4/8/16/30-second backoff and does not block the app boot indefinitely.
+Boot readiness evaluates **both** configured roles. The eight-second startup
+summary deadline does not stop background retries.
+
+Transport loss, timeouts and service-restart closes before either handshake
+message are retryable, not malformed protocol responses. A complete malformed
+JSON frame, protocol violation, authentication refusal or pairing requirement
+remains terminal until explicit user action. Certificate date validity is
+retried to allow clock synchronization; all attempts still perform full TLS
+verification. Untrusted issuers and hostname mismatches remain terminal.
+Backoff retains the sanitized reason instead of replacing it with "network".
+No endpoint, server-provided message, credential or identity enters diagnostics.
+
+Regression coverage includes interrupted challenge/hello for both roles,
+certificate-date correction without changing the process clock, delayed
+prerequisite readiness with saved identities, duplicate Start suppression,
+persistent explicit disconnect, cancellation, malformed-frame rejection and
+manual retry. Simulated startup faults are not proof of a physical power-cycle
+test; real-device reboot/restart checks and owner cold-start acceptance are
+reported separately.

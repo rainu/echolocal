@@ -54,3 +54,15 @@ func TestStartupUsesSelectedLanguage(t *testing.T) {
 		}
 	}
 }
+
+func TestClockWaitTextIsLocalizedAndSanitized(t *testing.T) {
+	before := say.Chosen()
+	t.Cleanup(func() { say.Use(before) })
+	for _, lang := range []string{"en", "de", "it", "vi"} {
+		say.Use(lang)
+		text := ClockWaitText()
+		if text == "" || strings.Contains(text, "wss") {
+			t.Fatal("unsafe clock status")
+		}
+	}
+}

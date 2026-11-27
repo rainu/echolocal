@@ -149,6 +149,8 @@ func clawState(state string) string {
 }
 func clawReason(reason string) string {
 	switch reason {
+	case "clock":
+		return openclaw.ClockWaitText()
 	case "invalid_endpoint":
 		return say.T("openclaw.error.invalid_endpoint")
 	case "credentials_missing":
