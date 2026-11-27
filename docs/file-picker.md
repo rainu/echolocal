@@ -86,3 +86,9 @@ Automated coverage distinguishes filesystem/model checks, shared-widget layout
 and simulated input, registry regressions, and actual installed-device checks.
 Actual hardware results and the exact tested commit are recorded in the PR.
 Physical finger input is not implied by injected device input.
+
+## Standalone presentation
+
+The Files app (#84) reuses this browser core and trusted root list. Its
+optional metadata/sort/hidden-name settings do not alter picker defaults.
+See [Files app](files-app.md) for preview/player bounds and shared policy.

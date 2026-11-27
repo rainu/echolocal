@@ -13,7 +13,6 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/avatarlab"
 	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
 	"github.com/ygelfand/echolocal/internal/filepicker"
-	"github.com/ygelfand/echolocal/internal/layout"
 	pickerui "github.com/ygelfand/echolocal/internal/ui/filepicker"
 )
 
@@ -326,17 +325,7 @@ func avatarFileRow(label, current string, extensions []string, save func(string)
 			Choose: save,
 			Browser: filepicker.Options{
 				Extensions: extensions,
-				Locations: []filepicker.Location{
-					{
-						Label: pickerWords("User files", "Benutzerdateien"),
-						Path:  layout.StateDir + "/user-files",
-					},
-					{Label: pickerWords("Local files", "Lokale Dateien"), Path: "/data/local"},
-					{
-						Label: pickerWords("Shared storage", "Gemeinsamer Speicher"),
-						Path:  "/data/media/0",
-					},
-				},
+				Locations:  filepicker.UserLocations(pickerWords),
 			},
 		},
 	)

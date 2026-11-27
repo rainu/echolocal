@@ -181,6 +181,7 @@ var Get = sync.OnceValue(func() *screens.App {
 		extendVoiceMatch,
 		extendTalkPrompt,
 		extendFilePicker,
+		extendFiles,
 		extendTalkAvatar,
 		extendTalkVolume,
 		extendTalkCaptions,
