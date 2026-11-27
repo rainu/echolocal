@@ -35,6 +35,7 @@ type API struct{ *nativeapi.Server }
 var get = sync.OnceValue(func() *API {
 	s := nativeapi.New(nativeapi.Dependencies{
 		ConcurrentActions: concurrentActions(),
+		DeliveryActions:   []string{"openclaw_talk_transfer"},
 		KeyPath:           layout.KeyPath,
 		DialPath:          layout.DialPath,
 		Identity:          identity,

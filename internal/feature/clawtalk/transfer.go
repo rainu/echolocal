@@ -36,7 +36,9 @@ type TransferResult struct {
 	delivered func(bool)
 }
 
-func (r *TransferResult) NodeResultDelivered(ok bool) {
+func (r *TransferResult) NodeResultDelivered(ok bool) { r.ActionResultDelivered(ok) }
+
+func (r *TransferResult) ActionResultDelivered(ok bool) {
 	if r == nil {
 		return
 	}
@@ -292,4 +294,11 @@ func (m *Manager) openTransferred(r *transferRequest, v Slot) error {
 		stop()
 		return errors.New("talk_transfer_cancelled")
 	}
+}
+
+// AutomationStatus is the shared, privacy-bounded public status projection.
+// Do not expose transport diagnostics, history, prompts or session identifiers.
+func (m *Manager) AutomationStatus() map[string]any {
+	s := m.Status()
+	return map[string]any{"active": s.Active, "state": s.State, "transfer": s.Transfer, "transferReason": s.TransferReason, "recovery": s.Recovery}
 }

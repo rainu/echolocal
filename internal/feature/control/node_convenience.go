@@ -359,8 +359,7 @@ func registerNodeTalk(a *connection.NodeAccess) {
 		if nodeEmpty(raw) != nil {
 			return nil, errors.New("invalid_params")
 		}
-		s := clawtalk.Get().Status()
-		return map[string]any{"active": s.Active, "state": s.State, "transfer": s.Transfer, "transferReason": s.TransferReason, "recovery": s.Recovery}, nil
+		return clawtalk.Get().AutomationStatus(), nil
 	})
 	add("talk.start", func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var p struct {

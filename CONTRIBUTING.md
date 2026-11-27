@@ -31,3 +31,16 @@ future avatar settings or any unrelated feature.
 Do not claim live device/browser/physical verification based on synthetic tests.
 Keep private configuration, credentials, network addresses and screenshots out
 of public issues, test fixtures and artifacts. Use synthetic identities in tests.
+
+## Cross-surface action contract
+
+For every new user-facing action, evaluate and normally deliver the authenticated
+API operation, OpenClaw Node command and native Home Assistant action together.
+Include the HACS wrapper when it is a supported invocation route. Share the
+underlying operation, names/argument meaning, validation, permissions, errors,
+cancellation and accepted-versus-completed semantics; do not compose public
+Stop/Start calls to imitate a transfer. Document any technically or semantically
+unsuitable surface explicitly in the issue/PR. Cover equivalent requests and
+failure states across surfaces and document invocation, discovery and outcomes.
+Transport receipt delivery is not operation completion; test uncertain delivery,
+busy/invalid input and recovery without ending an unaffected active operation.
