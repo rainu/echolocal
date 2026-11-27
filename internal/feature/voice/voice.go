@@ -13,6 +13,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/config"
 	"github.com/ygelfand/echolocal/internal/feature/alarm"
 	"github.com/ygelfand/echolocal/internal/feature/media"
+	"github.com/ygelfand/echolocal/internal/feature/mictest"
 	"github.com/ygelfand/echolocal/internal/feature/timer"
 	"github.com/ygelfand/echolocal/internal/feature/wakeword"
 	"github.com/ygelfand/echolocal/internal/hardware/buttons"
@@ -21,6 +22,7 @@ import (
 )
 
 func init() {
+	mictest.PauseWhen(func() bool { v := Get().Turn(); return v.Busy() || v.Pending() })
 	component.Register(sharedcomponent.Device, Get, sharedcomponent.Order(30))
 }
 
@@ -48,7 +50,7 @@ func build() *Voice {
 		dependencies(),
 		satellite.Options{
 			Slots:         wakeword.Slots,
-			Route:         func(slot int, heard bool) bool { return routeTalk(v, slot) },
+			Route:         func(slot int, heard bool) bool { return mictest.Active() || routeTalk(v, slot) },
 			StopAlternate: stopTalk,
 			Initial:       slots,
 			Timers:        timer.Get(),

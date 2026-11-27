@@ -9,6 +9,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/board"
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/feature/idle"
+	"github.com/ygelfand/echolocal/internal/feature/mictest"
 	"github.com/ygelfand/echolocal/internal/feature/mute"
 	claw "github.com/ygelfand/echolocal/internal/feature/openclaw"
 	shellfeature "github.com/ygelfand/echolocal/internal/feature/shell"
@@ -52,6 +53,7 @@ var Get = sync.OnceValue(func() *Manager {
 })
 
 func init() {
+	mictest.PauseWhen(func() bool { return Get().Busy() })
 	component.Register(sharedcomponent.Device, Get, sharedcomponent.Order(33), component.Needs(board.Panel))
 }
 func (m *Manager) Name() string { return "openclaw talk" }
@@ -83,7 +85,7 @@ func (m *Manager) Stop() bool {
 // It NEVER invokes Home Assistant for an OpenClaw activation.
 func (m *Manager) Route(slot int, haBusy bool) bool {
 	m.mu.Lock()
-	if m.active || m.transfer != nil {
+	if mictest.Active() || m.active || m.transfer != nil {
 		m.mu.Unlock()
 		return true
 	}
@@ -115,7 +117,7 @@ func (m *Manager) Route(slot int, haBusy bool) bool {
 // It exposes neither target configuration nor operator credentials.
 func (m *Manager) StartOwned(slot int, haBusy bool) (uint64, error) {
 	m.mu.Lock()
-	if slot < 0 || slot > 1 || m.active || m.transfer != nil || haBusy || !m.Store.Get(slot).OpenClaw {
+	if mictest.Active() || slot < 0 || slot > 1 || m.active || m.transfer != nil || haBusy || !m.Store.Get(slot).OpenClaw {
 		m.mu.Unlock()
 		return 0, errors.New("talk_unavailable")
 	}
@@ -516,7 +518,7 @@ func (m *Manager) StartSession(key string, haBusy bool) (uint64, error) {
 		return 0, errors.New("talk_target_missing")
 	}
 	m.mu.Lock()
-	if m.active || m.transfer != nil || haBusy {
+	if mictest.Active() || m.active || m.transfer != nil || haBusy {
 		m.mu.Unlock()
 		return 0, errors.New("talk_unavailable")
 	}

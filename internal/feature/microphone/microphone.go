@@ -1,6 +1,7 @@
 package microphone
 
 import (
+	"errors"
 	"log/slog"
 	"sync"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ygelfand/echolocal/internal/component"
 	"github.com/ygelfand/echolocal/internal/config"
+	"github.com/ygelfand/echolocal/internal/feature/mictest"
 	"github.com/ygelfand/echolocal/internal/hardware/mic"
 )
 
@@ -116,6 +118,9 @@ var applies = map[string]func(*config.Microphone) error{
 }
 
 func store(s Setting, v string) error {
+	if mictest.Active() {
+		return errors.New("stop the microphone test before changing processing settings")
+	}
 	at := config.Get().Microphone
 	if err := s.Write(&at, v); err != nil {
 		return err
@@ -125,6 +130,9 @@ func store(s Setting, v string) error {
 	}
 	return setting.Store(config.MicrophoneSection, s, s.Read(&at))
 }
+
+func Mixings() []config.Mixing        { return mic.Mixings() }
+func Change(name, value string) error { return Get().knobs.Change(name, value) }
 
 func (m *Microphone) Name() string { return "microphone settings" }
 

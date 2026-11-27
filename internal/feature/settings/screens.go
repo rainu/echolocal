@@ -43,6 +43,7 @@ func root() *sharedshell.Page {
 		AboutPage:    func() sharedshell.View { return aboutPage() },
 		Sections: func() []sharedsettings.Section {
 			sections := []sharedsettings.Section{
+				{Label: microphoneTitle(), Glyph: "mdi:microphone", Page: func() sharedshell.View { return microphonePage() }},
 				{Label: "openclaw.title", Picture: openclawLogo(), Page: func() sharedshell.View { return openclawPage() }},
 				{
 					Label: "settings.camera",

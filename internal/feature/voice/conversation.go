@@ -13,6 +13,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/arbitration"
 	"github.com/ygelfand/echolocal/internal/feature/feedback"
 	"github.com/ygelfand/echolocal/internal/feature/media"
+	"github.com/ygelfand/echolocal/internal/feature/mictest"
 	"github.com/ygelfand/echolocal/internal/feature/mute"
 	"github.com/ygelfand/echolocal/internal/feature/recording"
 	"github.com/ygelfand/echolocal/internal/feature/tones"
@@ -49,7 +50,12 @@ func dependencies() turn.Dependencies {
 			Speaker:  speaker.Sound(),
 			Sounds:   tones.Get(),
 		},
-		Muted: mute.Get().Muted,
+		Muted: func() (bool, error) {
+			if mictest.Active() {
+				return true, nil
+			}
+			return mute.Get().Muted()
+		},
 		Presentation: &turn.Presentation{
 			Settings: config.WakeSection,
 			Shown:    &Shown,
