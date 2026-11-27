@@ -6,10 +6,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ygelfand/echolocal/internal/feature/microphone"
 	testfeature "github.com/ygelfand/echolocal/internal/feature/mictest"
 	core "github.com/ygelfand/echolocal/internal/mictest"
 	"github.com/ygelfand/libcountertop/pkg/display/menu"
 	sharedshell "github.com/ygelfand/libcountertop/pkg/display/shell"
+	setting "github.com/ygelfand/libcountertop/pkg/settings"
 )
 
 type fakeMicTest struct {
@@ -140,5 +142,24 @@ func TestLeavingMicrophoneSettingsErasesTakeAndUnhooks(t *testing.T) {
 	sh.Pop()
 	if m.State("").Phase != "idle" || testfeature.Changed.Listeners() != before {
 		t.Fatal("back did not clear/unhook")
+	}
+}
+
+func TestMicrophoneNumericKnobsPreserveEveryStep(t *testing.T) {
+	rows, _ := microphoneRows(sharedshell.New(), func() bool { return false })
+	fields := microphone.Table(microphone.Mixings()).Rows()
+	for i, f := range fields {
+		if f.Kind != setting.Number {
+			continue
+		}
+		for raw := f.Min; raw <= f.Max; raw++ {
+			pct := f.Percent(raw)
+			if got := rows[i].Snap(pct); got != pct {
+				t.Fatalf("%s raw %d: percent %d snapped to %d", f.Name, raw, pct, got)
+			}
+			if f.Raw(pct) != raw {
+				t.Fatalf("%s lost raw step %d", f.Name, raw)
+			}
+		}
 	}
 }

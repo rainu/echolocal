@@ -52,9 +52,9 @@ func microphoneRows(sh *sharedshell.Shell, active func() bool) ([]menu.Row, []fu
 			n, _ := strconv.Atoi(s.Read(&at))
 			row.Kind = menu.Slider
 			row.Value = fmt.Sprintf("%d %s", n, s.Unit)
-			row.Level = (n - s.Min) * 100 / (s.Max - s.Min)
-			row.Snap = func(v int) int { n := (v*(s.Max-s.Min) + 50) / 100; return n * 100 / (s.Max - s.Min) }
-			tap = func(v int) { save(strconv.Itoa(s.Min + (v*(s.Max-s.Min)+50)/100)) }
+			row.Level = s.Percent(n)
+			row.Snap = func(v int) int { return s.Percent(s.Raw(v)) }
+			tap = func(v int) { save(strconv.Itoa(s.Raw(v))) }
 		case setting.Choice:
 			choices := s.Choices()
 			row.Kind = menu.Chevron
