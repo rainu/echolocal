@@ -3,6 +3,7 @@
 package settings
 
 import (
+	"strings"
 	"sync"
 	"testing"
 
@@ -73,6 +74,9 @@ func TestMicrophoneControlsAndTestShareOneConcretePage(t *testing.T) {
 	}
 	sliders, toggles := 0, 0
 	for _, r := range rows {
+		if strings.Contains(strings.ToLower(r.Label), "ram") {
+			t.Fatal("RAM help must not appear on microphone settings")
+		}
 		if r.Kind == menu.Slider {
 			sliders++
 		}

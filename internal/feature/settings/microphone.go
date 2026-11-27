@@ -124,7 +124,6 @@ func microphonePageWith(m microphoneTestControl, sh *sharedshell.Shell) *shareds
 		if commandError != "" {
 			add(menu.Row{Label: micText("Command: ", "Befehl: ") + commandError})
 		}
-		add(menu.Row{Label: micText("Processed signal · RAM only · replaced on Start; cleared on exit or after 2 minutes.", "Verarbeitetes Signal · nur im RAM · Starten ersetzt die Aufnahme; Löschen beim Verlassen oder nach 2 Minuten.")})
 		if s.Processing != "" {
 			add(menu.Row{Label: s.Processing})
 		}
