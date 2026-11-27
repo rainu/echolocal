@@ -63,7 +63,10 @@ Files hands images to the existing Photos app with a transient single-file sourc
 and audio/video to the existing media card/native video page. The browser has no
 embedded viewer or playback controls. Closing the media app returns to the same
 browser instance, folder and page, releasing its media resources. Photo library
-and picker settings are not modified. These are on-device apps, not Android intent handlers. Image formats:
+and picker settings are not modified. The pinned library includes the two-instance
+Photos shell-identity fix (rainu/libcountertop#19), preventing the local source
+from being routed to the configured library screen. These are on-device apps,
+not Android intent handlers. Image formats:
 PNG, JPEG, GIF and WebP (animated images show their first frame). Images are
 read into a bounded immutable encoded buffer (16 MiB), validated before decode
 (maximum 16 megapixels), and fitted without aspect distortion. Viewer output

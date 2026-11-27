@@ -283,6 +283,8 @@ github.com/pion/webrtc/v4 v4.2.22/go.mod h1:JBu1ba8lUEX4jbYFKofglMQJG7f0rJk7UepK
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rainu/libcountertop v0.0.0-20261127113009-8bd76c4fc644 h1:M19BejM5GRh5bI15mSa4Qvr4svrzw+rxYqrR/9xX8fQ=
 github.com/rainu/libcountertop v0.0.0-20261127113009-8bd76c4fc644/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
+github.com/rainu/libcountertop v0.0.0-20261127210540-e1e72e3c06ef h1:xirf75hWyw+Dw1DgPf+3iTFJfQ35g8ziO8YFbGo2nB4=
+github.com/rainu/libcountertop v0.0.0-20261127210540-e1e72e3c06ef/go.mod h1:GPVlw92DTumfRdOaUgqBsj8/SAp3IashUaWYxPVTI+w=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
