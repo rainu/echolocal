@@ -1,6 +1,6 @@
 # Home Assistant Talk actions
 
-EchoLocal exposes three response-capable native actions through Home Assistant's
+EchoLocal exposes five response-capable native actions through Home Assistant's
 built-in ESPHome integration. No EchoLocal HACS/custom integration or Home
 Assistant restart is required. Reuse the device's existing authenticated
 ESPHome connection; no new OpenClaw credentials, grants or protocol are needed.
@@ -9,6 +9,8 @@ ESPHome connection; no new OpenClaw credentials, grants or protocol are needed.
 | --- | --- | --- |
 | `openclaw_talk_start` | `session_id`, `startup_prompt` (both strings) | `{"success": true, "active": true}` after transport/audio readiness |
 | `openclaw_talk_stop` | None | `{"success": true, "active": false}` after voice resources are released |
+| `openclaw_talk_transfer` | `session_id` (required exact string) | Acceptance receipt; not completed handoff. Requires a response variable. |
+| `openclaw_talk_status` | None | Active state and final transfer/recovery outcome, no prompts/history. |
 | `openclaw_sessions` | None | `{"sessions": [{"id": "agent:example:voice-demo", "name": "Voice demo"}]}` |
 
 ## Calling the native actions
@@ -101,3 +103,7 @@ No new physical-user-speech, wake-word or acoustic listening check is claimed.
 [HACS PR #3](https://github.com/rainu/echolocal-hacs/pull/3) is a separate,
 deferred convenience wrapper with truly omittable fields. It is not required
 for these native actions and is not a deployment or acceptance dependency.
+
+For safe handoff invocation, cancellation, delivery boundaries and the single spoken
+confirmation rule, see [Talk transfer](openclaw-talk-transfer.md). Transfer reuses
+the shared operation, never a public Stop/Start chain, and preserves defaults.

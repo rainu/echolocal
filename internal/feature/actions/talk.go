@@ -19,6 +19,18 @@ func talkActions() []*esphome.Action {
 		return nil
 	}
 	return []*esphome.Action{
+		{Name: "openclaw_talk_transfer", Description: "Transfer the active Talk to an exact accessible session. Requires a response. Accepted is not completed; Echo provides the audible announcement. Check openclaw_talk_status later.", Answers: true,
+			Args: []esphome.Arg{{Name: "session_id", Type: esphome.ArgString}},
+			Run: func(c esphome.Call) (any, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+				defer cancel()
+				return clawtalk.Get().PrepareTransfer(ctx, c.String("session_id"))
+			}},
+		{Name: "openclaw_talk_status", Description: "Read active Talk and transfer completion/recovery state, without session contents.", Answers: true,
+			Run: func(esphome.Call) (any, error) {
+				return clawtalk.Get().AutomationStatus(), nil
+			}},
+
 		{Name: "openclaw_talk_start", Description: "Start Talk; empty arguments use assistant 1 defaults for this call only.", Answers: true,
 			Args: []esphome.Arg{{Name: "session_id", Type: esphome.ArgString}, {Name: "startup_prompt", Type: esphome.ArgString}},
 			Run: func(c esphome.Call) (any, error) {

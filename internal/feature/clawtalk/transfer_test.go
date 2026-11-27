@@ -59,7 +59,14 @@ func TestTransferReceiptStartsAtMostOnce(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 30; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); r.NodeResultDelivered(true) }()
+		go func(action bool) {
+			defer wg.Done()
+			if action {
+				r.ActionResultDelivered(true)
+			} else {
+				r.NodeResultDelivered(true)
+			}
+		}(i%2 == 0)
 	}
 	wg.Wait()
 	r.NodeResultDelivered(false)
@@ -221,4 +228,5 @@ func TestTransferCompletionDetachesCancellationOnlyAtCommit(t *testing.T) {
 func TestRejectedTransferNilReceiptIsSafe(t *testing.T) {
 	var receipt *TransferResult
 	receipt.NodeResultDelivered(false)
+	receipt.ActionResultDelivered(false)
 }
