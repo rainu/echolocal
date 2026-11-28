@@ -12,7 +12,6 @@ import (
 	"github.com/ygelfand/libcountertop/pkg/display/widgets"
 	"github.com/ygelfand/libcountertop/pkg/say"
 	"image"
-	"strings"
 )
 
 func extendTalkAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) {
@@ -44,34 +43,34 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 	s := p.Renderer.Snapshot()
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
 	rows, _ := p.Build()
-	title := p.Title
-	if s.ModelName != "" {
-		name := []rune(strings.Join(strings.Fields(s.ModelName), " "))
-		if len(name) > 40 {
-			name = append(name[:40], '…')
-		}
-		title += " · " + string(name)
+
+	title := ""
+	if p.SessionTitle != nil {
+		title = p.SessionTitle()
 	}
-	header := []gogui.View{avatarText(title)}
-	for i := 0; i < min(2, len(rows)); i++ {
-		header = append(header, avatarText(rows[i].Label))
-		if i == 0 && rows[i].Hint != "" {
-			header = append(header, talkAvatarHint(rows[i].Hint))
-		}
+	if title == "" {
+		title = text("session_unknown")
 	}
-	// End-phrase and caption semantics remain available without displacing the
-	// live transcript. The stop button below is always visible, not in the scroller.
-	if len(rows) > 1 && rows[1].Hint != "" {
-		header = append(header, talkAvatarHint(rows[1].Hint))
+	titleStyle := gogui.CurrentTheme().TextStyleDef
+	titleStyle.Size = 24
+	displayTitle := fitTalkTitle(w, title, titleStyle, float32(width/2-40))
+	header := []gogui.View{gogui.Text(gogui.TextCfg{ID: "talk-session-title", A11YCfg: gogui.A11YCfg{A11YLabel: title}, Text: displayTitle, TextStyle: titleStyle, Mode: gogui.TextModeSingleLine})}
+	status := ""
+	if len(rows) > 0 {
+		status = rows[0].Label
 	}
-	note := text("talk_loading")
-	if s.Ready && s.Running {
-		note = text("talk_running")
+	mic := "mic_off"
+	if p.MicrophoneStatus != nil {
+		mic = p.MicrophoneStatus()
 	}
-	if s.Notice != "starting" && s.Notice != "ready" && (!s.Running || s.Notice != "running") {
-		note = text(s.Notice) + " " + text("talk_fallback")
+	privacyStyle := gogui.CurrentTheme().TextStyleDef
+	privacyStyle.Size = 18
+	header = append(header, gogui.Text(gogui.TextCfg{ID: "talk-microphone-status", Text: status + " · " + text(mic), TextStyle: privacyStyle, Mode: gogui.TextModeWrap}))
+	// Healthy avatar/audio operation needs no explanatory paragraph. Keep only
+	// actionable failures, so transcript space does not depend on static prose.
+	if s.Notice != "" && s.Notice != "starting" && s.Notice != "ready" && s.Notice != "running" {
+		header = append(header, talkAvatarHint(text(s.Notice)+" "+text("talk_fallback")))
 	}
-	header = append(header, talkAvatarHint(note))
 	captions := []gogui.View{}
 	if s.ForegroundNotice != "" {
 		captions = append(captions, talkAvatarHint(text(s.ForegroundNotice)))
@@ -101,10 +100,10 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 	}
 	actions = append(actions, talkModeButton("talk-avatar-fullscreen", gogui.IconExpand, text("switch_fullscreen"), false, p.SwitchMode))
 	left := gogui.Column(gogui.ContainerCfg{
-		ID: "talk-avatar-left", Width: float32(width / 2), Height: float32(height), Sizing: gogui.FixedFixed,
+		ID: "talk-avatar-left", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width / 2), Height: float32(height), Sizing: gogui.FixedFixed,
 		Padding: gogui.PadAll(20), Spacing: gogui.SpacingSmall,
 		Content: []gogui.View{
-			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-status", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: header}),
+			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-status", SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: header}),
 			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-transcript", Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: captions}),
 			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-activity-area", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Content: activity}),
 			gogui.Row(gogui.ContainerCfg{ID: "talk-avatar-actions", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: actions}),
@@ -247,4 +246,23 @@ func talkActivityAccessibility(p *clawtalk.AvatarPage) gogui.A11YCfg {
 		action = avatar.Text(say.Chosen(), "activity_resume")
 	}
 	return gogui.A11YCfg{A11YLabel: label, A11YDescription: action}
+}
+
+// Measure the actual font rather than guessing a character budget: wide glyphs
+// and every supported language stay inside the split pane on small displays.
+func fitTalkTitle(w *gogui.Window, title string, style gogui.TextStyle, width float32) string {
+	if w.TextWidth(title, style) <= width {
+		return title
+	}
+	r := []rune(title)
+	lo, hi := 0, len(r)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if w.TextWidth(string(r[:mid])+"…", style) <= width {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	return string(r[:lo]) + "…"
 }

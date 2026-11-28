@@ -11,7 +11,8 @@ import (
 type AgentActivity struct{ Available, Working bool }
 type activitySample struct {
 	AgentActivity
-	at time.Time
+	at    time.Time
+	title string
 }
 type activityReader interface {
 	ReadSessionActivity(context.Context, string) (connection.SessionActivity, error)
@@ -68,7 +69,7 @@ func (s *Session) pollActivity(ctx context.Context, reader activityReader, inter
 			if incarnation != row.SessionID {
 				return
 			}
-			s.agentActivity.Store(&activitySample{AgentActivity: AgentActivity{Available: true, Working: row.Working}, at: time.Now()})
+			s.agentActivity.Store(&activitySample{AgentActivity: AgentActivity{Available: true, Working: row.Working}, at: time.Now(), title: row.Title})
 		} else {
 			s.agentActivity.Store(nil)
 		}
@@ -80,4 +81,17 @@ func (s *Session) pollActivity(ctx context.Context, reader activityReader, inter
 		case <-timer.C:
 		}
 	}
+}
+
+// SessionTitle shares the exact-socket, incarnation and freshness fences of
+// activity metadata, but a native delegation alone never invents a title.
+func (s *Session) SessionTitle() string {
+	if s.activityStopped.Load() {
+		return ""
+	}
+	sample := s.agentActivity.Load()
+	if sample == nil || time.Since(sample.at) > activityFreshness {
+		return ""
+	}
+	return sample.title
 }

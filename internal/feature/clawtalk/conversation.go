@@ -163,3 +163,19 @@ func (m *Manager) DeleteConfigurationHistory(generation uint64) {
 	m.mu.Unlock()
 	shellfeature.Get().Redraw()
 }
+
+// Compact privacy cue still reflects real capture, not merely a live socket.
+func (m *Manager) microphoneStatus() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active && m.forcedMuted {
+		return "mic_muted"
+	}
+	if microphoneLive(m.active, m.lastAudio, time.Now().UnixMilli()) {
+		return "mic_live"
+	}
+	if m.active {
+		return "mic_wait"
+	}
+	return "mic_off"
+}

@@ -14,3 +14,13 @@ func (m *Manager) agentActivity() talk.AgentActivity {
 	}
 	return b.AgentActivity()
 }
+
+func (m *Manager) sessionTitle() string {
+	state := m.Controller.State()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.active || m.lastBackend == nil || state == talk.Connecting || state == talk.Ended || state == talk.Failed {
+		return ""
+	}
+	return m.lastBackend.SessionTitle()
+}
