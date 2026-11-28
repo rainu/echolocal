@@ -25,6 +25,12 @@ func (s *Session) AgentActivity() AgentActivity {
 	if s.activityStopped.Load() {
 		return AgentActivity{}
 	}
+	// Native voice consultations have their own observed request/result lifecycle.
+	// A provider acknowledgment or speech alone is not work; an outstanding
+	// client delegation is. Session metadata may report idle during this path.
+	if s.nativeEnabled.Load() && s.native.activeDelegations.Load() > 0 {
+		return AgentActivity{Available: true, Working: true}
+	}
 	sample := s.agentActivity.Load()
 	if sample == nil || time.Since(sample.at) > activityFreshness {
 		return AgentActivity{}

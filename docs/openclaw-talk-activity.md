@@ -28,6 +28,24 @@ create a busy state. Normal agent turns and tool execution are visible for as
 long as the Gateway reports them active. Work that starts and ends between reads
 can be missed; update latency is normally approximately one second plus read time.
 
+## Native voice consultations
+
+A native voice request has its own observable delegation lifecycle. A valid
+client-targeted `delegation.created` or `session.delegation.created` immediately
+sets the activity signal; it remains set until the corresponding
+`delegation.context.appended` or `session.commentary.appended` result. This means
+an outstanding host consultation, including dispatch/policy/approval waits, not
+proof that a particular tool already executed. It requires no transcript or
+reasoning access and does not wait for the next metadata sample.
+
+Native consultations are serialized. A newer delegation replaces the pending
+provider request; late results for older IDs cannot clear it. Duplicate IDs,
+non-client targets and unrelated results do not create or clear work. A current
+result releases only this signal, not independently active agent/child/process
+metadata. Transport/session close, failure and activation cancellation clear it;
+a new activation starts empty. Speech or a launch acknowledgment alone never
+sets it. Metadata failures do not hide a still-live native consultation.
+
 ## Background-work limits
 
 The Gateway's active descendant flag includes represented child work even when
