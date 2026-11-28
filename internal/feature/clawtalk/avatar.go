@@ -33,6 +33,7 @@ type AvatarPage struct {
 	mu               sync.Mutex
 	closed           bool
 	Fullscreen       bool
+	TurnIndicator    func() TurnIndicator
 	InputMuted       func() bool
 	AgentActivity    func() talk.AgentActivity
 	SessionTitle     func() string
@@ -116,7 +117,7 @@ func (m *Manager) standalonePage() sharedshell.View {
 	m.mu.Lock()
 	m.avatarRenderer = c
 	m.mu.Unlock()
-	return &AvatarPage{CaptionPage: captions, Renderer: c, Fullscreen: full, composition: saved, AgentActivity: m.agentActivity, SessionTitle: m.sessionTitle, MicrophoneStatus: m.microphoneStatus, InputMuted: func() bool { return m.state() == talk.Muted }}
+	return &AvatarPage{CaptionPage: captions, Renderer: c, Fullscreen: full, composition: saved, AgentActivity: m.agentActivity, TurnIndicator: m.turnIndicator, SessionTitle: m.sessionTitle, MicrophoneStatus: m.microphoneStatus, InputMuted: func() bool { return m.state() == talk.Muted }}
 }
 
 // SwitchMode is presentation-only: it never calls the Talk manager or restarts

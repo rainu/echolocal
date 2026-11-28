@@ -360,6 +360,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	var previousState talk.State
 	var previousActivity talk.AgentActivity
 	var previousTitle string
+	var previousTurn TurnIndicator
 	previousMic := false
 	for m.Controller.Busy() {
 		select {
@@ -379,12 +380,14 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 			// when neither content, lifecycle nor capture status changed.
 			activity := m.agentActivity()
 			title := m.sessionTitle()
+			turn := m.turnIndicator()
 			m.Controller.SetAgentWorking(activity.Working)
 			if activityPage != nil {
 				activityPage.TickActivity(time.Now(), activity.Working)
 			}
-			if dirty || state != previousState || live != previousMic || activity != previousActivity || title != previousTitle {
+			if dirty || turn != previousTurn || state != previousState || live != previousMic || activity != previousActivity || title != previousTitle {
 				previousTitle = title
+				previousTurn = turn
 				previousActivity = activity
 				sh.Redraw()
 				previousState, previousMic = state, live
@@ -439,6 +442,7 @@ func (m *Manager) setMutedLocked(on bool) {
 }
 
 type Status struct {
+	TurnIndicator                                                               TurnIndicator
 	AgentActivity                                                               talk.AgentActivity
 	Avatar                                                                      *avatar.State
 	OutputMouth                                                                 float64
@@ -461,7 +465,7 @@ func (m *Manager) Status() Status {
 	transferState, transferReason := m.transferState, m.transferReason
 	recovery := m.recovery
 	m.mu.Unlock()
-	out := Status{AgentActivity: m.agentActivity(), State: m.state(), Active: active, Transfer: transferState, TransferReason: transferReason, Recent: m.history.Snapshot()}
+	out := Status{TurnIndicator: m.turnIndicator(), AgentActivity: m.agentActivity(), State: m.state(), Active: active, Transfer: transferState, TransferReason: transferReason, Recent: m.history.Snapshot()}
 	if recovery != nil {
 		out.Recovery = recovery.Status()
 	}
