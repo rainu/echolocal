@@ -5,7 +5,6 @@ package gui
 import (
 	gogui "github.com/go-gui-org/go-gui/gui"
 	"github.com/ygelfand/echolocal/internal/avatar"
-	featureshell "github.com/ygelfand/echolocal/internal/feature/shell"
 	"math"
 	"time"
 )
@@ -19,6 +18,7 @@ func (v *avatarView) attachAvatarTouch(w *gogui.Window) {
 	}
 	v.touchWindow = w
 	previous := w.OnEvent
+	v.touchDetach = func() { w.OnEvent = previous; v.touchWindow = nil }
 	type point struct {
 		x, y   float64
 		inside bool
@@ -44,18 +44,21 @@ func (v *avatarView) attachAvatarTouch(w *gogui.Window) {
 			return
 		}
 		state := v.app.Snapshot()
-		if epoch != v.touchReset.Load() || !featureshell.Get().Visible(v) || !state.Running || !state.Ready {
+		if epoch != v.touchReset.Load() || !v.gestureVisible() || !state.Running || !state.Ready {
 			v.touchMulti = false
 			clear(contacts)
 			span = 0
 			blocked = false
 			epoch = v.touchReset.Load()
-			if !featureshell.Get().Visible(v) || !state.Running || !state.Ready {
+			if !v.gestureVisible() || !state.Running || !state.Ready {
 				return
 			}
 		}
 		width, height := w.WindowSize()
 		vp := avatar.Viewport{X: width / 2, Y: 80, Size: min(width/2, height-100)}
+		if v.gestureViewport != nil {
+			vp = v.gestureViewport(width, height)
+		}
 		for i := 0; i < min(max(e.NumTouches, 0), len(e.Touches)); i++ {
 			t := e.Touches[i]
 			if !t.Changed {
@@ -67,7 +70,10 @@ func (v *avatarView) attachAvatarTouch(w *gogui.Window) {
 					blocked = true
 					continue
 				}
-				inside := !math.IsNaN(x) && !math.IsInf(x, 0) && !math.IsNaN(y) && !math.IsInf(y, 0) && x >= float64(vp.X) && x < float64(vp.X+vp.Size) && y >= float64(vp.Y) && y < float64(vp.Y+vp.Size)
+				inside := !math.IsNaN(x) && !math.IsInf(x, 0) && !math.IsNaN(y) && !math.IsInf(y, 0) && x >= float64(vp.X) && x < float64(vp.X+max(vp.Size, vp.Width)) && y >= float64(vp.Y) && y < float64(vp.Y+max(vp.Size, vp.Height))
+				if v.gestureContains != nil {
+					inside = inside && v.gestureContains(x, y)
+				}
 				contacts[t.Identifier] = point{x: x, y: y, inside: inside}
 			} else if p, ok := contacts[t.Identifier]; ok {
 				p.moved = p.moved || p.x != x || p.y != y
@@ -140,6 +146,7 @@ func (v *avatarView) attachAvatarTouch(w *gogui.Window) {
 							o.PanY = math.Max(-avatar.MaxPan, math.Min(avatar.MaxPan, origin.PanY+(cy-centerY)/float64(vp.Size)))
 						}
 						if mode != 0 {
+							v.note = ""
 							v.app.Configure(o)
 							w.InvalidateLayout()
 						}
