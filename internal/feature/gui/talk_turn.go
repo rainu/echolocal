@@ -39,7 +39,7 @@ func talkTurnButton(cue clawtalk.TurnIndicator, do func()) gogui.View {
 		Radius: gogui.RadiusPx(36), Color: talkTurnColor(cue), Padding: gogui.NoPadding,
 		Content: []gogui.View{gogui.Row(gogui.ContainerCfg{Sizing: gogui.FitFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: []gogui.View{
 			gogui.Text(gogui.TextCfg{Text: gogui.IconColumns, TextStyle: st}),
-			gogui.DrawCanvas(gogui.DrawCanvasCfg{ID: "talk-turn-symbol", Width: 30, Height: 28, OnDraw: func(dc *gogui.DrawContext) {
+			gogui.DrawCanvas(gogui.DrawCanvasCfg{ID: "talk-turn-symbol", Width: 30, Height: 28, VersionFn: func() uint64 { return talkTurnVersion(cue) }, OnDraw: func(dc *gogui.DrawContext) {
 				switch cue.Phase {
 				case "turn_speaking":
 					dc.Polyline([]float32{2, 11, 7, 11, 13, 5, 13, 23, 7, 17, 2, 17, 2, 11}, gogui.White, 2)
@@ -73,4 +73,20 @@ func talkTurnButton(cue clawtalk.TurnIndicator, do func()) gogui.View {
 			e.Window.InvalidateLayout()
 		},
 	})
+}
+
+// DrawCanvas caches by stable ID and version, not by closure identity. Both
+// phase and input-mute changes must invalidate its recorded geometry.
+func talkTurnVersion(cue clawtalk.TurnIndicator) uint64 {
+	version := uint64(0)
+	for i, phase := range []string{"turn_waiting", "turn_listening", "turn_speaking", "turn_muted", "turn_connecting", "turn_disconnected"} {
+		if phase == cue.Phase {
+			version = uint64(i + 1)
+			break
+		}
+	}
+	if cue.Muted {
+		version |= 1 << 8
+	}
+	return version
 }

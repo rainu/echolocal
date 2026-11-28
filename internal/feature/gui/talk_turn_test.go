@@ -87,3 +87,47 @@ func TestTurnPaletteWhiteContrast(t *testing.T) {
 		}
 	}
 }
+
+func TestTurnSymbolRepaintsAcrossStableCanvasID(t *testing.T) {
+	cue := clawtalk.TurnIndicator{Phase: "turn_waiting"}
+	p := &clawtalk.AvatarPage{TurnIndicator: func() clawtalk.TurnIndicator { return cue }}
+	w := gogui.NewWindow(gogui.WindowCfg{State: new(int), Width: 1280, Height: 800})
+	w.TestRender(func(w *gogui.Window) gogui.View {
+		return fullscreenActivityComposition(p, 1280, 800, func() {}, func() {})
+	})
+	w.FrameFn()
+	triangles := func() int {
+		n := 0
+		for _, r := range w.Renderers() {
+			n += len(r.Triangles)
+		}
+		return n
+	}
+	neutral := triangles()
+	cue.Phase = "turn_listening"
+	w.InvalidateLayout()
+	w.FrameFn()
+	listening := triangles()
+	if listening == neutral {
+		t.Fatal("listening retained cached neutral symbol")
+	}
+	cue.Phase = "turn_speaking"
+	w.InvalidateLayout()
+	w.FrameFn()
+	speaking := triangles()
+	if speaking == listening || speaking == neutral {
+		t.Fatal("speaking retained previous symbol")
+	}
+	cue.Muted = true
+	w.InvalidateLayout()
+	w.FrameFn()
+	if triangles() == speaking {
+		t.Fatal("input mute did not repaint symbol")
+	}
+	cue = clawtalk.TurnIndicator{Phase: "turn_waiting"}
+	w.InvalidateLayout()
+	w.FrameFn()
+	if triangles() != neutral {
+		t.Fatal("neutral retained stale active symbol")
+	}
+}
