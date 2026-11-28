@@ -8,7 +8,16 @@ static double now() { return stamp; }
 #include "turntable.hpp"
 #include "viewport.hpp"
 int main() {
+  for(int width:{640,800,1280}) {
+    auto r=activityCutout(width);
+    assert(r[0]==width-84 && r[1]==34 && r[2]==64 && r[3]==44);
+    assert(r[0]>width/2+84); // clear of both primary controls
+  }
   RendererControl c(true);
+  assert(!c.agentWorking);
+  c.parse("W 1"); assert(c.agentWorking);
+  for(const char *bad:{"W 2","W -1","W 0 extra","W nan","W 99999999999999999"}) { c.parse(bad); assert(c.agentWorking); }
+  c.parse("W 0"); assert(!c.agentWorking);
   c.parse("V 1100 12 168 776");
   assert(c.overlayX==1100 && c.overlayY==12 && c.overlayW==168 && c.overlayH==776);
   for(const char *bad:{"V -1 0 10 10","V 0 -1 10 10","V 0 0 -1 10","V 0 0 10 -1","V 4090 0 10 10","V 0 4090 10 10","V 0 0 10 10 extra","V nan 0 0 0","V 99999999999999999999999999 0 0 0","V 0 0 4097 1"}) {

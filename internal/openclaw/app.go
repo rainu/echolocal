@@ -23,7 +23,7 @@ func (c *Client) BindApp() (*AppBinding, error) {
 
 func appScope(method string) string {
 	switch method {
-	case "sessions.list", "sessions.subscribe", "sessions.groups.list", "sessions.messages.subscribe", "sessions.messages.unsubscribe", "chat.history", "models.list":
+	case "sessions.describe", "sessions.list", "sessions.subscribe", "sessions.groups.list", "sessions.messages.subscribe", "sessions.messages.unsubscribe", "chat.history", "models.list":
 		return "read"
 	case "chat.send", "sessions.patch":
 		return "write"

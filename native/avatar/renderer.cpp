@@ -1482,6 +1482,13 @@ int main(int argc, char **argv) {
         glDisable(GL_SCISSOR_TEST);
         if(appMode && controls.poseEdit)poseOverlay.draw(scene,view,controls.selected,w,h);
         if(full)cutouts.draw(w,h);
+        // Application-owned activity dots, lower right of the controls.
+        // Geometry matches talkActivityBadge/fullscreenComposition; no native text.
+        if(full && controls.agentWorking) {
+          auto r=activityCutout(w);glEnable(GL_SCISSOR_TEST);glScissor(r[0],r[1],r[2],r[3]);
+          glClearColor(0,0,0,0);glClear(GL_COLOR_BUFFER_BIT);
+          glDisable(GL_SCISSOR_TEST);
+        }
         // Expose only the actual application volume card, on either edge and
         // in either Talk layout. The app retains slider input and its timer.
         if(talkLayout && controls.overlayW>0 && controls.overlayH>0) {

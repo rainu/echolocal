@@ -33,6 +33,7 @@ type nativeState struct {
 	transcriptStop, transcriptDone                                                      chan struct{}
 	stopOnce                                                                            sync.Once
 	inputActive                                                                         atomic.Bool
+	activeDelegations                                                                   atomic.Int32
 	responseAt                                                                          atomic.Int64
 	firstPCMMS, maxFirstPCMMS                                                           atomic.Int64
 	messages, delegations, results, responses, historyFailures, silence, timedResponses atomic.Uint64
@@ -142,6 +143,7 @@ func (s *Session) Playback() {
 }
 func (s *Session) nativeLoop(ctx context.Context) {
 	defer close(s.native.done)
+	defer s.native.activeDelegations.Store(0)
 	defer s.clearPartial()
 	active := map[string]bool{}
 	// Only recent IDs are retained for duplicate telemetry; this is not a
@@ -208,10 +210,11 @@ func (s *Session) nativeLoop(ctx context.Context) {
 				if id == "" || target != "client" || recent[id] {
 					continue
 				}
-				if len(active) >= 128 {
-					s.nativeFailure("talk_control_limit")
-					return
-				}
+				// Native consultations are serialized: a newer delegation can
+				// steer or supersede the old one without an old-ID result.
+				// Only the current provider request may clear this signal;
+				// surviving agent/background work is covered by metadata.
+				clear(active)
 				if len(order) >= 128 {
 					delete(recent, order[0])
 					order = order[1:]
@@ -219,6 +222,7 @@ func (s *Session) nativeLoop(ctx context.Context) {
 				recent[id] = true
 				order = append(order, id)
 				active[id] = true
+				s.native.activeDelegations.Store(int32(len(active)))
 				s.native.delegations.Add(1)
 				s.pendingTools.Store(int32(len(active)))
 				s.activity(Thinking)
@@ -231,6 +235,7 @@ func (s *Session) nativeLoop(ctx context.Context) {
 					continue
 				}
 				delete(active, id)
+				s.native.activeDelegations.Store(int32(len(active)))
 				s.pendingTools.Store(int32(len(active)))
 				s.native.results.Add(1)
 				if len(active) == 0 {

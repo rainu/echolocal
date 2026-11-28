@@ -23,6 +23,9 @@ func Text(lang, key string) string {
 	if v := motionWords[lang][key]; v != "" {
 		return v
 	}
+	if v := activityWords[lang][key]; v != "" {
+		return v
+	}
 	if v := fullscreenWords[lang][key]; v != "" {
 		return v
 	}
@@ -264,5 +267,24 @@ func videoHelp(lang string) string {
 		return "Chỉ nền: MP4/H.264 cục bộ, YUV420 8 bit, giữ tỷ lệ pixel, không xoay; tối đa 64 MiB, 1280×800, 30 fps và 120 giây. Lặp vô hạn, không âm thanh. Giải mã phần mềm; không hỗ trợ video tiền cảnh."
 	default:
 		return "Background only: local MP4/H.264, 8-bit YUV420, pixel aspect ratio respected, no rotation; up to 64 MiB, 1280×800, 30 fps and 120 s. Silent infinite loop. Software decoding; foreground video is not supported."
+	}
+}
+
+var activityWords = map[string]map[string]string{
+	"en": {"agent_working": "Agent working"},
+	"de": {"agent_working": "Agent arbeitet"},
+	"it": {"agent_working": "Agente al lavoro"},
+	"vi": {"agent_working": "Tác tử đang xử lý"},
+}
+
+func init() {
+	for lang, labels := range map[string][2]string{
+		"en": {"Tap to pause dot animation", "Tap to resume dot animation"},
+		"de": {"Antippen, um die Punktanimation anzuhalten", "Antippen, um die Punktanimation fortzusetzen"},
+		"it": {"Tocca per fermare l’animazione dei punti", "Tocca per riprendere l’animazione dei punti"},
+		"vi": {"Chạm để tạm dừng hoạt ảnh dấu chấm", "Chạm để tiếp tục hoạt ảnh dấu chấm"},
+	} {
+		activityWords[lang]["activity_pause"] = labels[0]
+		activityWords[lang]["activity_resume"] = labels[1]
 	}
 }
