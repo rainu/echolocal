@@ -19,8 +19,15 @@ func TestSessionActivityWireProjection(t *testing.T) {
 		{"idle", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false}`, true, false},
 		{"reply_or_tool", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":true,"message":"private","reasoning":"private","activeRunIds":["private"]}`, true, true},
 		{"child_background", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false,"hasActiveSubagentRun":true}`, true, true},
+		{"managed_process_after_turn", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false,"backgroundProcessCount":1}`, true, true},
+		{"managed_processes_without_run_flag", `{"key":"agent:test:one","sessionId":"generation1","backgroundProcessCount":2}`, true, true},
+		{"completed_process", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false,"backgroundProcessCount":0}`, true, false},
+		{"negative_process_count", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false,"backgroundProcessCount":-1}`, true, false},
+		{"missing_run_zero_processes", `{"key":"agent:test:one","sessionId":"generation1","backgroundProcessCount":0}`, false, false},
+		{"child_without_run_flag", `{"key":"agent:test:one","sessionId":"generation1","hasActiveSubagentRun":true}`, true, true},
 		{"unknown", `{"key":"agent:test:one","sessionId":"generation1"}`, false, false},
 		{"wrong_target", `{"key":"agent:test:two","sessionId":"generation1","hasActiveRun":true}`, false, false},
+		{"wrong_target_background", `{"key":"agent:test:two","sessionId":"generation1","backgroundProcessCount":1}`, false, false},
 		{"missing_incarnation", `{"key":"agent:test:one","hasActiveRun":true}`, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

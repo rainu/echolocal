@@ -6,7 +6,8 @@ Refs #99.
 
 The Talk activation observes `sessions.describe {key: <current target>}` using
 its existing operator read grant and exact authenticated socket. The adapter
-retains only session incarnation and `hasActiveRun || hasActiveSubagentRun`.
+retains only session incarnation and the boolean result of
+`hasActiveRun || hasActiveSubagentRun || backgroundProcessCount > 0`.
 It never subscribes to transcripts, retrieves reasoning, enumerates other sessions,
 or sends a message to generate activity. No new permission is requested.
 
@@ -19,7 +20,9 @@ start fresh observers; old observations cannot migrate to a new activation.
 The private developer `talk status` reports only Available/Working booleans.
 
 This is independent of listening, connecting, input mute and actual voice
-playback. Fresh verified work suspends local idle expiry without changing those\nvoice states; idle/unknown observations release that suspension. A Live provider can answer directly without starting an agent run;
+playback. Fresh verified work suspends local idle expiry without changing those
+voice states; idle/unknown observations release that suspension. A Live provider
+can answer directly without starting an agent run;
 that does not light the agent badge. User transcripts or elapsed time never
 create a busy state. Normal agent turns and tool execution are visible for as
 long as the Gateway reports them active. Work that starts and ends between reads
@@ -28,10 +31,16 @@ can be missed; update latency is normally approximately one second plus read tim
 ## Background-work limits
 
 The Gateway's active descendant flag includes represented child work even when
-the parent has yielded. A detached process, external job, future scheduled turn,
-or unrepresented runtime is NOT inferred to be active after the agent run ends.
-No claim of complete background-job coverage is made. The direct run flag is
-required; absent metadata is not an authoritative idle observation.
+the parent has yielded. Session-scoped managed background processes are included
+while the Gateway reports
+a positive running-process count, even after the agent turn has ended. Completed
+processes retained in history do not count. A detached/unregistered process,
+external job, future scheduled turn, or unrepresented runtime is NOT inferred
+to be active after the agent run ends.
+No claim of complete background-job coverage is made. An explicit active child
+or positive process count is sufficient evidence of work;
+otherwise the direct run flag is required. Missing metadata is not an authoritative
+idle observation.
 
 ## Presentation
 

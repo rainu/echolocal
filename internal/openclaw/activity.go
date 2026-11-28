@@ -20,10 +20,11 @@ func (b *TalkBinding) ReadSessionActivity(ctx context.Context, target string) (S
 	}
 	var result struct {
 		Session struct {
-			Key      string `json:"key"`
-			ID       string `json:"sessionId"`
-			Active   *bool  `json:"hasActiveRun"`
-			Children bool   `json:"hasActiveSubagentRun"`
+			Key                 string `json:"key"`
+			ID                  string `json:"sessionId"`
+			Active              *bool  `json:"hasActiveRun"`
+			Children            bool   `json:"hasActiveSubagentRun"`
+			BackgroundProcesses int    `json:"backgroundProcessCount"`
 		} `json:"session"`
 	}
 	app := &AppBinding{client: b.client, link: b.link}
@@ -31,8 +32,8 @@ func (b *TalkBinding) ReadSessionActivity(ctx context.Context, target string) (S
 		return SessionActivity{}, err
 	}
 	row := result.Session
-	if !b.current() || row.Key != target || row.ID == "" || row.Active == nil {
+	if !b.current() || row.Key != target || row.ID == "" || (row.Active == nil && !row.Children && row.BackgroundProcesses <= 0) {
 		return SessionActivity{}, errors.New("talk_activity_unavailable")
 	}
-	return SessionActivity{SessionID: row.ID, Working: *row.Active || row.Children}, nil
+	return SessionActivity{SessionID: row.ID, Working: (row.Active != nil && *row.Active) || row.Children || row.BackgroundProcesses > 0}, nil
 }
