@@ -43,12 +43,17 @@ type avatarView struct {
 	resume                atomic.Bool
 	section               int
 	fullscreen            bool
+	drafts                map[bool]avatar.Options
+	gestureView           sharedshell.View
+	gestureViewport       func(int, int) avatar.Viewport
+	gestureContains       func(float64, float64) bool
 	note                  string
 	app                   avatarLabController
 	dragEpoch             atomic.Uint64
 	load                  func()
 	loaded                atomic.Bool
 	touchWindow           *gogui.Window
+	touchDetach           func()
 	touchMulti            bool
 	touchSeenReset        uint64
 	touchReset            atomic.Uint64
@@ -125,6 +130,7 @@ func avatarRow(v ...gogui.View) gogui.View {
 }
 func (v *avatarView) build(w *gogui.Window) gogui.View {
 	if v.loaded.CompareAndSwap(false, true) {
+		v.drafts = nil
 		if v.load != nil {
 			v.load()
 		}
@@ -343,11 +349,14 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 	}
 	// Widget callbacks receive local coordinates; captured moves are window-absolute.
 	x, y := e.Event.MouseX+e.Layout.Shape.X, e.Event.MouseY+e.Layout.Shape.Y
-	if x < float32(vp.X) || x >= float32(vp.X+vp.Size) || y < float32(vp.Y) || y >= float32(vp.Y+vp.Size) {
+	if x < float32(vp.X) || x >= float32(vp.X+max(vp.Size, vp.Width)) || y < float32(vp.Y) || y >= float32(vp.Y+max(vp.Size, vp.Height)) {
+		return
+	}
+	if v.gestureContains != nil && !v.gestureContains(float64(x), float64(y)) {
 		return
 	}
 	state := v.app.Snapshot()
-	if !state.Running || !state.Ready || !featureshell.Get().Visible(v) {
+	if !state.Running || !state.Ready || !v.gestureVisible() {
 		return
 	}
 	// The preview consumes pointer input, so the normal unclaimed-click blur
@@ -363,7 +372,7 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 	end := func() { v.dragEpoch.CompareAndSwap(epoch, epoch+1) }
 	e.Consume()
 	move := func(m gogui.EventCtx) {
-		if m.Event == nil || v.dragEpoch.Load() != epoch || !featureshell.Get().Visible(v) {
+		if m.Event == nil || v.dragEpoch.Load() != epoch || !v.gestureVisible() {
 			return
 		}
 		current := v.app.Snapshot()
@@ -383,6 +392,7 @@ func (v *avatarView) beginAvatarDrag(e gogui.EventCtx, vp avatar.Viewport) {
 		options := current.Options
 		options.Yaw = startYaw + dx*180/float64(vp.Size)
 		options.Pitch = math.Max(-85, math.Min(85, startPitch+dy*180/float64(vp.Size)))
+		v.note = ""
 		v.app.Configure(options)
 		m.Window.InvalidateLayout()
 	}
@@ -398,9 +408,32 @@ func (v *avatarView) selectComposition(full bool) {
 		return
 	}
 	v.app.Stop()
+	v.keepDraft()
 	v.fullscreen = full
-	v.app.Configure(avatarlab.Options(config.AvatarSection.Read().Composition(full)))
+	v.app.Configure(v.draft(full))
 	v.dragEpoch.Add(1)
 	v.touchReset.Add(1)
 	v.note = ""
+}
+
+// Drafts belong to the Lab, not to the presentation viewport. Existing split and
+// fullscreen persistence remain independent; no third transform is introduced.
+func (v *avatarView) keepDraft() {
+	if v.drafts == nil {
+		v.drafts = map[bool]avatar.Options{}
+	}
+	v.drafts[v.fullscreen] = v.app.Snapshot().Options
+}
+func (v *avatarView) draft(full bool) avatar.Options {
+	if o, ok := v.drafts[full]; ok {
+		return o
+	}
+	return avatarlab.Options(config.AvatarSection.Read().Composition(full))
+}
+func (v *avatarView) gestureVisible() bool {
+	target := v.gestureView
+	if target == nil {
+		target = v
+	}
+	return featureshell.Get().Visible(target)
 }

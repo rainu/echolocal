@@ -55,10 +55,10 @@ func TestFullscreenPreviewSwitchKeepsUnsavedFramingAndNoCapture(t *testing.T) {
 	lab := &avatarGestureController{state: avatar.State{Running: true}}
 	v := &avatarView{app: lab, fullscreen: true}
 	o := avatar.Options{Zoom: 2.75, Mouth: avatar.MouthMicrophone}
-	p := &avatarPreview{renderer: c, lifecycle: &clawtalk.AvatarPage{Renderer: c}, lab: v, options: o, fullscreen: true}
+	p := &avatarPreview{renderer: c, lifecycle: &clawtalk.AvatarPage{Renderer: c}, lab: v, options: o, fullscreen: true, controls: true}
 	w := gogui.NewWindow(gogui.WindowCfg{State: new(int), Width: 1280, Height: 800})
 	w.TestRender(p.build)
-	if err := w.TestClick(avatarCaptionID(t, w, "talk-fullscreen-switch")); err != nil {
+	if err := w.TestClick(avatarCaptionID(t, w, "avatar-preview-split")); err != nil {
 		t.Fatal(err)
 	}
 	w.TestRender(nil)

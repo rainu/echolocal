@@ -274,14 +274,27 @@ show the normal default clear color. The avatar is rendered in front. The
 fullscreen preview and conversation share both panel geometry and the native
 background/projection path; neither adds a separate camera or transform.
 
-The Lab fullscreen preview uses the current (including unsaved) placement,
-with exactly the standalone conversation's right-half, full-height viewport.
-Its left half contains an explicit touch exit and visual-only notice rather
-than conversation controls. It never starts Talk, opens a microphone, sends a
-message or places a call. Lab mouth-source options cannot enable preview
-capture. Exit restores the previous lab options and running/stopped state.
-Use Save presentation to persist placement for the next actual conversation.
-The session-specific chat Live Talk view is unchanged.
+The Lab preview is an editable, silent composition workspace. Switch between
+split-screen and fullscreen to use exactly the corresponding Talk viewport,
+background fit and framing. Drag with one finger to rotate, drag with two fingers
+to position, or pinch to zoom. The reference dimension is the smaller side of the
+actual canvas, just as in Talk. Fullscreen has a compact, touch-friendly editor
+with zoom/rotation buttons, Save, Reset, view switching and Back to Lab. Hide
+controls to inspect the unobscured composition; the two bottom buttons reveal the
+editor or return to the Lab. Gestures cannot start on the editor or exit controls.
+
+Edits use the Lab's existing composition options and settings, not preview-only
+positions. Unsaved drafts survive switching views and returning to the Lab;
+split and fullscreen continue to have their existing independent saved framing.
+Back keeps a draft in the Lab without saving. Save applies the current
+composition to subsequent Talk sessions. Reset restores centered, front-facing
+100% framing as an **unsaved** draft. The editor reports pending versus saved
+placement. Leaving the Lab retains its existing unsaved-exit behavior.
+
+Preview never starts Talk, captures microphone audio, sends a message, places a
+call or changes the active conversation. Lab mouth-source options cannot enable
+preview capture. Returning restores the Lab's prior running/stopped state. The
+session-specific chat Live Talk view is unchanged.
 
 Limits: 8 MiB encoded, 4096 pixels per side and 4 megapixels decoded. Only PNG
 and JPEG are accepted. File access uses the existing pinned-regular-file policy;
