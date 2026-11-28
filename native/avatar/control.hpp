@@ -13,6 +13,7 @@ struct RendererControl {
   bool enabled = false, idle = true, blink = true, animation = true,
        ended = false;
   int mode = 0;
+  bool agentWorking=false;
   int overlayX=0, overlayY=0, overlayW=0, overlayH=0;
  bool poseEdit=false, poseActive=false; int selected=-1;
  std::array<std::array<float,3>,54> pose{};
@@ -26,6 +27,8 @@ struct RendererControl {
     unsigned long long revision; int fd; char motionTail;
     if(sscanf(s.c_str(),"A %llu %d %c",&revision,&fd,&motionTail)==2 && revision>motionRevision && revision<=2147483647 && (fd==0 || (fd>=3 && fd<=1048576))) { motionRevision=revision; motionFD=fd; return; }
     if(sscanf(s.c_str(),"N %d %c",&i,&motionTail)==1 && (i==0 || i==1)) { motionPlay=i; return; }
+    char workingTail=0;
+    if (sscanf(s.c_str(), "W %2d %c", &i, &workingTail)==1 && (i==0 || i==1)) { agentWorking=i==1; return; }
     char overlayTail;
     if (sscanf(s.c_str(), "V %5d %5d %5d %5d %c", &i, &b, &a, &m, &overlayTail)==4 && i>=0 && b>=0 && a>=0 && m>=0 && a<=4096 && m<=4096 && i<=4096-a && b<=4096-m) { overlayX=i; overlayY=b; overlayW=a; overlayH=m; return; }
     float rx,ry,rz; char trailing;

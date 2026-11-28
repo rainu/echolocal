@@ -60,3 +60,48 @@ func TestTalkOverlayFeedUpdatesAndClearsWithoutRestart(t *testing.T) {
 		t.Fatal("feed did not stop")
 	}
 }
+
+type activityPipe struct{ lines chan string }
+
+func (p activityPipe) Write(b []byte) (int, error) {
+	if strings.HasPrefix(string(b), "W ") {
+		p.lines <- string(b)
+	}
+	return len(b), nil
+}
+func (p activityPipe) Close() error { return nil }
+func TestActivityApertureScalarFeedClearsWithoutRestart(t *testing.T) {
+	c := New(t.TempDir(), nil, func() bool { return false }, func() {})
+	c.EnableTalkLayout(nil)
+	var working atomic.Bool
+	working.Store(true)
+	c.SetAgentWorking(working.Load)
+	p := activityPipe{make(chan string, 32)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { defer close(done); c.feed(ctx, 0, p, cancel) }()
+	next := func(want string) {
+		t.Helper()
+		timeout := time.After(time.Second)
+		for {
+			select {
+			case got := <-p.lines:
+				if got == want {
+					return
+				}
+			case <-timeout:
+				t.Fatal("missing scalar", want)
+			}
+		}
+	}
+	next("W 1\n")
+	working.Store(false)
+	next("W 0\n")
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("feed pinned")
+	}
+}

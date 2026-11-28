@@ -356,6 +356,7 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	var previousState talk.State
+	var previousActivity talk.AgentActivity
 	previousMic := false
 	for m.Controller.Busy() {
 		select {
@@ -373,7 +374,10 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 			m.mu.Unlock()
 			// Captions can be long. Do not rebuild the whole page at 10Hz
 			// when neither content, lifecycle nor capture status changed.
-			if dirty || state != previousState || live != previousMic {
+			activity := m.agentActivity()
+			m.Controller.SetAgentWorking(activity.Working)
+			if dirty || state != previousState || live != previousMic || activity != previousActivity {
+				previousActivity = activity
 				sh.Redraw()
 				previousState, previousMic = state, live
 			}
@@ -427,6 +431,7 @@ func (m *Manager) setMutedLocked(on bool) {
 }
 
 type Status struct {
+	AgentActivity                                                               talk.AgentActivity
 	Avatar                                                                      *avatar.State
 	OutputMouth                                                                 float64
 	Recent                                                                      []talk.ActivationReport
@@ -448,7 +453,7 @@ func (m *Manager) Status() Status {
 	transferState, transferReason := m.transferState, m.transferReason
 	recovery := m.recovery
 	m.mu.Unlock()
-	out := Status{State: m.state(), Active: active, Transfer: transferState, TransferReason: transferReason, Recent: m.history.Snapshot()}
+	out := Status{AgentActivity: m.agentActivity(), State: m.state(), Active: active, Transfer: transferState, TransferReason: transferReason, Recent: m.history.Snapshot()}
 	if recovery != nil {
 		out.Recovery = recovery.Status()
 	}

@@ -73,6 +73,7 @@ type Controller struct {
 	source               func() string
 	resolve              func(string) (AssetSet, string, string, error)
 	overlay              func() image.Rectangle
+	agentWorking         func() bool
 	talkLayout           bool
 	fullscreen           bool
 	fullscreenBackground func() string
@@ -473,6 +474,7 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 			c.mu.Lock()
 			talk, full, occluded := c.talkLayout, c.fullscreen, c.labOccluded
 			overlay := c.overlay
+			workingSource := c.agentWorking
 			c.mu.Unlock()
 			if !talk {
 				if _, err := fmt.Fprintf(stdin, "K %d\n", bit(occluded)); err != nil {
@@ -481,6 +483,11 @@ func (c *Controller) feed(ctx context.Context, gen uint64, stdin io.WriteCloser,
 				}
 			}
 			if talk {
+				working := workingSource != nil && workingSource()
+				if _, err := fmt.Fprintf(stdin, "W %d\n", bit(working)); err != nil {
+					cancel()
+					return
+				}
 				r := image.Rectangle{}
 				if overlay != nil {
 					r = overlay().Intersect(image.Rect(0, 0, 4096, 4096))
@@ -712,4 +719,12 @@ func (c *Controller) SetOverlay(source func() image.Rectangle) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.overlay = source
+}
+
+// SetAgentWorking exposes only a scalar aperture flag; the application owns
+// localized accessible text. Never sends session IDs or content to native code.
+func (c *Controller) SetAgentWorking(source func() bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.agentWorking = source
 }

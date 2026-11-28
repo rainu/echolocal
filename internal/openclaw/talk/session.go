@@ -30,6 +30,8 @@ type Control interface {
 	ExchangeOffer(context.Context, connection.TalkLaunch, string) (string, error)
 }
 type Session struct {
+	agentActivity             atomic.Pointer[activitySample]
+	activityStopped           atomic.Bool
 	Ending                    EndSettings
 	endTranscript             endTranscript
 	endOnce                   sync.Once
@@ -85,6 +87,8 @@ func NewSession(c Control, target string, a Device) *Session {
 }
 func (s *Session) fail(reason string) {
 	s.rejected.Do(func() {
+		s.activityStopped.Store(true)
+		s.agentActivity.Store(nil)
 		s.reason.Store(reason)
 		s.failureReason.Store(reason)
 		close(s.failed)
@@ -296,6 +300,7 @@ func (s *Session) Open(parent context.Context) (openErr error) {
 		}
 		close(s.audioGate)
 	}
+	go s.observeActivity(ctx)
 	return nil
 }
 
@@ -311,6 +316,8 @@ func (s *Session) SetInputMuted(on bool) {
 }
 func (s *Session) Close() error {
 	s.once.Do(func() {
+		s.activityStopped.Store(true)
+		s.agentActivity.Store(nil)
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if s.cancel != nil {

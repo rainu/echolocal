@@ -27,14 +27,15 @@ type avatarRenderer interface {
 
 type AvatarPage struct {
 	*CaptionPage
-	Renderer    avatarRenderer
-	started     bool
-	epoch       uint64
-	mu          sync.Mutex
-	closed      bool
-	Fullscreen  bool
-	InputMuted  func() bool
-	composition config.Avatar
+	Renderer      avatarRenderer
+	started       bool
+	epoch         uint64
+	mu            sync.Mutex
+	closed        bool
+	Fullscreen    bool
+	InputMuted    func() bool
+	AgentActivity func() talk.AgentActivity
+	composition   config.Avatar
 }
 
 func (p *AvatarPage) Keeps() bool { return true }
@@ -103,10 +104,11 @@ func (m *Manager) standalonePage() sharedshell.View {
 	c.SetTalkMode(full)
 	c.Configure(avatarlab.Options(saved.Composition(full)))
 	c.SetOutput(speaker.Get().VoiceLevel, 24*time.Hour)
+	c.SetAgentWorking(func() bool { return m.agentActivity().Working })
 	m.mu.Lock()
 	m.avatarRenderer = c
 	m.mu.Unlock()
-	return &AvatarPage{CaptionPage: captions, Renderer: c, Fullscreen: full, composition: saved, InputMuted: func() bool { return m.state() == talk.Muted }}
+	return &AvatarPage{CaptionPage: captions, Renderer: c, Fullscreen: full, composition: saved, AgentActivity: m.agentActivity, InputMuted: func() bool { return m.state() == talk.Muted }}
 }
 
 // SwitchMode is presentation-only: it never calls the Talk manager or restarts

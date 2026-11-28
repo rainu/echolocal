@@ -23,6 +23,9 @@ func Text(lang, key string) string {
 	if v := motionWords[lang][key]; v != "" {
 		return v
 	}
+	if v := activityWords[lang][key]; v != "" {
+		return v
+	}
 	if v := fullscreenWords[lang][key]; v != "" {
 		return v
 	}
@@ -265,4 +268,11 @@ func videoHelp(lang string) string {
 	default:
 		return "Background only: local MP4/H.264, 8-bit YUV420, pixel aspect ratio respected, no rotation; up to 64 MiB, 1280×800, 30 fps and 120 s. Silent infinite loop. Software decoding; foreground video is not supported."
 	}
+}
+
+var activityWords = map[string]map[string]string{
+	"en": {"agent_working": "Agent working"},
+	"de": {"agent_working": "Agent arbeitet"},
+	"it": {"agent_working": "Agente al lavoro"},
+	"vi": {"agent_working": "Tác tử đang xử lý"},
 }

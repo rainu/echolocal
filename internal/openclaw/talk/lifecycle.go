@@ -36,14 +36,15 @@ type Controller struct {
 	current *activation
 }
 type activation struct {
-	backend  Backend
-	cancel   context.CancelFunc
-	once     sync.Once
-	timer    *time.Timer
-	timeout  time.Duration
-	deadline time.Time
-	ending   bool
-	muted    bool
+	backend      Backend
+	cancel       context.CancelFunc
+	once         sync.Once
+	timer        *time.Timer
+	timeout      time.Duration
+	deadline     time.Time
+	ending       bool
+	muted        bool
+	agentWorking bool
 }
 
 func New() *Controller { return &Controller{state: Ended} }
@@ -91,7 +92,7 @@ func (c *Controller) Start(ctx context.Context, b Backend, timeout time.Duration
 	return nil
 }
 func (c *Controller) arm(a *activation) {
-	if a.muted {
+	if a.muted || a.agentWorking {
 		return
 	}
 	if a.timer != nil {
@@ -100,7 +101,7 @@ func (c *Controller) arm(a *activation) {
 	a.deadline = time.Now().Add(a.timeout)
 	a.timer = time.AfterFunc(a.timeout, func() {
 		c.mu.Lock()
-		expired := c.current == a && c.state == Listening && !a.muted && !time.Now().Before(a.deadline)
+		expired := c.current == a && c.state == Listening && !a.muted && !a.agentWorking && !time.Now().Before(a.deadline)
 		if expired {
 			a.ending = true
 		}
@@ -203,4 +204,24 @@ func (c *Controller) UserSpeech() {
 		a.timer = nil
 	}
 	c.state = Listening
+}
+
+// SetAgentWorking only suspends idle expiry for fresh, verified session work.
+// It does not replace Listening/Speaking/Muted or request any speech.
+func (c *Controller) SetAgentWorking(on bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	a := c.current
+	if a == nil || a.ending || a.agentWorking == on {
+		return
+	}
+	a.agentWorking = on
+	if on {
+		if a.timer != nil {
+			a.timer.Stop()
+			a.timer = nil
+		}
+	} else if c.state == Listening {
+		c.arm(a)
+	}
 }

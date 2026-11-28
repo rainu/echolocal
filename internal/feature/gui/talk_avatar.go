@@ -38,7 +38,7 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 			if len(p.Actions) > 0 {
 				p.Actions[len(p.Actions)-1].Do()
 			}
-		}, p.InputMuted != nil && p.InputMuted())
+		}, p.InputMuted != nil && p.InputMuted(), p.AgentActivity != nil && p.AgentActivity().Working)
 	}
 	s := p.Renderer.Snapshot()
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
@@ -86,6 +86,10 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 			captions = append(captions, avatarText(r.Label))
 		}
 	}
+	activity := []gogui.View{}
+	if p.AgentActivity != nil && p.AgentActivity().Working {
+		activity = append(activity, talkActivityBadge())
+	}
 	actions := []gogui.View{}
 	for i, a := range p.Actions {
 		id := "talk-avatar-history"
@@ -101,6 +105,7 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 		Content: []gogui.View{
 			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-status", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: header}),
 			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-transcript", Sizing: gogui.FillFill, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Scrollable: true, DragScroll: true, ScrollMode: gogui.ScrollVerticalOnly, Content: captions}),
+			gogui.Column(gogui.ContainerCfg{ID: "talk-avatar-activity-area", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Content: activity}),
 			gogui.Row(gogui.ContainerCfg{ID: "talk-avatar-actions", Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.SpacingSmall, Content: actions}),
 		},
 	})
@@ -142,15 +147,20 @@ func talkAvatarViewport(width, height int) avatar.Viewport {
 }
 
 // Must match native ControlCutouts: 72px circles, 24px gap, 20px bottom inset.
-func fullscreenComposition(width, height int, switchMode, end func(), muted ...bool) gogui.View {
+// Optional status flags are input-muted and verified agent-working, respectively.
+func fullscreenComposition(width, height int, switchMode, end func(), status ...bool) gogui.View {
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
+	leftContent := []gogui.View{}
+	if len(status) > 1 && status[1] {
+		leftContent = append(leftContent, talkActivityBadge(float32(min(244, width/2-116))))
+	}
 	controls := gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen-controls", Width: 168, Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Spacing: gogui.SpacingPx(24), Content: []gogui.View{
-		talkModeButton("talk-fullscreen-switch", gogui.IconColumns, text("switch_split"), false, switchMode, len(muted) > 0 && muted[0]), talkModeButton("talk-fullscreen-stop", gogui.IconPhone, text("end_talk"), true, end),
+		talkModeButton("talk-fullscreen-switch", gogui.IconColumns, text("switch_split"), false, switchMode, len(status) > 0 && status[0]), talkModeButton("talk-fullscreen-stop", gogui.IconPhone, text("end_talk"), true, end),
 	}})
 	return gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen", Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(0), Spacing: gogui.NoSpacing, Content: []gogui.View{
 		gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Height: float32(height - 92), Sizing: gogui.FillFixed, Padding: gogui.NoPadding}),
 		gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: []gogui.View{
-			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding}), controls,
+			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NewPadding(16, 12, 16, 20), Content: leftContent}), controls,
 		}}),
 	}})
 }
@@ -187,4 +197,24 @@ func talkModeButton(id, icon, label string, stop bool, do func(), muted ...bool)
 			}
 			e.Window.InvalidateLayout()
 		}})
+}
+
+// Static for every user, including reduced-motion users: no pulses, timers,
+// animation, speech, input handler or color-only meaning.
+func talkActivityBadge(width ...float32) gogui.View {
+	badgeWidth := float32(244)
+	if len(width) > 0 {
+		badgeWidth = width[0]
+	}
+	label := avatar.Text(say.Chosen(), "agent_working")
+	st := gogui.CurrentTheme().TextStyleDef
+	st.Size = 16
+	st.Color = gogui.Hex(0xEEF3F4)
+	return gogui.Row(gogui.ContainerCfg{
+		ID: "talk-agent-activity", A11YCfg: gogui.A11YCfg{A11YLabel: label},
+		Width: badgeWidth, Height: 40, Sizing: gogui.FixedFixed,
+		Padding: gogui.NewPadding(8, 12, 8, 12), Radius: gogui.RadiusPx(12),
+		Color:   gogui.Hex(0x23383F),
+		Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: st})},
+	})
 }
