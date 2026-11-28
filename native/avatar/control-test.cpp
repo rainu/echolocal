@@ -8,6 +8,11 @@ static double now() { return stamp; }
 #include "turntable.hpp"
 #include "viewport.hpp"
 int main() {
+  for(int width:{640,800,1280}) {
+    auto r=activityCutout(width);
+    assert(r[0]==width-84 && r[1]==34 && r[2]==64 && r[3]==44);
+    assert(r[0]>width/2+84); // clear of both primary controls
+  }
   RendererControl c(true);
   assert(!c.agentWorking);
   c.parse("W 1"); assert(c.agentWorking);

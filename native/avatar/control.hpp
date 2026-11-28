@@ -7,6 +7,8 @@
 #include <poll.h>
 #include <string>
 #include <unistd.h>
+// Application-owned compact activity capsule: GL coordinates, bottom inset 34.
+inline std::array<int,4> activityCutout(int width) { return {width-84,34,64,44}; }
 struct RendererControl {
   unsigned long long motionRevision=0;
   int motionFD=0; bool motionPlay=true;

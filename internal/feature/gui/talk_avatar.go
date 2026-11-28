@@ -26,6 +26,7 @@ func extendTalkAvatar(_ *widgets.UI, o *screens.Options, _ func() *screens.App) 
 }
 
 func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
+	p.SetActivityRepaint(w.InvalidateRender)
 	if c, ok := p.Renderer.(interface{ SetOverlay(func() image.Rectangle) }); ok {
 		c.SetOverlay(talkVolumeBounds)
 	}
@@ -34,7 +35,7 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 		p.Start(avatar.Viewport{Width: width, Height: height})
 	}
 	if p.Fullscreen {
-		return fullscreenComposition(width, height, p.SwitchMode, func() {
+		return fullscreenActivityComposition(p, width, height, p.SwitchMode, func() {
 			if len(p.Actions) > 0 {
 				p.Actions[len(p.Actions)-1].Do()
 			}
@@ -88,7 +89,7 @@ func talkAvatarView(w *gogui.Window, p *clawtalk.AvatarPage) gogui.View {
 	}
 	activity := []gogui.View{}
 	if p.AgentActivity != nil && p.AgentActivity().Working {
-		activity = append(activity, talkActivityBadge())
+		activity = append(activity, talkActivityBadge(p))
 	}
 	actions := []gogui.View{}
 	for i, a := range p.Actions {
@@ -149,11 +150,14 @@ func talkAvatarViewport(width, height int) avatar.Viewport {
 // Must match native ControlCutouts: 72px circles, 24px gap, 20px bottom inset.
 // Optional status flags are input-muted and verified agent-working, respectively.
 func fullscreenComposition(width, height int, switchMode, end func(), status ...bool) gogui.View {
+	return fullscreenActivityComposition(nil, width, height, switchMode, end, status...)
+}
+func fullscreenActivityComposition(p *clawtalk.AvatarPage, width, height int, switchMode, end func(), status ...bool) gogui.View {
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
-	badgeWidth := float32(min(244, width/2-116))
+	badgeWidth := float32(talkActivityWidth)
 	rightContent := []gogui.View{}
 	if len(status) > 1 && status[1] {
-		rightContent = append(rightContent, talkActivityBadge(badgeWidth))
+		rightContent = append(rightContent, talkActivityBadge(p))
 	}
 	controls := gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen-controls", Width: 168, Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Spacing: gogui.SpacingPx(24), Content: []gogui.View{
 		talkModeButton("talk-fullscreen-switch", gogui.IconColumns, text("switch_split"), false, switchMode, len(status) > 0 && status[0]), talkModeButton("talk-fullscreen-stop", gogui.IconPhone, text("end_talk"), true, end),
@@ -162,7 +166,7 @@ func fullscreenComposition(width, height int, switchMode, end func(), status ...
 		gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Height: float32(height - 92), Sizing: gogui.FillFixed, Padding: gogui.NoPadding}),
 		gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: []gogui.View{
 			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding}), controls,
-			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NewPadding(16, 20, 16, float32(width/2-104)-badgeWidth), Content: rightContent}),
+			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NewPadding(14, 20, 14, float32(width/2-104)-badgeWidth), Content: rightContent}),
 		}}),
 	}})
 }
@@ -201,22 +205,46 @@ func talkModeButton(id, icon, label string, stop bool, do func(), muted ...bool)
 		}})
 }
 
-// Static for every user, including reduced-motion users: no pulses, timers,
-// animation, speech, input handler or color-only meaning.
-func talkActivityBadge(width ...float32) gogui.View {
-	badgeWidth := float32(244)
-	if len(width) > 0 {
-		badgeWidth = width[0]
+const talkActivityWidth = 64
+const talkActivityHeight = 44
+
+// Only the dots repaint on the existing Talk tick; geometry and accessible name
+// stay fixed. Tapping freezes three dots without canceling the underlying task.
+func talkActivityBadge(p *clawtalk.AvatarPage) gogui.View {
+	dots := func() int {
+		if p == nil {
+			return 3
+		}
+		return p.ActivityDots()
 	}
-	label := avatar.Text(say.Chosen(), "agent_working")
-	st := gogui.CurrentTheme().TextStyleDef
-	st.Size = 16
-	st.Color = gogui.Hex(0xEEF3F4)
-	return gogui.Row(gogui.ContainerCfg{
-		ID: "talk-agent-activity", A11YCfg: gogui.A11YCfg{A11YLabel: label},
-		Width: badgeWidth, Height: 40, Sizing: gogui.FixedFixed,
-		Padding: gogui.NewPadding(8, 12, 8, 12), Radius: gogui.RadiusPx(12),
-		Color:   gogui.Hex(0x23383F),
-		Content: []gogui.View{gogui.Text(gogui.TextCfg{Text: label, TextStyle: st})},
+	return gogui.Button(gogui.ButtonCfg{
+		ID: "talk-agent-activity", A11YCfg: talkActivityAccessibility(p),
+		Width: talkActivityWidth, Height: talkActivityHeight, MinWidth: talkActivityWidth, MinHeight: talkActivityHeight,
+		Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Radius: gogui.RadiusPx(22),
+		Color: gogui.Hex(0x23383F), HAlign: gogui.Some(gogui.HAlignCenter), VAlign: gogui.Some(gogui.VAlignMiddle),
+		Content: []gogui.View{gogui.DrawCanvas(gogui.DrawCanvasCfg{
+			ID: "talk-agent-dots", Width: 40, Height: 16,
+			VersionFn: func() uint64 { return uint64(dots()) },
+			OnDraw: func(dc *gogui.DrawContext) {
+				for i := 0; i < dots(); i++ {
+					dc.FilledCircle(8+float32(i)*12, 8, 3, gogui.Hex(0xEEF3F4))
+				}
+			},
+		})},
+		OnClick: func(e gogui.EventCtx) {
+			if p != nil {
+				p.ToggleActivityMotion()
+				e.Window.InvalidateLayout()
+			}
+		},
 	})
+}
+
+func talkActivityAccessibility(p *clawtalk.AvatarPage) gogui.A11YCfg {
+	label := avatar.Text(say.Chosen(), "agent_working")
+	action := avatar.Text(say.Chosen(), "activity_pause")
+	if p != nil && p.ActivityPaused() {
+		action = avatar.Text(say.Chosen(), "activity_resume")
+	}
+	return gogui.A11YCfg{A11YLabel: label, A11YDescription: action}
 }

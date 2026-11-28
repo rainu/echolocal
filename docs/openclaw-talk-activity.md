@@ -62,17 +62,26 @@ idle observation.
 
 ## Presentation
 
-A static, text-labelled badge sits above the split layout's fixed action bar,
-outside the caption scroller. Fullscreen uses a small lower-right badge beside
-the two existing controls. The native surface exposes exactly that rectangle
-only while verified work is shown. Its geometry is tested against the Go layout.
-The native IPC carries a single boolean, never identifiers or content.
+A compact 64×44-pixel capsule contains three dot slots, not a visible text bar.
+While verified work is active, dots build and recede as 1 → 2 → 3 → 2 → 1 with
+350 ms steps. At least one dot stays visible and geometry never changes.
+Split view keeps it above the fixed actions; fullscreen keeps it at the lower
+right beside the primary controls, clear of the avatar. The native surface
+exposes exactly the same compact rectangle; the application owns drawing/input.
 
-The restrained high-contrast text has an accessibility label and explicit
-English, German, Italian and Vietnamese translations. It is static for everyone,
-including reduced-motion users: no continuous animation, flashing, spoken
-progress, extra session, capture listener, or speech request. Switching layouts
-does not restart Talk or the renderer.
+The existing Talk status tick advances the phase. Only changed dot counts request
+a render-only refresh through the canvas's live VersionFn; animation does not
+rebuild captions/layout or add a timer/goroutine. Idle, covered, finished and
+motion-paused pages request no animation frames. Delayed ticks jump to the current
+phase without replaying a backlog.
+
+Tapping the capsule pauses motion at three static dots; tapping again resumes.
+This reduced-motion alternative is local to the current call/page and survives
+layout changes, without changing saved settings or stopping work. Accessible
+labels retain localized “Agent working” meaning plus a pause/resume description
+in English, German, Italian and Vietnamese. The name does not change per frame.
+No flashing, extra session, capture listener, speech request or spoken progress
+is added. Switching layouts does not restart Talk or the renderer.
 
 ## Verification boundaries
 

@@ -1482,10 +1482,10 @@ int main(int argc, char **argv) {
         glDisable(GL_SCISSOR_TEST);
         if(appMode && controls.poseEdit)poseOverlay.draw(scene,view,controls.selected,w,h);
         if(full)cutouts.draw(w,h);
-        // Static application-owned activity badge, lower right of the controls.
+        // Application-owned activity dots, lower right of the controls.
         // Geometry matches talkActivityBadge/fullscreenComposition; no native text.
         if(full && controls.agentWorking) {
-          glEnable(GL_SCISSOR_TEST);glScissor(w-20-std::min(244,w/2-116),36,std::min(244,w/2-116),40);
+          auto r=activityCutout(w);glEnable(GL_SCISSOR_TEST);glScissor(r[0],r[1],r[2],r[3]);
           glClearColor(0,0,0,0);glClear(GL_COLOR_BUFFER_BIT);
           glDisable(GL_SCISSOR_TEST);
         }

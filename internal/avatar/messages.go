@@ -276,3 +276,15 @@ var activityWords = map[string]map[string]string{
 	"it": {"agent_working": "Agente al lavoro"},
 	"vi": {"agent_working": "Tác tử đang xử lý"},
 }
+
+func init() {
+	for lang, labels := range map[string][2]string{
+		"en": {"Tap to pause dot animation", "Tap to resume dot animation"},
+		"de": {"Antippen, um die Punktanimation anzuhalten", "Antippen, um die Punktanimation fortzusetzen"},
+		"it": {"Tocca per fermare l’animazione dei punti", "Tocca per riprendere l’animazione dei punti"},
+		"vi": {"Chạm để tạm dừng hoạt ảnh dấu chấm", "Chạm để tiếp tục hoạt ảnh dấu chấm"},
+	} {
+		activityWords[lang]["activity_pause"] = labels[0]
+		activityWords[lang]["activity_resume"] = labels[1]
+	}
+}

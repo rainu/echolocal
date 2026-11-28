@@ -27,15 +27,19 @@ type avatarRenderer interface {
 
 type AvatarPage struct {
 	*CaptionPage
-	Renderer      avatarRenderer
-	started       bool
-	epoch         uint64
-	mu            sync.Mutex
-	closed        bool
-	Fullscreen    bool
-	InputMuted    func() bool
-	AgentActivity func() talk.AgentActivity
-	composition   config.Avatar
+	Renderer        avatarRenderer
+	started         bool
+	epoch           uint64
+	mu              sync.Mutex
+	closed          bool
+	Fullscreen      bool
+	InputMuted      func() bool
+	AgentActivity   func() talk.AgentActivity
+	composition     config.Avatar
+	activityPaused  bool
+	activityStarted time.Time
+	activityDots    int
+	activityRepaint func()
 }
 
 func (p *AvatarPage) Keeps() bool { return true }
@@ -46,6 +50,7 @@ func (p *AvatarPage) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.started = false
+	p.activityRepaint = nil
 	p.epoch++
 	p.Renderer.Stop()
 }
@@ -54,6 +59,7 @@ func (p *AvatarPage) Finish() {
 	defer p.mu.Unlock()
 	p.closed = true
 	p.started = false
+	p.activityRepaint = nil
 	p.epoch++
 	p.Renderer.Stop()
 }

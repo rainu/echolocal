@@ -198,8 +198,10 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 	}()
 	sh := shellfeature.Get()
 	idle.Get().Wake()
+	var activityPage *AvatarPage
 	if selected == nil || launch != nil {
 		page := m.standalonePage()
+		activityPage, _ = page.(*AvatarPage)
 		held := sh.Hold(page)
 		defer func() {
 			if p, ok := page.(*AvatarPage); ok {
@@ -376,6 +378,9 @@ func (m *Manager) activate(ctx context.Context, cancel context.CancelFunc, slot 
 			// when neither content, lifecycle nor capture status changed.
 			activity := m.agentActivity()
 			m.Controller.SetAgentWorking(activity.Working)
+			if activityPage != nil {
+				activityPage.TickActivity(time.Now(), activity.Working)
+			}
 			if dirty || state != previousState || live != previousMic || activity != previousActivity {
 				previousActivity = activity
 				sh.Redraw()
