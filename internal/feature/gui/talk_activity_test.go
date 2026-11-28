@@ -41,11 +41,11 @@ func TestTalkActivityBothLayoutsLocalizedStaticAndClear(t *testing.T) {
 						t.Fatal("translation absent")
 					}
 					if full {
-						if badge.X != 20 || badge.Y != float32(size[1]-76) {
+						if badge.X != float32(size[0]-20)-expectedWidth || badge.Y != float32(size[1]-76) {
 							t.Fatal("native aperture parity", badge)
 						}
 						mode := avatarCaptionShape(t, root, "talk-fullscreen-switch")
-						if badge.X+badge.Width >= mode.X {
+						if badge.X <= mode.X+168 {
 							t.Fatal("badge covers primary control")
 						}
 						for _, id := range []string{"talk-fullscreen-stop", "talk-fullscreen-switch"} {

@@ -150,9 +150,10 @@ func talkAvatarViewport(width, height int) avatar.Viewport {
 // Optional status flags are input-muted and verified agent-working, respectively.
 func fullscreenComposition(width, height int, switchMode, end func(), status ...bool) gogui.View {
 	text := func(k string) string { return avatar.Text(say.Chosen(), k) }
-	leftContent := []gogui.View{}
+	badgeWidth := float32(min(244, width/2-116))
+	rightContent := []gogui.View{}
 	if len(status) > 1 && status[1] {
-		leftContent = append(leftContent, talkActivityBadge(float32(min(244, width/2-116))))
+		rightContent = append(rightContent, talkActivityBadge(badgeWidth))
 	}
 	controls := gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen-controls", Width: 168, Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding, Spacing: gogui.SpacingPx(24), Content: []gogui.View{
 		talkModeButton("talk-fullscreen-switch", gogui.IconColumns, text("switch_split"), false, switchMode, len(status) > 0 && status[0]), talkModeButton("talk-fullscreen-stop", gogui.IconPhone, text("end_talk"), true, end),
@@ -160,7 +161,8 @@ func fullscreenComposition(width, height int, switchMode, end func(), status ...
 	return gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, ID: "talk-fullscreen", Width: float32(width), Height: float32(height), Sizing: gogui.FixedFixed, Padding: gogui.PadAll(0), Spacing: gogui.NoSpacing, Content: []gogui.View{
 		gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Height: float32(height - 92), Sizing: gogui.FillFixed, Padding: gogui.NoPadding}),
 		gogui.Row(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Sizing: gogui.FillFit, Padding: gogui.NoPadding, Spacing: gogui.NoSpacing, Content: []gogui.View{
-			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NewPadding(16, 12, 16, 20), Content: leftContent}), controls,
+			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NoPadding}), controls,
+			gogui.Column(gogui.ContainerCfg{SizeBorder: gogui.NoBorder, Radius: gogui.NoRadius, Width: float32(width/2 - 84), Height: 72, Sizing: gogui.FixedFixed, Padding: gogui.NewPadding(16, 20, 16, float32(width/2-104)-badgeWidth), Content: rightContent}),
 		}}),
 	}})
 }

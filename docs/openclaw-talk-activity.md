@@ -36,7 +36,7 @@ required; absent metadata is not an authoritative idle observation.
 ## Presentation
 
 A static, text-labelled badge sits above the split layout's fixed action bar,
-outside the caption scroller. Fullscreen uses a small lower-left badge beside
+outside the caption scroller. Fullscreen uses a small lower-right badge beside
 the two existing controls. The native surface exposes exactly that rectangle
 only while verified work is shown. Its geometry is tested against the Go layout.
 The native IPC carries a single boolean, never identifiers or content.
