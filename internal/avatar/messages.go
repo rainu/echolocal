@@ -3,6 +3,12 @@ package avatar
 // Text covers all UI languages supported by EchoLocal. Error text never includes
 // model contents, arbitrary process output, or a potentially sensitive path.
 func Text(lang, key string) string {
+	if words := turnWords[lang]; words != nil && words[key] != "" {
+		return words[key]
+	}
+	if value := turnWords["en"][key]; value != "" {
+		return value
+	}
 	if words := placementWords[lang]; words != nil && words[key] != "" {
 		return words[key]
 	}
@@ -299,4 +305,11 @@ func init() {
 		activityWords[lang]["activity_pause"] = labels[0]
 		activityWords[lang]["activity_resume"] = labels[1]
 	}
+}
+
+var turnWords = map[string]map[string]string{
+	"en": {"turn_listening": "Listening to you", "turn_speaking": "Assistant speaking", "turn_muted": "Microphone muted", "turn_waiting": "Waiting", "turn_connecting": "Connecting", "turn_disconnected": "Disconnected"},
+	"de": {"turn_listening": "Hört dir zu", "turn_speaking": "Assistent spricht", "turn_muted": "Mikrofon stumm", "turn_waiting": "Wartet", "turn_connecting": "Verbindung wird hergestellt", "turn_disconnected": "Getrennt"},
+	"it": {"turn_listening": "In ascolto", "turn_speaking": "L’assistente parla", "turn_muted": "Microfono disattivato", "turn_waiting": "In attesa", "turn_connecting": "Connessione in corso", "turn_disconnected": "Disconnesso"},
+	"vi": {"turn_listening": "Đang nghe bạn", "turn_speaking": "Trợ lý đang nói", "turn_muted": "Micrô tắt tiếng", "turn_waiting": "Đang chờ", "turn_connecting": "Đang kết nối", "turn_disconnected": "Đã ngắt kết nối"},
 }
