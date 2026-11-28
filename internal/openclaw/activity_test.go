@@ -16,6 +16,7 @@ func TestSessionActivityWireProjection(t *testing.T) {
 		name, row string
 		ok, work  bool
 	}{
+		{"titled", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false,"label":"Renamed","displayName":"Old","derivedTitle":"Derived"}`, true, false},
 		{"idle", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false}`, true, false},
 		{"reply_or_tool", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":true,"message":"private","reasoning":"private","activeRunIds":["private"]}`, true, true},
 		{"child_background", `{"key":"agent:test:one","sessionId":"generation1","hasActiveRun":false,"hasActiveSubagentRun":true}`, true, true},
@@ -44,7 +45,7 @@ func TestSessionActivityWireProjection(t *testing.T) {
 				if ws.ReadJSON(&f) != nil {
 					return
 				}
-				if f.Method != "sessions.describe" || len(f.Params) != 1 || f.Params["key"] != "agent:test:one" {
+				if f.Method != "sessions.describe" || len(f.Params) != 2 || f.Params["includeDerivedTitles"] != true || f.Params["key"] != "agent:test:one" {
 					t.Error("non-observational request", f.Method, f.Params)
 					return
 				}
@@ -75,6 +76,9 @@ func TestSessionActivityWireProjection(t *testing.T) {
 			got, err := b.ReadSessionActivity(ctx, "agent:test:one")
 			if (err == nil) != tc.ok || got.Working != tc.work {
 				t.Fatal(got, err)
+			}
+			if tc.name == "titled" && got.Title != "Renamed" {
+				t.Fatal("missing wire title", got.Title)
 			}
 			if tc.ok {
 				data, _ := json.Marshal(got)

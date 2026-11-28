@@ -3,6 +3,12 @@ package avatar
 // Text covers all UI languages supported by EchoLocal. Error text never includes
 // model contents, arbitrary process output, or a potentially sensitive path.
 func Text(lang, key string) string {
+	if words := talkHeaderWords[lang]; words != nil && words[key] != "" {
+		return words[key]
+	}
+	if value := talkHeaderWords["en"][key]; value != "" {
+		return value
+	}
 	if key == "background_video_unsupported" || key == "foreground_video_unsupported" {
 		return videoHelp(lang)
 	}
