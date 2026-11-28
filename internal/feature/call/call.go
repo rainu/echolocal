@@ -12,6 +12,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/discovery"
 	"github.com/ygelfand/echolocal/internal/feature/homeassistant"
 	"github.com/ygelfand/echolocal/internal/feature/media"
+	"github.com/ygelfand/echolocal/internal/feature/mictest"
 	"github.com/ygelfand/echolocal/internal/feature/tones"
 	"github.com/ygelfand/echolocal/internal/feature/web"
 	"github.com/ygelfand/echolocal/internal/hardware/buttons"
@@ -46,6 +47,7 @@ func Get() *sharedcall.Calls {
 }
 
 func init() {
+	mictest.PauseWhen(func() bool { _, ok := Get().Now(); return ok })
 	component.Register(
 		sharedcomponent.Network,
 		func() *componentCall { return &componentCall{Get()} },

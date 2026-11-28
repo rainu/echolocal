@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"github.com/ygelfand/echolocal/internal/feature/mictest"
 	"strings"
 	"sync"
 	"time"
@@ -132,7 +133,7 @@ func (l *automationLaunch) notify(err error) {
 // audio are ready. Defaults are copied from assistant 1, never persisted.
 func (m *Manager) StartAutomation(ctx context.Context, sessionID, prompt string, haBusy bool) error {
 	m.mu.Lock()
-	if m.active || m.transfer != nil {
+	if mictest.Active() || m.active || m.transfer != nil {
 		m.mu.Unlock()
 		return errors.New("talk_already_active")
 	}

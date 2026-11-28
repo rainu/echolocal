@@ -24,6 +24,7 @@ import (
 	"github.com/ygelfand/echolocal/internal/feature/discovery"
 	"github.com/ygelfand/echolocal/internal/feature/files"
 	"github.com/ygelfand/echolocal/internal/feature/homeassistant"
+	"github.com/ygelfand/echolocal/internal/feature/mictest"
 	"github.com/ygelfand/echolocal/internal/feature/network"
 	"github.com/ygelfand/echolocal/internal/feature/voicematch"
 	"github.com/ygelfand/echolocal/internal/feature/web"
@@ -37,13 +38,14 @@ func (c componentFrontend) Restore(cfg config.Config) { c.API.Restore(cfg.Fronte
 var get = sync.OnceValue(func() *webapi.API {
 	fs := devicefs.NewService("/", layout.StateDir+"/webdav-properties.json")
 	pages := map[string]http.Handler{
-		"alarms":     alarm.Get().Handler(alerts.Get().Tones),
-		"call":       call.Get().Handler(discovery.Get().Peers),
-		"broadcast":  broadcast.Get().WebHandler(),
-		"files":      files.Get().Handler(),
-		"webdav":     fs.DAVHandler(),
-		"filesystem": fs.Handler(),
-		"voices":     voicematch.Get().Handler(householdPeople),
+		"microphone-test": mictest.Get().Handler(),
+		"alarms":          alarm.Get().Handler(alerts.Get().Tones),
+		"call":            call.Get().Handler(discovery.Get().Peers),
+		"broadcast":       broadcast.Get().WebHandler(),
+		"files":           files.Get().Handler(),
+		"webdav":          fs.DAVHandler(),
+		"filesystem":      fs.Handler(),
+		"voices":          voicematch.Get().Handler(householdPeople),
 	}
 	input := &textentry.Controller{}
 	addDesktop(pages, input)
